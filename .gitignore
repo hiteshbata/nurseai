@@ -1,0 +1,66 @@
+# --- Dependencies ---
+node_modules/
+.pnp
+.pnp.js
+
+# --- Build output ---
+.next/
+dist/
+build/
+.turbo/
+.vercel/
+
+# --- Environment files ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+venv/
+*.egg-info/
+.eggs/
+*.egg
+
+# --- Next.js ---
+*.tsbuildinfo
+next-env.d.ts
+out/
+
+# --- Database ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+*.log
+
+# --- Docker ---
+.docker/
+
+# --- Coverage ---
+coverage/
+.coverage
+htmlcov/
+
+# --- Kilo build artifacts ---
+.dbinfo
+.schema
+.tables
+KILO_BUILD.md
+KILO_BUILD_PLAN.md
+NURSEAI_BUILD_PLAN.md
+BUILD_PROMPT.md
+
+# --- Misc generated ---
+package-lock.json

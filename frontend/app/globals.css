@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@media print {
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+}
+
+html:fullscreen #main-navbar {
+  display: none !important;
+}
+html:fullscreen [data-page="speaking"] {
+  height: 100vh !important;
+}
+html:fullscreen [data-page="speaking"] > div {
+  height: 100vh !important;
+}
