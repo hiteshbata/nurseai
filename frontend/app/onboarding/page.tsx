@@ -2,16 +2,24 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { supabase, useSupabaseSession } from '@/lib/supabase'
 import api from '@/lib/api'
 
 type Step = 1 | 2 | 3 | 4 | 5
 
 export default function OnboardingPage() {
+  const { status } = useSupabaseSession()
   const router = useRouter()
   const [step, setStep] = useState<Step>(1)
   const [loading, setLoading] = useState(false)
   const [userName, setUserName] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/auth/login')
+      return
+    }
+  }, [status, router])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -32,6 +40,12 @@ export default function OnboardingPage() {
   // Step 3 state
   const [targetBand, setTargetBand] = useState('')
   const [daysPerWeek, setDaysPerWeek] = useState<number | null>(null)
+
+  // Step 2 — Indian nurse fields
+  const [nurseState, setNurseState] = useState('')
+  const [qualification, setQualification] = useState('')
+  const [yearsOfExperience, setYearsOfExperience] = useState('')
+  const [nurseSpecialty, setNurseSpecialty] = useState('')
 
   // Step 4 state
   const [diagnosticMode, setDiagnosticMode] = useState(false)
@@ -106,6 +120,10 @@ export default function OnboardingPage() {
         days_per_week: daysPerWeek,
         baseline_score: baselineScore,
         onboarding_completed: true,
+        state: nurseState || null,
+        qualification: qualification || null,
+        years_of_experience: yearsOfExperience || null,
+        nursing_specialty: nurseSpecialty || null,
       })
     } catch (e) {
       console.error('Failed to complete onboarding (non-fatal):', e)
@@ -315,6 +333,92 @@ export default function OnboardingPage() {
                   </div>
                 )}
               </div>
+
+              {/* Indian nurse profile fields */}
+              <div className="border-t border-gray-200 pt-6 mt-6">
+                <p className="text-sm font-bold text-gray-800 mb-1">About Your Nursing Career</p>
+                <p className="text-xs text-gray-400 mb-4">Optional — helps us personalise your experience</p>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Which Indian state are you based in?
+                    </label>
+                    <select
+                      value={nurseState}
+                      onChange={(e) => setNurseState(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                    >
+                      <option value="">Select state...</option>
+                      {[
+                        'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+                        'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand',
+                        'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
+                        'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
+                        'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
+                        'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+                        'Andaman and Nicobar Islands', 'Chandigarh',
+                        'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+                        'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
+                      ].sort().map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      What is your nursing qualification?
+                    </label>
+                    <select
+                      value={qualification}
+                      onChange={(e) => setQualification(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                    >
+                      <option value="">Select qualification...</option>
+                      {['GNM', 'B.Sc Nursing', 'Post Basic B.Sc', 'M.Sc Nursing', 'Other'].map((q) => (
+                        <option key={q} value={q}>{q}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Years of nursing experience?
+                    </label>
+                    <select
+                      value={yearsOfExperience}
+                      onChange={(e) => setYearsOfExperience(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                    >
+                      <option value="">Select range...</option>
+                      {['0-1', '1-3', '3-5', '5-10', '10+'].map((r) => (
+                        <option key={r} value={r}>{r} years</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Nursing specialty / department?
+                    </label>
+                    <select
+                      value={nurseSpecialty}
+                      onChange={(e) => setNurseSpecialty(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                    >
+                      <option value="">Select specialty...</option>
+                      {[
+                        'Cardiology', 'Respiratory', 'Paediatrics', 'Mental Health',
+                        'Geriatrics / Elderly Care', 'Oncology', 'General / Internal Medicine',
+                        'Emergency / Acute Care', 'Maternity / Obstetrics', 'Surgical / Post-Op',
+                      ].map((sp) => (
+                        <option key={sp} value={sp}>{sp}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
               {renderNavButtons()}
             </div>
           )}
@@ -444,6 +548,42 @@ export default function OnboardingPage() {
                   <span className="text-gray-600">Practice days/week</span>
                   <span className="font-semibold">{daysPerWeek} days</span>
                 </div>
+                {nurseState && (
+                  <>
+                    <div className="border-t border-blue-100" />
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">State</span>
+                      <span className="font-semibold">{nurseState}</span>
+                    </div>
+                  </>
+                )}
+                {qualification && (
+                  <>
+                    <div className="border-t border-blue-100" />
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Qualification</span>
+                      <span className="font-semibold">{qualification}</span>
+                    </div>
+                  </>
+                )}
+                {yearsOfExperience && (
+                  <>
+                    <div className="border-t border-blue-100" />
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Experience</span>
+                      <span className="font-semibold">{yearsOfExperience} years</span>
+                    </div>
+                  </>
+                )}
+                {nurseSpecialty && (
+                  <>
+                    <div className="border-t border-blue-100" />
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Specialty</span>
+                      <span className="font-semibold">{nurseSpecialty}</span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {baselineScore !== null && baselineScore < 4 && (

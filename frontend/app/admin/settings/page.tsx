@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import axios from 'axios'
+import api from '@/lib/api'
 
 interface Setting {
   key: string
@@ -15,7 +15,6 @@ const SETTINGS_SCHEMA: Record<string, string> = {
   ai_model: 'AI model for scoring and patient chat',
   ai_patient_model: 'AI model for patient role-play',
   speaking_price_monthly: 'Monthly subscription price in INR',
-  free_sessions_count: 'Number of free sessions before paywall',
 }
 
 export default function AdminSettingsPage() {
@@ -36,11 +35,7 @@ export default function AdminSettingsPage() {
 
   const fetchSettings = async () => {
     try {
-      const token = localStorage.getItem('authToken')
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_SUPERBASE_API_URL || process.env.NEXT_PUBLIC_API_URL}/admin/settings`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      const response = await api.get('/admin/settings')
       const settingsMap: Record<string, string> = {}
       for (const s of response.data) {
         settingsMap[s.key] = s.value
@@ -60,12 +55,7 @@ export default function AdminSettingsPage() {
   const updateSetting = async (key: string, value: string) => {
     setSaving(key)
     try {
-      const token = localStorage.getItem('authToken')
-      await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/settings/${key}`,
-        { value },
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      await api.put(`/admin/settings/${key}`, { value })
     } catch (error) {
       console.error('Failed to update setting:', error)
     } finally {
@@ -117,7 +107,7 @@ export default function AdminSettingsPage() {
           <div className="border-t pt-6">
             <h2 className="text-xl font-bold mb-4 text-green-700">Pricing & Limits</h2>
             <div className="space-y-4">
-              {['speaking_price_monthly', 'free_sessions_count'].map((key) => (
+              {['speaking_price_monthly'].map((key) => (
                 <div key={key}>
                   <label className="block text-sm font-semibold mb-2">
                     {SETTINGS_SCHEMA[key]}

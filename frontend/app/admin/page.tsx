@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import axios from 'axios'
+import api from '@/lib/api'
 
 interface Stats {
   total_users: number
@@ -38,11 +38,7 @@ export default function AdminDashboard() {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('authToken')
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/stats`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      const response = await api.get('/admin/stats')
       setStats(response.data)
     } catch (error) {
       console.error('Failed to fetch stats:', error)
@@ -51,11 +47,7 @@ export default function AdminDashboard() {
 
   const fetchUsers = async () => {
     try {
-      const token = localStorage.getItem('authToken')
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/users`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      const response = await api.get('/admin/users')
       setUsers(response.data)
     } catch (error) {
       console.error('Failed to fetch users:', error)

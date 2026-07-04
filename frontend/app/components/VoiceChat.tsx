@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import api from '@/lib/api'
+import { getCurrentSession } from '@/lib/supabase'
 
 interface ChatMessage {
   role: 'nurse' | 'patient'
@@ -15,38 +16,140 @@ interface VoiceChatProps {
   onSessionEnd: (history: ChatMessage[], feedback: any) => void
   variant?: 'default' | 'exam'
   onHistoryChange?: (history: ChatMessage[]) => void
+  voiceConfig?: { voice_name: string; speaking_rate: number; pitch: number; language_code: string }
 }
 
-export function VoiceChat({ scenarioId, nurseCard, scenarioTitle, onSessionEnd, variant = 'default', onHistoryChange }: VoiceChatProps) {
+export function VoiceChat({ scenarioId, nurseCard, scenarioTitle, onSessionEnd, variant = 'default', onHistoryChange, voiceConfig }: VoiceChatProps) {
   console.log('[VoiceChat] variant prop received:', variant)
   const [history, setHistory] = useState<ChatMessage[]>([])
   const [isListening, setIsListening] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isEnding, setIsEnding] = useState(false)
   const [interimText, setInterimText] = useState('')
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [sttError, setSttError] = useState<string | null>(null)
+  const [usingFallbackStt, setUsingFallbackStt] = useState(false)
+  const wsRef = useRef<WebSocket | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
   const recognitionRef = useRef<any>(null)
+  const deepgramEverConnectedRef = useRef(false)
+  const accumulatedTranscriptRef = useRef('')
+  const silenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const lastInterimUpdate = useRef(0)
+  const interimThrottleMs = 100
+  const sendToAIRef = useRef<((text: string) => Promise<void>) | null>(null)
+
+  const setInterimTextThrottled = useCallback((text: string) => {
+    const now = Date.now()
+    if (text === '' || now - lastInterimUpdate.current > interimThrottleMs) {
+      lastInterimUpdate.current = now
+      setInterimText(text)
+    }
+  }, [])
 
   const stopListening = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
+    }
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
     if (recognitionRef.current) {
       try { recognitionRef.current.stop() } catch {}
       recognitionRef.current = null
     }
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current)
+      silenceTimeoutRef.current = null
+    }
     setIsListening(false)
+    setInterimText('')
   }, [])
 
-  const speakPatientReply = useCallback((text: string) => {
+  const finalizeSilence = useCallback(() => {
+    const text = accumulatedTranscriptRef.current.trim()
+    if (!text) return
+    accumulatedTranscriptRef.current = ''
+    setInterimText('')
+    stopListening()
+    console.log('[STT] FINALIZED BY SILENCE TIMEOUT:', JSON.stringify(text))
+    setHistory(prev => [...prev, { role: 'nurse', content: text }])
+    sendToAIRef.current?.(text)
+  }, [stopListening])
+
+  useEffect(() => {
+    return () => {
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current)
+        silenceTimeoutRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (sttError) {
+      const timer = setTimeout(() => setSttError(null), 4000)
+      return () => clearTimeout(timer)
+    }
+  }, [sttError])
+
+  const fallbackTTS = useCallback((text: string) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.rate = 0.95
-    utterance.pitch = 1.0
-    utterance.volume = 1.0
-    const voices = window.speechSynthesis.getVoices()
-    const indianVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('India') || v.name.includes('female')))
-    if (indianVoice) utterance.voice = indianVoice
     window.speechSynthesis.speak(utterance)
   }, [])
+
+  const speakPatientReply = useCallback(async (text: string) => {
+    const config = voiceConfig ?? {
+      voice_name: "en-GB-Wavenet-A",
+      speaking_rate: 0.95,
+      pitch: 0.0,
+      language_code: "en-GB",
+    }
+
+    try {
+      const response = await fetch("/speaking/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, ...config }),
+      })
+
+      const contentType = response.headers.get("content-type") || ""
+
+      if (contentType.includes("application/json")) {
+        fallbackTTS(text)
+        return
+      }
+
+      const blob = await response.blob()
+      const audioUrl = URL.createObjectURL(blob)
+      const audio = new Audio(audioUrl)
+
+      setIsSpeaking(true)
+      audio.onended = () => {
+        setIsSpeaking(false)
+        URL.revokeObjectURL(audioUrl)
+      }
+      audio.onerror = () => {
+        setIsSpeaking(false)
+        fallbackTTS(text)
+      }
+
+      await audio.play()
+    } catch (err) {
+      setIsSpeaking(false)
+      fallbackTTS(text)
+    }
+  }, [voiceConfig, fallbackTTS])
 
   const sendToAI = useCallback(async (nurseText: string) => {
     setIsProcessing(true)
@@ -71,11 +174,14 @@ export function VoiceChat({ scenarioId, nurseCard, scenarioTitle, onSessionEnd, 
     }
   }, [history, scenarioId, speakPatientReply])
 
-  const startListening = useCallback(() => {
-    if (isProcessing || isEnding) return
+  useEffect(() => {
+    sendToAIRef.current = sendToAI
+  }, [sendToAI])
+
+  const startFallbackListening = useCallback(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) {
-      alert('Speech recognition not supported in this browser. Please use Chrome or Edge.')
+      setSttError('Speech recognition not available in this browser')
       return
     }
     stopListening()
@@ -94,14 +200,14 @@ export function VoiceChat({ scenarioId, nurseCard, scenarioTitle, onSessionEnd, 
           interim += event.results[i][0].transcript
         }
       }
-      setInterimText(interim)
+      setInterimTextThrottled(interim)
       if (finalText.trim()) {
         recognition.stop()
         setIsListening(false)
         setInterimText('')
         const trimmed = finalText.trim()
         setHistory(prev => [...prev, { role: 'nurse', content: trimmed }])
-        sendToAI(trimmed)
+        sendToAIRef.current?.(trimmed)
       }
     }
 
@@ -111,7 +217,7 @@ export function VoiceChat({ scenarioId, nurseCard, scenarioTitle, onSessionEnd, 
 
     recognition.onerror = (event: any) => {
       if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        console.error('Speech error:', event.error)
+        console.error('Fallback STT error:', event.error)
       }
       setIsListening(false)
     }
@@ -119,7 +225,135 @@ export function VoiceChat({ scenarioId, nurseCard, scenarioTitle, onSessionEnd, 
     recognitionRef.current = recognition
     recognition.start()
     setIsListening(true)
-  }, [isProcessing, isEnding, stopListening, sendToAI])
+  }, [isProcessing, isEnding, stopListening])
+
+  const startListening = useCallback(() => {
+    if (isProcessing || isEnding) return
+    setSttError(null)
+    deepgramEverConnectedRef.current = false
+    accumulatedTranscriptRef.current = ''
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current)
+      silenceTimeoutRef.current = null
+    }
+
+    if (usingFallbackStt) {
+      startFallbackListening()
+      return
+    }
+
+    stopListening()
+
+    const wsUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}`
+      .replace(/^http:/, 'ws:')
+      .replace(/^https:/, 'wss:') + '/speaking/stt/stream'
+
+    const ws = new WebSocket(wsUrl)
+    wsRef.current = ws
+
+    ws.onopen = async () => {
+      deepgramEverConnectedRef.current = true
+      try {
+        const session = await getCurrentSession()
+        if (!session?.access_token) {
+          setSttError('Your session has expired. Please sign in again.')
+          ws.close()
+          return
+        }
+        ws.send(JSON.stringify({ token: session.access_token }))
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        streamRef.current = stream
+
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
+        const mediaRecorder = new MediaRecorder(stream, { mimeType })
+        mediaRecorderRef.current = mediaRecorder
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(event.data)
+          }
+        }
+
+        mediaRecorder.start(250)
+        setIsListening(true)
+      } catch (err) {
+        console.error('Failed to start recording:', err)
+        setSttError('Please allow microphone access to record')
+        ws.close()
+      }
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        // --- TEMP DEBUG LOGGING: remove after verification ---
+        const msgType_debug = data.type || 'Results'
+        console.log('[STT]', {
+            type: msgType_debug,
+            is_final: data.is_final,
+            speech_final: data.speech_final,
+            transcript: JSON.stringify(data.transcript),
+            accumulated_before: JSON.stringify(accumulatedTranscriptRef.current),
+        })
+        // --- END TEMP DEBUG LOGGING ---
+        if (data.error) {
+          console.error('STT error:', data.error)
+          setUsingFallbackStt(true)
+          setSttError('Using browser speech recognition as fallback')
+          stopListening()
+          startFallbackListening()
+          return
+        }
+
+        const msgType = data.type || 'Results'
+
+        if (msgType === 'UtteranceEnd' || data.speech_final === true) {
+          if (data.transcript) {
+            accumulatedTranscriptRef.current += (accumulatedTranscriptRef.current ? ' ' : '') + data.transcript.trim()
+          }
+          setInterimText('')
+          if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current)
+          silenceTimeoutRef.current = setTimeout(finalizeSilence, 2000)
+          return
+        }
+
+        if (data.transcript) {
+          if (data.is_final) {
+            accumulatedTranscriptRef.current += (accumulatedTranscriptRef.current ? ' ' : '') + data.transcript.trim()
+            setInterimText('')
+            // restart silence timeout — finalize if no new transcript arrives
+            if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current)
+            silenceTimeoutRef.current = setTimeout(finalizeSilence, 2000)
+          } else {
+            setInterimTextThrottled(data.transcript)
+          }
+        }
+      } catch (e) {
+        // ignore non-JSON messages
+      }
+    }
+
+    ws.onerror = () => {
+      if (!deepgramEverConnectedRef.current) {
+        setUsingFallbackStt(true)
+        setSttError('Using browser speech recognition as fallback')
+        ws.close()
+        startFallbackListening()
+      } else {
+        setSttError('Connection lost. Please try again.')
+        setIsListening(false)
+      }
+    }
+
+    ws.onclose = () => {
+      if (!deepgramEverConnectedRef.current && !usingFallbackStt) {
+        setSttError('Could not connect to speech service. Please try again.')
+      }
+      setIsListening(false)
+      setInterimText('')
+    }
+  }, [isProcessing, isEnding, stopListening, startFallbackListening, usingFallbackStt])
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -128,7 +362,13 @@ export function VoiceChat({ scenarioId, nurseCard, scenarioTitle, onSessionEnd, 
   }, [])
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = chatEndRef.current?.parentElement
+    if (!el) return
+    const threshold = 60
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+    if (isNearBottom) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [history, interimText])
 
   useEffect(() => {
@@ -171,6 +411,9 @@ export function VoiceChat({ scenarioId, nurseCard, scenarioTitle, onSessionEnd, 
           <div className="text-sm flex items-center gap-1.5 mt-0.5">
             <span>{statusIcon}</span>
             <span className="text-gray-500">{statusLabel}</span>
+            {isSpeaking && (
+              <span className="text-xs text-blue-500 animate-pulse">Patient speaking…</span>
+            )}
           </div>
         </div>
       </div>
@@ -186,6 +429,9 @@ export function VoiceChat({ scenarioId, nurseCard, scenarioTitle, onSessionEnd, 
           <h2 className="font-bold text-blue-900 text-lg mb-1">{scenarioTitle}</h2>
           <p className="text-sm text-blue-700 mb-2">
             <span className="font-semibold">Your Patient:</span> {patientName}
+            {isSpeaking && (
+              <span className="ml-2 text-xs text-blue-500 animate-pulse">Patient speaking…</span>
+            )}
           </p>
           <div className="flex flex-wrap gap-1.5">
             {tasks.map((task: string, i: number) => (
@@ -272,6 +518,10 @@ export function VoiceChat({ scenarioId, nurseCard, scenarioTitle, onSessionEnd, 
             </button>
           )}
         </div>
+
+        {sttError && (
+          <p className="text-xs text-red-500 text-center mt-2 transition-opacity">{sttError}</p>
+        )}
       </div>
     </div>
   )

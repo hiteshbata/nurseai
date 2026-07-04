@@ -9,7 +9,7 @@ const nextConfig = {
   },
 }
 
-module.exports = withSentryConfig(nextConfig, {
+const sentryOptions = {
   org: process.env.SENTRY_ORG || 'nurseai',
   project: process.env.SENTRY_PROJECT || 'nurseai-frontend',
   silent: !process.env.CI,
@@ -17,4 +17,8 @@ module.exports = withSentryConfig(nextConfig, {
   hideSourceMaps: true,
   disableLogger: true,
   automaticVercelMonitors: false,
-})
+}
+
+module.exports = process.env.NODE_ENV === 'production'
+  ? withSentryConfig(nextConfig, sentryOptions)
+  : nextConfig

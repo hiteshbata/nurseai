@@ -1,24 +1,52 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { supabase, signOut, getCurrentSession } from '@/lib/supabase'
-import type { Session } from '@supabase/supabase-js'
+import { useRouter, usePathname } from 'next/navigation'
+import { supabase, signOut, useSupabaseSession } from '@/lib/supabase'
+import { LayoutDashboard, Settings, LogOut } from 'lucide-react'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
 
+const landingNavLinks = [
+  { href: '#how-it-works', label: 'How It Works' },
+  { href: '#features', label: 'Features' },
+  { href: '#pricing', label: 'Pricing' },
+]
+
+const appNavLinks = [
+  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/practice/speaking', label: 'Speaking' },
+]
+
 export function Navbar() {
-  const [session, setSession] = useState<Session | null>(null)
+  const { session, status } = useSupabaseSession()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  const [avatarOpen, setAvatarOpen] = useState(false)
+  const avatarRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
+  const pathname = usePathname()
+  const isLanding = pathname === '/'
+
+  const getInitials = (name: string) => {
+    const parts = name.trim().split(' ')
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    return parts[0].slice(0, 2).toUpperCase()
+  }
+
+  const userName = session?.user?.user_metadata?.full_name || session?.user?.email || ''
+  const userEmail = session?.user?.email || ''
 
   useEffect(() => {
-    getCurrentSession().then((s) => setSession(s))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s)
-    })
-    return () => subscription?.unsubscribe()
+    const handleClickOutside = (e: MouseEvent) => {
+      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
+        setAvatarOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   useEffect(() => {
@@ -30,8 +58,6 @@ export function Navbar() {
   const navLinks = [
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/practice/speaking', label: 'Speaking' },
-    { href: '/practice/writing', label: 'Writing', disabled: true },
-    { href: '/mock-test', label: 'Mock Test', disabled: true },
   ]
 
   return (
@@ -46,7 +72,7 @@ export function Navbar() {
 
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-6">
-          {session && navLinks.map((link) =>
+          {(isLanding && !session ? landingNavLinks : appNavLinks).map((link: any) =>
             link.disabled ? (
               <span
                 key={link.href}
@@ -59,6 +85,7 @@ export function Navbar() {
               <Link
                 key={link.href}
                 href={link.href}
+                prefetch={true}
                 className="text-gray-700 hover:text-blue-600 transition text-sm font-semibold"
               >
                 {link.label}
@@ -68,17 +95,68 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-3">
-          {session ? (
-            <>
-              <span className="hidden md:inline text-sm text-gray-700">
-                {session.user?.user_metadata?.name || session.user?.email}
-              </span>
+          {status === 'loading' ? (
+            <div className="w-24 h-9" />
+          ) : status === 'authenticated' ? (
+            <div className="relative" ref={avatarRef}>
               <button
-                onClick={() => { signOut(); router.push('/') }}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-800 hover:text-white hover:border-gray-800 transition"
+                onClick={() => setAvatarOpen(!avatarOpen)}
+                className="w-9 h-9 rounded-full bg-[#0F2356] text-white text-sm font-semibold flex items-center justify-center hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-[#10B981] focus:ring-offset-2"
               >
-                Sign Out
+                {getInitials(userName)}
               </button>
+              {avatarOpen && (
+                <div className="absolute right-0 top-12 z-50 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-2">
+                  <div className="px-4 py-2 font-semibold text-sm text-gray-900 truncate">
+                    {userName}
+                  </div>
+                  <div className="px-4 pb-2 text-xs text-gray-500 truncate">
+                    {userEmail}
+                  </div>
+                  <div className="border-t border-gray-100 my-1" />
+                  <Link
+                    href="/dashboard"
+                    onClick={() => setAvatarOpen(false)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    Dashboard
+                  </Link>
+                  <Link
+                    href="/profile"
+                    onClick={() => setAvatarOpen(false)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Settings
+                  </Link>
+                  <div className="border-t border-gray-100 my-1" />
+                  <button
+                    onClick={() => { setAvatarOpen(false); signOut(); router.push('/') }}
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 w-full text-left"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : isLanding ? (
+            <>
+              <Link
+                href="/auth/register"
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition"
+                style={{ backgroundColor: "#10B981" }}
+              >
+                Get Started
+              </Link>
+              <Link
+                href="/auth/login"
+                className="text-sm font-semibold px-3 py-2 rounded transition"
+                style={{ color: "#0F2356" }}
+              >
+                Sign In
+              </Link>
             </>
           ) : (
             <>
@@ -117,7 +195,7 @@ export function Navbar() {
         }`}
       >
         <div className="px-4 py-2 bg-white">
-          {session && navLinks.map((link) =>
+          {(isLanding && !session ? landingNavLinks : appNavLinks).map((link: any) =>
             link.disabled ? (
               <span
                 key={link.href}
@@ -137,7 +215,7 @@ export function Navbar() {
               </Link>
             )
           )}
-          {!session && (
+          {status !== 'loading' && !session && (
             <>
               <Link href="/auth/login" onClick={() => setMobileOpen(false)} className="block py-2 text-gray-700 hover:text-blue-600 transition text-sm">
                 Sign In

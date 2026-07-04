@@ -1,0 +1,94 @@
+'use client'
+
+import { useEffect, useState } from "react"
+import { ChevronDown } from "lucide-react"
+import { getPlans, type Plan } from "@/lib/api"
+
+export default function FAQSection() {
+  const [openIndex, setOpenIndex] = useState<number | null>(null)
+  const [plans, setPlans] = useState<Plan[] | null>(null)
+
+  useEffect(() => {
+    getPlans().then(setPlans).catch(() => setPlans([]))
+  }, [])
+
+  const pro = plans?.find((p) => p.id === 'pro')
+  const elite = plans?.find((p) => p.id === 'elite')
+  const free = plans?.find((p) => p.id === 'free')
+
+  const faqs = [
+    {
+      q: "Is SpeakOET an official OET product?",
+      a: "No. SpeakOET is an independent AI practice tool for nurses. OET is a registered trademark of Cambridge Boxhill Language Assessment. We are not affiliated with or endorsed by OET — we built our scoring around the official public rubric.",
+    },
+    {
+      q: "How accurate is the AI scoring?",
+      a: "Our AI scores on all 9 official OET criteria using the public OET rubric as reference. Students who practice 5+ sessions per week consistently report band score improvements. It is a study tool — not a substitute for the real exam.",
+    },
+    {
+      q: "Do I need to download an app?",
+      a: "No. SpeakOET is completely web-based. Open it in Chrome or Safari on any device and start practicing immediately. No App Store, no installation.",
+    },
+    {
+      q: "What is included in the free plan?",
+      a: `The free plan gives you ${free ? free.sessions_limit : '3'} speaking sessions per month with full 9-criteria feedback. No credit card required to start.`,
+    },
+    {
+      q: "How much does Pro cost?",
+      a: `Pro is ₹${pro ? pro.price : '999'} per month — about US$${pro ? Math.round(pro.price / 83) : '12'}. That is significantly less than one hour with a human OET tutor. You get unlimited sessions, all scenarios, progress tracking, and compare attempts.`,
+    },
+    {
+      q: "I am an Indian nurse going to Australia or UK — is this right for me?",
+      a: "Yes. SpeakOET is built specifically for Indian nurses preparing for OET to work abroad. Our scenarios reflect real nursing situations in Australian, British, and New Zealand hospitals.",
+    },
+    {
+      q: "Do you have plans for coaching institutes and academies?",
+      a: `Contact us at support@speakoet.com for academy and bulk pricing with dedicated admin dashboard and student progress tracking.`,
+    },
+    {
+      q: "Is SpeakOET available in Hindi or Gujarati?",
+      a: "The platform is in English — because OET is an English exam. However our scenarios are designed keeping Indian nurses in mind, with patients who use familiar Indian-context situations.",
+    },
+    {
+      q: "What happens after my free sessions run out?",
+      a: `You can upgrade to Pro for ₹${pro ? pro.price : '999'}/month for unlimited practice. We'll remind you before your sessions run out — no surprise charges.`,
+    },
+  ]
+
+  return (
+    <section className="bg-white py-16 md:py-24">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-3xl md:text-4xl font-bold text-[#0F2356] text-center mb-12">Common Questions</h2>
+
+        <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+          {faqs.map((faq, i) => {
+            const isOpen = openIndex === i
+            return (
+              <div key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <button
+                  className="w-full flex items-center justify-between gap-4 px-6 py-5 text-left hover:bg-gray-50 transition-colors"
+                  onClick={() => setOpenIndex(isOpen ? null : i)}
+                  aria-expanded={isOpen}
+                >
+                  <span className="text-[#0F2356] font-semibold text-sm md:text-base leading-snug">{faq.q}</span>
+                  <ChevronDown
+                    className={`w-5 h-5 text-gray-400 shrink-0 transition-transform duration-200 ${
+                      isOpen ? "rotate-180" : ""
+                    }`}
+                    aria-hidden="true"
+                  />
+                </button>
+                {isOpen && (
+                  <div className="px-6 pb-5">
+                    <p className="text-gray-600 text-sm leading-relaxed">{faq.a}</p>
+                  </div>
+                )}
+                {i < faqs.length - 1 && <div className="border-b border-gray-100" />}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </section>
+  )
+}

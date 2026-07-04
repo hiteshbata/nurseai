@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import axios from 'axios'
+import api from '@/lib/api'
 
 export default function NewScenarioPage() {
   const { session, status } = useSupabaseSession()
@@ -12,7 +12,7 @@ export default function NewScenarioPage() {
     module: 'speaking',
     title: '',
     setting: 'Hospital',
-    difficulty: 'medium',
+    difficulty: 'intermediate',
     interlocutor_card: {
       patient_name: '',
       age: '',
@@ -58,12 +58,7 @@ export default function NewScenarioPage() {
     }
 
     try {
-      const token = localStorage.getItem('authToken')
-      await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/scenarios`,
-        cleanedData,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      await api.post('/admin/scenarios', cleanedData)
       router.push('/admin/scenarios')
     } catch (error) {
       console.error('Failed to create scenario:', error)
@@ -119,15 +114,15 @@ export default function NewScenarioPage() {
               </div>
               <div>
                 <label className="block font-semibold mb-2">Difficulty</label>
-                <select
-                  value={formData.difficulty}
-                  onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
-                  className="w-full px-4 py-2 border rounded-lg"
-                >
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                </select>
+                  <select
+                    value={formData.difficulty}
+                    onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
+                    className="w-full px-4 py-2 border rounded-lg"
+                  >
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                  </select>
               </div>
             </div>
           </div>

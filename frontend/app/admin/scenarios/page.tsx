@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import axios from 'axios'
+import api from '@/lib/api'
 
 interface Scenario {
   id: number
@@ -33,11 +33,7 @@ export default function AdminScenariosPage() {
 
   const fetchScenarios = async () => {
     try {
-      const token = localStorage.getItem('authToken')
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/scenarios`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      const response = await api.get('/admin/scenarios')
       setScenarios(response.data)
     } catch (error: any) {
       if (error.response?.status === 403) {
@@ -52,12 +48,7 @@ export default function AdminScenariosPage() {
 
   const toggleActive = async (id: number, isActive: boolean) => {
     try {
-      const token = localStorage.getItem('authToken')
-      await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/scenarios/${id}`,
-        { is_active: !isActive },
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      await api.put(`/admin/scenarios/${id}`, { is_active: !isActive })
       fetchScenarios()
     } catch (error) {
       console.error('Failed to update scenario:', error)
@@ -67,11 +58,7 @@ export default function AdminScenariosPage() {
   const deleteScenario = async (id: number) => {
     if (!confirm('Are you sure you want to delete this scenario?')) return
     try {
-      const token = localStorage.getItem('authToken')
-      await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/scenarios/${id}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      await api.delete(`/admin/scenarios/${id}`)
       fetchScenarios()
     } catch (error) {
       console.error('Failed to delete scenario:', error)
@@ -119,7 +106,11 @@ export default function AdminScenariosPage() {
                   <td className="py-4 px-4 font-semibold">{sc.title}</td>
                   <td className="py-4 px-4 capitalize">{sc.module}</td>
                   <td className="py-4 px-4">{sc.setting}</td>
-                  <td className="py-4 px-4 capitalize">{sc.difficulty}</td>
+                  <td className="py-4 px-4 capitalize">
+                    {sc.difficulty === 'easy' || sc.difficulty === 'beginner' ? 'Beginner'
+                      : sc.difficulty === 'hard' || sc.difficulty === 'advanced' ? 'Advanced'
+                      : 'Intermediate'}
+                  </td>
                   <td className="py-4 px-4">
                     <span className={`px-2 py-1 rounded text-xs font-semibold ${
                       sc.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'

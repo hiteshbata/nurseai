@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useSupabaseSession } from '@/lib/supabase'
-import axios from 'axios'
+import api from '@/lib/api'
+import toast from 'react-hot-toast'
 
 const NAV_ITEMS = [
   { href: '/admin', label: 'Dashboard' },
@@ -19,6 +20,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname()
   const router = useRouter()
   const [unresolvedCount, setUnresolvedCount] = useState(0)
+  const [roleStatus, setRoleStatus] = useState<'checking' | 'admin' | 'denied'>('checking')
 
   useEffect(() => {
     // Hide main site navbar on admin pages
@@ -36,13 +38,36 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       return
     }
 
+    let cancelled = false
+    api.get('/auth/me')
+      .then((res) => {
+        if (cancelled) return
+        if (res.data?.role === 'admin') {
+          setRoleStatus('admin')
+        } else {
+          setRoleStatus('denied')
+          toast.error('Admin access required')
+          router.push('/dashboard')
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        setRoleStatus('denied')
+        toast.error('Admin access required')
+        router.push('/dashboard')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [status, session, router])
+
+  useEffect(() => {
+    if (roleStatus !== 'admin') return
+
     const fetchCount = async () => {
       try {
-        const token = localStorage.getItem('authToken')
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL}/admin/logs/unresolved-count`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        )
+        const res = await api.get('/admin/logs/unresolved-count')
         setUnresolvedCount(res.data?.count || 0)
       } catch {
         setUnresolvedCount(0)
@@ -52,9 +77,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     fetchCount()
     const interval = setInterval(fetchCount, 30_000)
     return () => clearInterval(interval)
-  }, [status, session, router])
+  }, [roleStatus])
 
-  if (status === 'loading') {
+  if (status === 'loading' || roleStatus === 'checking') {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl">Loading...</div>
@@ -62,7 +87,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     )
   }
 
-  if (!session?.user) return null
+  if (!session?.user || roleStatus !== 'admin') return null
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -79,6 +104,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch={true}
                   className={`text-sm font-semibold transition flex items-center gap-1.5 ${
                     isActive ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'
                   }`}

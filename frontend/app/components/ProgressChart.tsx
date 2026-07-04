@@ -1,6 +1,6 @@
 'use client'
 
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, Tooltip, ResponsiveContainer, YAxis } from 'recharts'
 
 interface ProgressChartProps {
   data: Array<{
@@ -12,45 +12,61 @@ interface ProgressChartProps {
 }
 
 export function ProgressChart({ data }: ProgressChartProps) {
-  if (data.length === 0) {
+  if (data.length < 2) {
     return (
-      <div className="h-80 flex items-center justify-center bg-gray-50 rounded-lg">
-        <div className="text-center text-gray-500">
-          <p className="text-lg font-semibold mb-2">No data yet</p>
-          <p className="text-sm">Start practicing to see your progress chart</p>
-        </div>
+      <div className="rounded-2xl bg-white border border-slate-200 p-4">
+        <p className="text-xs font-semibold text-slate-800 uppercase tracking-wide mb-1">Score Trend</p>
+        <p className="text-xs text-slate-400 py-6 text-center">
+          {data.length === 0
+            ? 'No sessions yet — start practicing to see your trend'
+            : 'Not enough sessions yet to show a trend'}
+        </p>
       </div>
     )
   }
 
   const chartData = data
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    .map((item, index) => ({
-      date: new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    .map((item) => ({
+      label: new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       score: item.score,
-      module: item.module,
     }))
-    .slice(-10) // Show last 10 submissions
+
+  const latestScore = chartData[chartData.length - 1].score
+  const trendDirection =
+    chartData.length >= 2
+      ? chartData[chartData.length - 1].score - chartData[chartData.length - 2].score
+      : 0
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={chartData}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="date" />
-        <YAxis domain={[0, 100]} />
-        <Tooltip
-          formatter={(value) => `${(value as number).toFixed(1)}%`}
-          contentStyle={{ backgroundColor: '#f3f4f6', border: 'none', borderRadius: '8px' }}
-        />
-        <Line
-          type="monotone"
-          dataKey="score"
-          stroke="#3b82f6"
-          strokeWidth={2}
-          dot={{ fill: '#3b82f6', r: 4 }}
-          activeDot={{ r: 6 }}
-        />
-      </LineChart>
-    </ResponsiveContainer>
+    <div className="rounded-2xl bg-white border border-slate-200 p-4">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs font-semibold text-slate-800 uppercase tracking-wide">Score Trend</p>
+        <span className="text-xs text-slate-500">
+          Latest: <span className="font-bold text-slate-700">{latestScore.toFixed(1)}</span>
+          {trendDirection > 0 && <span className="text-emerald-600 ml-1">↑</span>}
+          {trendDirection < 0 && <span className="text-red-500 ml-1">↓</span>}
+        </span>
+      </div>
+
+      <ResponsiveContainer width="100%" height={80}>
+        <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 0, left: -20 }}>
+          <YAxis domain={[0, 6]} hide />
+          <Tooltip
+            formatter={(value: number) => value.toFixed(1)}
+            labelFormatter={(label) => `Date: ${label}`}
+            contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px' }}
+          />
+          <Line
+            type="monotone"
+            dataKey="score"
+            stroke="#0F2356"
+            strokeWidth={2}
+            dot={{ fill: '#0F2356', r: 2 }}
+            activeDot={{ r: 4, fill: '#0F2356' }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   )
 }

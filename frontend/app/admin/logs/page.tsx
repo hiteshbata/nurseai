@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import axios from 'axios'
+import { useSupabaseSession } from '@/lib/supabase'
+import api from '@/lib/api'
 
 interface LogEntry {
   id: number
@@ -18,6 +19,7 @@ type LogFilter = 'all' | 'unresolved' | 'today' | 'week'
 
 export default function AdminLogsPage() {
   const router = useRouter()
+  const { session, status } = useSupabaseSession()
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [filter, setFilter] = useState<LogFilter>('unresolved')
   const [loading, setLoading] = useState(true)
@@ -27,17 +29,12 @@ export default function AdminLogsPage() {
   const fetchLogs = async (currentFilter: LogFilter) => {
     setLoading(true)
     try {
-      const token = localStorage.getItem('authToken')
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/logs?filter=${currentFilter}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      const res = await api.get('/admin/logs', {
+        params: { filter: currentFilter },
+      })
       setLogs(res.data || [])
 
-      const countRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/logs/unresolved-count`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      const countRes = await api.get('/admin/logs/unresolved-count')
       setUnresolvedCount(countRes.data?.count || 0)
     } catch (error: any) {
       if (error.response?.status === 403) {
@@ -49,13 +46,13 @@ export default function AdminLogsPage() {
   }
 
   useEffect(() => {
-    const token = localStorage.getItem('authToken')
-    if (!token) {
+    if (status === 'loading') return
+    if (!session?.user) {
       router.push('/auth/login')
       return
     }
     fetchLogs(filter)
-  }, [])
+  }, [status, session, router])
 
   const handleFilter = (newFilter: LogFilter) => {
     setFilter(newFilter)
@@ -65,12 +62,7 @@ export default function AdminLogsPage() {
   const handleResolve = async (logId: number) => {
     setResolving(logId)
     try {
-      const token = localStorage.getItem('authToken')
-      await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/admin/logs/${logId}/resolve`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      await api.put(`/admin/logs/${logId}/resolve`, {})
       setLogs((prev) => prev.map((l) => (l.id === logId ? { ...l, resolved: true } : l)))
       setUnresolvedCount((prev) => Math.max(0, prev - 1))
     } catch (error) {

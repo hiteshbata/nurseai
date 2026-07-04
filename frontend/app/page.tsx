@@ -1,9 +1,18 @@
 'use client'
 import { useSupabaseSession } from '@/lib/supabase'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import api from '@/lib/api'
+import HeroSection from '@/components/landing/HeroSection'
+import StatsBar from '@/components/landing/StatsBar'
+import FailureSection from '@/components/landing/FailureSection'
+import HowItWorks from '@/components/landing/HowItWorks'
+import FeaturesGrid from '@/components/landing/FeaturesGrid'
+import PricingSection from '@/components/landing/PricingSection'
+import InstituteSection from '@/components/landing/InstituteSection'
+import TestimonialsSection from '@/components/landing/TestimonialsSection'
+import FAQSection from '@/components/landing/FAQSection'
+import CTASection from '@/components/landing/CTASection'
 
 export default function Home() {
   const { session, status } = useSupabaseSession()
@@ -22,30 +31,35 @@ export default function Home() {
       })
     }
   }, [status, onboardingChecked, router])
+
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0F2356]" />
+      </div>
+    )
+  }
+
+  if (status === 'authenticated') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0F2356]" />
+      </div>
+    )
+  }
+
   return (
-    <div className="w-full">
-      <section className="bg-gradient-to-br from-blue-600 via-blue-500 to-blue-700 text-white py-20 px-4">
-        <div className="max-w-6xl mx-auto text-center">
-          <h1 className="text-5xl md:text-6xl font-bold mb-6">SpeakOET - Your OET Coach</h1>
-          <p className="text-xl opacity-90">AI-powered English coaching for OET</p>
-          <div className="flex gap-4 justify-center flex-wrap">
-            {status === 'authenticated' ? (
-              <button onClick={() => router.push('/dashboard')} className="px-8 py-3 bg-white text-blue-600 rounded-lg">Dashboard</button>
-            ) : (
-              <>
-                <Link href="/auth/register" className="px-8 py-3 bg-white text-blue-600 rounded-lg">Get Started</Link>
-                <Link href="/auth/login" className="px-8 py-3 bg-blue-400 text-white rounded-lg">Sign In</Link>
-              </>
-            )}
-          </div>
-        </div>
-      </section>
-      <section className="py-16 px-4 bg-white text-center">
-        <h2 className="text-4xl font-bold mb-8">Ready to Ace Your OET?</h2>
-        {status !== 'authenticated' && (
-          <Link href="/auth/register" className="inline-block px-8 py-3 bg-white text-blue-600 rounded-lg">Create Free Account</Link>
-        )}
-      </section>
-    </div>
+    <>
+      <HeroSection />
+      <StatsBar />
+      <FailureSection />
+      <HowItWorks />
+      <FeaturesGrid />
+      <PricingSection />
+      <InstituteSection />
+      <TestimonialsSection />
+      <FAQSection />
+      <CTASection />
+    </>
   )
 }

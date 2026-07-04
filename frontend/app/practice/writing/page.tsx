@@ -70,18 +70,12 @@ export default function WritingPracticePage() {
 
     setIsSubmitting(true)
     try {
-      const token = localStorage.getItem('authToken')
       const response = await api.post(
         `/scoring/submit`,
         {
           question_id: questions[currentQuestionIndex].id,
           response: writingText,
           module: 'writing',
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
         }
       )
 
@@ -89,7 +83,23 @@ export default function WritingPracticePage() {
       toast.success('Response submitted successfully!')
     } catch (error: any) {
       console.error('Failed to submit:', error)
-      toast.error(error.response?.data?.detail || 'Failed to submit response')
+      const errData = error.response?.data?.detail
+      if (error.response?.status === 403 && errData?.upgrade_required) {
+        toast.error(
+          <div>
+            <p className="font-semibold">Writing practice requires Pro or Elite plan</p>
+            <a
+              href="/upgrade"
+              className="inline-block mt-2 bg-[#0F2356] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#0F2356]/90"
+            >
+              Upgrade to Pro →
+            </a>
+          </div>,
+          { duration: 8000 }
+        )
+      } else {
+        toast.error(errData?.error || errData?.message || error.response?.data?.detail || 'Failed to submit response')
+      }
     } finally {
       setIsSubmitting(false)
     }

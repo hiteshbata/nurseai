@@ -15,7 +15,6 @@ export default function AuthCallbackPage() {
 
     const onSession = async (session: any) => {
       if (!session || cancelled) return
-      localStorage.setItem('authToken', session.access_token)
       try {
         const statusRes = await api.get('/onboarding/status')
         const onboardingComplete = statusRes.data?.onboarding_completed === true
@@ -35,20 +34,7 @@ export default function AuthCallbackPage() {
       if (session) {
         onSession(session)
       } else {
-        // Check URL hash directly as fallback
-        const hashParams = new URLSearchParams(window.location.hash.replace('#', '?'))
-        const hashToken = hashParams.get('access_token')
-        if (hashToken) {
-          supabase.auth.setSession({
-            access_token: hashToken,
-            refresh_token: hashParams.get('refresh_token') || '',
-          }).then(({ data: { session: hashSession } }) => {
-            if (hashSession) onSession(hashSession)
-            else setStatus('error')
-          })
-        } else {
-          setStatus('error')
-        }
+        setStatus('error')
       }
     })
 

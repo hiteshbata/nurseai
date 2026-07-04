@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import axios from 'axios'
+import api from '@/lib/api'
 import toast from 'react-hot-toast'
 
 interface Question {
@@ -41,9 +41,9 @@ export default function MockTestPage() {
 
   const fetchMockTest = async () => {
     try {
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/questions?limit=10`
-      )
+      const response = await api.get('/questions', {
+        params: { limit: 10 },
+      })
       setQuestions(response.data)
       setAnswers(new Array(response.data.length).fill(null))
       setIsLoading(false)
@@ -84,16 +84,9 @@ export default function MockTestPage() {
 
     setIsSubmitting(true)
     try {
-      const token = localStorage.getItem('authToken')
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/progress/submit-test`,
-        { answers: answers.filter((a) => a) },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      )
+      const response = await api.post('/progress/submit-test', {
+        answers: answers.filter((a) => a),
+      })
 
       setTestResult(response.data)
       toast.success('Test submitted successfully!')

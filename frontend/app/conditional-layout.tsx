@@ -7,6 +7,7 @@ import { Footer } from '@/components/Footer'
 export default function ConditionalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const isFullPage = pathname?.startsWith('/auth') || pathname?.startsWith('/onboarding')
+  const hideFooter = pathname?.startsWith('/practice/speaking')
 
   if (isFullPage) {
     return <>{children}</>
@@ -16,7 +17,7 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
     <>
       <Navbar />
       <main className="min-h-screen flex flex-col">{children}</main>
-      <Footer />
+      {!hideFooter && <Footer />}
     </>
   )
 }
