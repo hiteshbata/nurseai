@@ -1,66 +1,40 @@
-# --- Dependencies ---
-node_modules/
-.pnp
-.pnp.js
+backend/scripts/.banner_test_backup.json
 
-# --- Build output ---
-.next/
-dist/
-build/
-.turbo/
-.vercel/
-
-# --- Environment files ---
+# Environment files with secrets
 .env
-.env.*
-!.env.example
+backend/.env
+frontend/.env.local
 
-# --- Python ---
+# Dependency directories
+node_modules/
+frontend/node_modules/
+backend/venv/
+.venv/
+
+# Python generated files
 __pycache__/
 *.py[cod]
-venv/
-*.egg-info/
-.eggs/
-*.egg
 
-# --- Next.js ---
-*.tsbuildinfo
-next-env.d.ts
-out/
+# Next.js / TypeScript build output
+frontend/.next/
+frontend/out/
+frontend/tsconfig.tsbuildinfo
 
-# --- Database ---
+# Local databases and temporary test artifacts
 *.db
 *.sqlite
 *.sqlite3
+_test_audio.webm
+_test_audio_meta.json
+backend/_test_audio.webm
+backend/_test_audio_meta.json
+backend/_stt_sim_output.txt
 
-# --- IDE ---
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# Dev server logs
+frontend/*.log
 
-# --- OS ---
-.DS_Store
-Thumbs.db
-*.log
+# Playwright test results
+frontend/test-results/
 
-# --- Docker ---
-.docker/
-
-# --- Coverage ---
-coverage/
-.coverage
-htmlcov/
-
-# --- Kilo build artifacts ---
-.dbinfo
-.schema
-.tables
-KILO_BUILD.md
-KILO_BUILD_PLAN.md
-NURSEAI_BUILD_PLAN.md
-BUILD_PROMPT.md
-
-# --- Misc generated ---
-package-lock.json
+# Stray empty lockfile stub
+/package-lock.json
