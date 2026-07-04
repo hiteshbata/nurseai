@@ -38,3 +38,15 @@ frontend/test-results/
 
 # Stray empty lockfile stub
 /package-lock.json
+
+# Next.js auto-generated
+frontend/next-env.d.ts
+
+# Kilo build-tool scratch files (not project source)
+.dbinfo
+.schema
+.tables
+BUILD_PROMPT.md
+KILO_BUILD.md
+KILO_BUILD_PLAN.md
+NURSEAI_BUILD_PLAN.md
