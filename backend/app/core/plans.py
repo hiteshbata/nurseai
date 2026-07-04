@@ -1,0 +1,93 @@
+PLANS = [
+    {
+        "id": "free",
+        "name": "Free Trial",
+        "price": 0,
+        "period": "forever",
+        "description": "Get started with basic practice",
+        "features": [
+            "3 speaking scenarios",
+            "Basic AI scoring",
+            "AI patient conversation",
+            "Basic progress tracking",
+        ],
+        "cta": "Current Plan",
+        "highlight": False,
+        "disabled": True,
+        "profile_plan": "free",
+        "sessions_limit": 3,
+    },
+    {
+        "id": "basic",
+        "name": "Basic",
+        "price": 299,
+        "period": "month",
+        "description": "For regular practice",
+        "features": [
+            "20 speaking scenarios per month",
+            "AI scoring feedback",
+            "AI patient conversation",
+            "Attempt history (last 10)",
+            "Email support",
+        ],
+        "cta": "Subscribe Basic",
+        "highlight": False,
+        "disabled": False,
+        "profile_plan": "basic",
+        "sessions_limit": 20,
+    },
+    {
+        "id": "pro",
+        "name": "Pro",
+        "price": 799,
+        "period": "month",
+        "description": "For serious OET preparation",
+        "features": [
+            "40 speaking scenarios per month",
+            "Full 9-criteria OET scoring",
+            "Premium British patient voice",
+            "Writing practice and scoring",
+            "Unlimited attempt history",
+            "Full progress dashboard",
+            "Priority email support",
+        ],
+        "cta": "Subscribe Pro",
+        "highlight": True,
+        "disabled": False,
+        "badge": "Most Popular",
+        "profile_plan": "pro",
+        "sessions_limit": 40,
+    },
+    {
+        "id": "elite",
+        "name": "Elite",
+        "price": 1499,
+        "period": "month",
+        "description": "Maximum preparation",
+        "features": [
+            "80 speaking scenarios per month",
+            "Full 9-criteria OET scoring",
+            "Phoneme-level pronunciation scoring",
+            "Premium British patient voice",
+            "Mock test mode",
+            "AI generated study plan",
+            "Writing practice and scoring",
+            "Unlimited attempt history",
+            "Advanced weak area detection",
+            "WhatsApp priority support",
+        ],
+        "cta": "Subscribe Elite",
+        "highlight": False,
+        "disabled": False,
+        "profile_plan": "elite",
+        "sessions_limit": 80,
+    },
+]
+
+PLAN_LIMITS = {"free": 3, "basic": 20, "pro": 40, "elite": 80}
+
+# Subscription lifecycle: how long a paid period lasts, and how much
+# extra time past expiry still counts as active (covers renewal-payment
+# friction without silently granting a free extra period).
+PLAN_PERIOD_DAYS = 30
+GRACE_PERIOD_DAYS = 3

@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from app.core.supabase import get_supabase
+from app.core.plans import GRACE_PERIOD_DAYS
 from app.routers.auth import get_current_user, UserInfo
 import json
 
@@ -24,10 +25,10 @@ class ScenarioCreate(BaseModel):
     module: str
     title: str
     setting: str = "Hospital"
-    difficulty: str = "medium"
-    interlocutor_card: Dict[str, Any] = {}
-    nurse_card: Dict[str, Any] = {}
-    scoring_criteria: Dict[str, Any] = {}
+    difficulty: str = "intermediate"
+    interlocutor_card: Dict[str, Any] = Field(default_factory=dict)
+    nurse_card: Dict[str, Any] = Field(default_factory=dict)
+    scoring_criteria: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ScenarioUpdate(BaseModel):
@@ -241,3 +242,39 @@ def admin_unresolved_logs_count(current_user: UserInfo = Depends(require_admin))
     supabase = get_supabase()
     count = supabase.table("logs").select("id", count="exact").eq("resolved", False).execute().count
     return {"count": count or 0}
+
+
+# ── SUBSCRIPTION MANAGEMENT ─────────────────────────────────────────
+
+@router.post("/subscriptions/sweep-expired")
+def admin_sweep_expired_subscriptions(current_user: UserInfo = Depends(require_admin)):
+    """Batch-downgrade profiles past plan_expires_at + grace period.
+
+    Gating itself never depends on this having run — get_plan_from_profile
+    checks expiry lazily on every request, so an expired user loses paid
+    access immediately regardless of whether this sweep has executed.
+    This endpoint exists purely to keep the *stored* plan/subscription_status
+    columns accurate for admin dashboards, analytics, or any other code
+    that reads user_profiles directly instead of through the gating helper.
+    """
+    supabase = get_supabase()
+    cutoff = (datetime.utcnow() - timedelta(days=GRACE_PERIOD_DAYS)).isoformat()
+
+    expired = (
+        supabase.table("user_profiles")
+        .select("user_id")
+        .eq("subscription_status", "active")
+        .lt("plan_expires_at", cutoff)
+        .execute()
+    )
+
+    if not expired.data:
+        return {"downgraded": 0}
+
+    user_ids = [row["user_id"] for row in expired.data]
+    supabase.table("user_profiles").update({
+        "plan": "free",
+        "subscription_status": "expired",
+    }).in_("user_id", user_ids).execute()
+
+    return {"downgraded": len(user_ids)}
