@@ -39,6 +39,10 @@ def complete_onboarding(
         "previous_band": payload.previous_band,
         "destination_country": payload.destination_country,
         "days_per_week": payload.days_per_week,
+        "state": payload.state,
+        "qualification": payload.qualification,
+        "years_of_experience": payload.years_of_experience,
+        "nursing_specialty": payload.nursing_specialty,
         "updated_at": now,
     }
 

@@ -12,6 +12,10 @@ class OnboardingCreate(BaseModel):
     destination_country: Optional[str] = None
     days_per_week: Optional[int] = None
     onboarding_completed: bool = True
+    state: Optional[str] = None
+    qualification: Optional[str] = None
+    years_of_experience: Optional[str] = None
+    nursing_specialty: Optional[str] = None
 
 
 class OnboardingResponse(BaseModel):
@@ -25,5 +29,9 @@ class OnboardingResponse(BaseModel):
     previous_band: Optional[str] = None
     destination_country: Optional[str] = None
     days_per_week: Optional[int] = None
+    state: Optional[str] = None
+    qualification: Optional[str] = None
+    years_of_experience: Optional[str] = None
+    nursing_specialty: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

@@ -4,7 +4,7 @@ from app.core.supabase import get_supabase
 
 SCORING_CRITERIA = {
     "criteria": [
-        "relationship_building", "patient_perspective", "providing_structure",
+        "empathy", "patient_perspective", "providing_structure",
         "information_gathering", "information_giving",
         "intelligibility", "fluency", "appropriateness_of_language", "grammar",
     ]

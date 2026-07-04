@@ -25,7 +25,6 @@ def get_questions(
             "type": q["type"],
             "content": q["content"],
             "options": json.loads(q["options"]) if q.get("options") else None,
-            "correct_answer": q.get("correct_answer"),
         })
     return result
 
@@ -46,5 +45,4 @@ def get_question(
         "type": q["type"],
         "content": q["content"],
         "options": json.loads(q["options"]) if q.get("options") else None,
-        "correct_answer": q.get("correct_answer"),
     }

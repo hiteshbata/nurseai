@@ -1,3 +1,5 @@
+import logging
+import re
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
@@ -8,9 +10,15 @@ import httpx
 import base64
 import json
 
+logger = logging.getLogger(__name__)
+
+
+def _redact_api_keys(text: str) -> str:
+    return re.sub(r'(?i)(key|api[_-]?key|token|secret)(["\s:=]+)([A-Za-z0-9_-]{20,})', r'\1\2***REDACTED***', text)
+
 router = APIRouter(prefix="/admin/scenario", tags=["admin"])
 
-VISION_MODEL = "google/gemini-2.0-flash-001"
+VISION_MODEL = "google/gemini-2.5-flash"
 
 
 async def _call_vision_api(image_base64: str, prompt: str, json_mode: bool = True) -> Dict[str, Any]:
@@ -57,42 +65,56 @@ async def _call_vision_api(image_base64: str, prompt: str, json_mode: bool = Tru
                         return json.loads(content)
                     return {"raw_feedback": content}
         except Exception as e:
+            logger.error(
+                "[EXTERNAL_API_FAILURE] service=OPENROUTER type=unknown detail=%s",
+                _redact_api_keys(str(e)[:500]),
+            )
             print(f"[OpenRouter vision] failed: {e}")
 
-    # Fallback to direct Gemini
-    if gemini_key:
+    # Fallback — try OpenRouter with a different model
+    if openrouter_key:
         try:
-            inline_data = {"mime_type": "image/jpeg", "data": image_base64}
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
+                        },
+                    ],
+                }
+            ]
             payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": prompt},
-                            {"inline_data": inline_data},
-                        ]
-                    }
-                ],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "maxOutputTokens": 4000,
-                },
+                "model": "google/gemini-2.5-flash",
+                "messages": messages,
+                "temperature": 0.2,
+                "max_tokens": 4000,
             }
             if json_mode:
-                payload["generationConfig"]["responseMimeType"] = "application/json"
+                payload["response_format"] = {"type": "json_object"}
 
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
             async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(url, json=payload)
+                resp = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openrouter_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
                 if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                        if json_mode:
-                            return json.loads(text)
-                        return {"raw_feedback": text}
+                    content = resp.json()["choices"][0]["message"]["content"]
+                    if json_mode:
+                        return json.loads(content)
+                    return {"raw_feedback": content}
         except Exception as e:
-            print(f"[Gemini vision] failed: {e}")
+            logger.error(
+                "[EXTERNAL_API_FAILURE] service=OPENROUTER type=unknown model=google/gemini-2.5-flash detail=%s",
+                _redact_api_keys(str(e)[:500]),
+            )
+            print(f"[OpenRouter vision fallback] failed: {e}")
 
     raise HTTPException(status_code=502, detail="AI vision provider unavailable")
 
@@ -195,7 +217,7 @@ async def generate_original(payload: Dict[str, Any], _admin=Depends(require_admi
 
 SCORING_CRITERIA = {
     "criteria": [
-        "relationship_building", "patient_perspective", "providing_structure",
+        "empathy", "patient_perspective", "providing_structure",
         "information_gathering", "information_giving",
         "intelligibility", "fluency", "appropriateness_of_language", "grammar",
     ]
@@ -220,7 +242,7 @@ def save_scenario(payload: Dict[str, Any], _admin=Depends(require_admin)):
         "is_active": True,
         "title": payload["title"],
         "setting": payload.get("setting", ""),
-        "difficulty": payload.get("difficulty", "medium"),
+        "difficulty": payload.get("difficulty", "intermediate"),
         "nurse_card": json.dumps({
             "role": nurse.get("role", "You are the nurse in charge"),
             "tasks": nurse.get("tasks", []),
@@ -237,5 +259,6 @@ def save_scenario(payload: Dict[str, Any], _admin=Depends(require_admin)):
             "instructions_for_ai": inter.get("persona", ""),
         }),
         "scoring_criteria": json.dumps(SCORING_CRITERIA),
+        "specialty": payload.get("specialty", ""),
     }).execute()
     return data.data[0]

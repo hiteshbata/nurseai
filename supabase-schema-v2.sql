@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS public.scenarios (
     scoring_criteria JSONB NOT NULL DEFAULT '{}',
     
     is_active BOOLEAN DEFAULT true,
-    difficulty TEXT DEFAULT 'medium' CHECK (difficulty IN ('easy', 'medium', 'hard')),
+    difficulty TEXT DEFAULT 'intermediate' CHECK (difficulty IN ('beginner', 'easy', 'intermediate', 'medium', 'advanced', 'hard')),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

@@ -1,14 +1,25 @@
 """AI scoring and patient role-play using the card system."""
 import httpx
 import json
+import logging
+import re
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from app.core.config import settings
 from app.core.supabase import get_supabase
 
-GEMINI_MODEL = "gemini-2.0-flash"
-OPENAI_MODEL = "gpt-4o-mini"
-OPENROUTER_MODEL = "openai/gpt-4o-mini"
+logger = logging.getLogger(__name__)
+
+
+def _redact_api_keys(text: str) -> str:
+    """Redact likely API keys from error text to avoid leaking secrets in logs."""
+    return re.sub(r'(?i)(key|api[_-]?key|token|secret)(["\s:=]+)([A-Za-z0-9_-]{20,})', r'\1\2***REDACTED***', text)
+
+GEMINI_PERSONA_MODEL = "google/gemini-3.1-flash-lite"
+GEMINI_SCORING_FREE_MODEL = "google/gemini-2.5-flash"
+GEMINI_SCORING_PREMIUM_MODEL = "google/gemini-3.5-flash"
+OPENAI_MODEL = "gpt-5.4-mini"
+OPENROUTER_MODEL = "openai/gpt-5.4-mini"
 
 
 def _log_ai_error(
@@ -40,29 +51,35 @@ async def _call_ai(
     provider: str = "",
     user_id: str = "",
 ) -> Dict[str, Any]:
-    """Call AI via the configured provider. Supports Gemini, OpenAI, and OpenRouter."""
+    """Call AI via the configured or specified provider. Always falls back through all
+    available providers: OpenRouter → OpenAI → Gemini (in that priority order)."""
     provider = provider or settings.AI_PROVIDER
     gemini_key = settings.GEMINI_API_KEY
     openai_key = settings.OPENAI_API_KEY
     openrouter_key = settings.OPENROUTER_API_KEY
 
-    # Try providers in priority order: configured provider first, then fallbacks
+    # Build provider list: requested provider first, then all other available providers
+    # as fallbacks in priority order (OpenRouter → OpenAI → Gemini)
     providers_to_try = []
+
+    # Primary: the explicitly requested provider
     if provider == "gemini" and gemini_key:
-        providers_to_try.append(("gemini", gemini_key, model or GEMINI_MODEL))
-    if provider == "openai" and openai_key:
+        providers_to_try.append(("gemini", gemini_key, model or GEMINI_SCORING_FREE_MODEL))
+    elif provider == "openai" and openai_key:
         providers_to_try.append(("openai", openai_key, model or OPENAI_MODEL))
-    if provider == "openrouter" and openrouter_key:
+    elif provider == "openrouter" and openrouter_key:
         providers_to_try.append(("openrouter", openrouter_key, model or OPENROUTER_MODEL))
 
-    # Fallbacks if configured provider fails or has no key
-    if not providers_to_try:
-        if gemini_key:
-            providers_to_try.append(("gemini", gemini_key, model or GEMINI_MODEL))
-        if openai_key:
-            providers_to_try.append(("openai", openai_key, model or OPENAI_MODEL))
-        if openrouter_key:
-            providers_to_try.append(("openrouter", openrouter_key, model or OPENROUTER_MODEL))
+    # Fallbacks: all other available providers
+    for fallback_prov, fallback_key, fallback_model in [
+        ("openrouter", openrouter_key, model or OPENROUTER_MODEL),
+        ("openai", openai_key, model or OPENAI_MODEL),
+        ("gemini", gemini_key, model or GEMINI_SCORING_FREE_MODEL),
+    ]:
+        if fallback_key and not any(
+            p[0] == fallback_prov for p in providers_to_try
+        ):
+            providers_to_try.append((fallback_prov, fallback_key, fallback_model))
 
     last_error = ""
     for prov, key, mdl in providers_to_try:
@@ -96,6 +113,10 @@ async def _call_ai(
             continue
         except Exception as e:
             err_msg = str(e)[:300]
+            logger.error(
+                "[EXTERNAL_API_FAILURE] service=%s model=%s type=unknown detail=%s",
+                prov.upper(), mdl, _redact_api_keys(err_msg),
+            )
             print(f"[{prov}] {mdl} failed: {err_msg}")
             _log_ai_error("_call_ai", f"{prov}_error", err_msg, user_id)
             last_error = err_msg
@@ -137,8 +158,23 @@ async def _call_gemini(
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(url, json=payload)
         if response.status_code != 200:
-            err = response.text[:200]
-            raise Exception(f"Gemini API error {response.status_code}: {err}")
+            err = _redact_api_keys(response.text[:1000])
+            status = response.status_code
+            if status in (401, 403):
+                error_type = "auth"
+            elif status == 429:
+                error_type = "quota"
+            elif status == 400:
+                error_type = "bad_request"
+            elif status >= 500:
+                error_type = "server_error"
+            else:
+                error_type = "unknown"
+            logger.error(
+                "[EXTERNAL_API_FAILURE] service=GEMINI type=%s status=%d detail=%s",
+                error_type, status, err,
+            )
+            raise Exception(f"Gemini API error {status}: {err}")
         data = response.json()
         candidates = data.get("candidates", [])
         if not candidates:
@@ -184,6 +220,48 @@ async def _call_openai(
         return {"raw_feedback": content}
 
 
+def _try_parse_json(model: str, content: str) -> dict | None:
+    """Try to parse JSON from an AI response. Handles markdown code fences."""
+    # First attempt: bare JSON
+    try:
+        parsed = json.loads(content)
+        logger.error("[SCORING_PARSE_SUCCESS] model=%s keys=%s", model, list(parsed.keys()))
+        return parsed
+    except json.JSONDecodeError:
+        pass
+
+    # Second attempt: strip markdown code fences (```json ... ``` or ``` ... ```)
+    stripped = content.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        # Remove first fence line (```json or ```)
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        # Remove last fence line if present
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        de_fenced = "\n".join(lines).strip()
+        try:
+            parsed = json.loads(de_fenced)
+            logger.error(
+                "[SCORING_PARSE_SUCCESS] model=%s keys=%s note=fence_stripped",
+                model, list(parsed.keys()),
+            )
+            return parsed
+        except json.JSONDecodeError:
+            logger.error(
+                "[SCORING_PARSE_FAILURE] model=%s fence_stripped_also_failed raw_content=%s",
+                model, content,
+            )
+            return None
+
+    logger.error(
+        "[SCORING_PARSE_FAILURE] model=%s raw_content=%s",
+        model, content,
+    )
+    return None
+
+
 async def _call_openrouter(
     messages: list, api_key: str, model: str, max_tokens: int, json_mode: bool
 ) -> Dict[str, Any]:
@@ -209,10 +287,10 @@ async def _call_openrouter(
         result = response.json()
         content = result["choices"][0]["message"]["content"]
         if json_mode:
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                return {"raw_feedback": content}
+            parsed = _try_parse_json(model, content)
+            if parsed is not None:
+                return parsed
+            return {"raw_feedback": content}
         return {"raw_feedback": content}
 
 
@@ -245,6 +323,44 @@ async def analyze_speaking_submission(response: str, question_content: str) -> D
         conversation_history=[{"role": "nurse", "content": response}],
         scenario_title=question_content,
     )
+
+
+# ── JARGON DETECTION ────────────────────────────────────────────────
+
+MEDICAL_JARGON = [
+    "hypertension", "hypotension", "tachycardia", "bradycardia",
+    "myocardial", "infarction", "arrhythmia", "angina",
+    "dyspnea", "dyspnoea", "oedema", "edema",
+    "haemorrhage", "hemorrhage", "thrombosis", "embolism",
+    "contraindicated", "contraindication", "analgesic", "analgesia",
+    "antipyretic", "anticoagulant", "subcutaneous", "intravenous",
+    "intramuscular", "nil by mouth", "cannula", "nasogastric",
+    "catheter", "cholecystectomy", "appendectomy", "biopsy",
+    "malignant", "metastasis", "haemoglobin", "creatinine",
+    "troponin", "electrolyte", "sepsis", "bacteremia",
+    "cellulitis", "hyperglycemia", "hypoglycemia", "neuropathy",
+    "paraplegia", "bronchitis", "exacerbation", "comorbidity",
+    "prophylaxis", "etiology", "prognosis",
+]
+
+def detect_jargon(nurse_message: str) -> str | None:
+    message_lower = nurse_message.lower()
+    for term in MEDICAL_JARGON:
+        if term in message_lower:
+            term_index = message_lower.find(term)
+            surrounding = message_lower[
+                max(0, term_index - 20):
+                min(len(message_lower), term_index + 100)
+            ]
+            explanation_words = [
+                "means", "meaning", "that is", "in other words",
+                "which is", "or in simple", "basically",
+                "what we call", "also called", "known as", "in plain",
+            ]
+            if any(w in surrounding for w in explanation_words):
+                continue
+            return term
+    return None
 
 
 # ── PATIENT ROLE-PLAY ────────────────────────────────────────────────
@@ -294,7 +410,36 @@ STRICT RULES:
 4. Do NOT reveal withheld information unless the nurse specifically asks
 5. Keep responses 2-4 sentences — realistic patient length
 6. Occasionally misunderstand or ask for clarification to test the nurse
-7. Never give medical advice or diagnose yourself"""
+7. Never give medical advice or diagnose yourself
+
+JARGON INTERRUPT RULE (HIGHEST PRIORITY):
+This rule overrides all other rules.
+
+If the nurse uses ANY of these medical terms WITHOUT immediately explaining them in simple patient-friendly language:
+
+CLINICAL TERMS:
+hypertension, hypotension, tachycardia, bradycardia, myocardial, infarction, arrhythmia, angina, dyspnea, dyspnoea, oedema, edema, haemorrhage, hemorrhage, thrombosis, embolism, ischaemia, ischemia, angioplasty, catheterization, stent, contraindicated, contraindication, analgesic, analgesia, antipyretic, anticoagulant, antibiotic, diuretic, bronchodilator, corticosteroid, subcutaneous, intravenous, intramuscular, IV, PRN, nil by mouth, NBM, NPO, triage, cannula, catheter, nasogastric, NG tube, PEG, colonoscopy, endoscopy, laparoscopy, cholecystectomy, appendectomy, nephrectomy, mastectomy, colostomy, biopsy, pathology, histology, malignant, benign, metastasis, oncology, chemotherapy, radiotherapy, haemoglobin, haematocrit, platelet, electrolyte, sodium, potassium, creatinine, troponin, INR, PTT, ECG, EEG, MRI, CT scan, ultrasound, spirometry, oxygen saturation, SpO2, FiO2, CPAP, BiPAP, ventilator, sepsis, septicemia, bacteremia, cellulitis, abscess, necrosis, diabetes mellitus, hyperglycemia, hypoglycemia, insulin, glucagon, osteoporosis, osteoarthritis, rheumatoid, fibromyalgia, dementia, delirium, psychosis, anxiety disorder, depression, neuropathy, paraplegia, hemiplegia, renal failure, hepatic, cirrhosis, pneumonia, bronchitis, asthma exacerbation, pulmonary, cardiac, hepatic, renal, cerebral, vascular, peripheral, acute, chronic, bilateral, unilateral, prognosis, diagnosis, etiology, prophylaxis, exacerbation, remission, relapse, comorbidity, complication, sequela
+
+THEN you MUST interrupt immediately with one of these responses (vary them naturally):
+- "I'm sorry sister, I don't understand that word. What does that mean in simple terms?"
+- "Sorry, can you explain that? I'm not a medical person — what does [TERM] mean exactly?"
+- "I'm a bit confused. When you say [TERM], what does that mean? I'm quite worried and I want to understand."
+- "Excuse me, what is [TERM]? My doctor used that word too and I never understood it."
+
+Replace [TERM] with the actual medical term the nurse used.
+
+Only interrupt if the nurse used the term WITHOUT explaining it. If the nurse said "your blood pressure is high — that means your heart is working too hard" then do NOT interrupt because they explained it. If the nurse used multiple jargon terms, interrupt for the first one only. After the nurse explains the term in simple language, continue the conversation normally — do not keep asking about the same term."""
+
+    jargon_term = detect_jargon(nurse_message)
+    if jargon_term:
+        import random
+        interrupts = [
+            f"I'm sorry sister, I don't understand that word '{jargon_term}'. What does that mean in simple terms?",
+            f"Sorry, can you explain that? I'm not a medical person — what does '{jargon_term}' mean exactly?",
+            f"I'm a bit confused. When you say '{jargon_term}', what does that mean? I'm quite worried and I want to understand.",
+            f"Excuse me, what is '{jargon_term}'? My doctor used that word too and I never understood it.",
+        ]
+        return random.choice(interrupts)
 
     messages = [{"role": "system", "content": system_prompt}]
     for msg in conversation_history:
@@ -302,7 +447,10 @@ STRICT RULES:
         messages.append({"role": role, "content": msg["content"]})
     messages.append({"role": "user", "content": nurse_message})
 
-    result = await _call_ai(messages, max_tokens=200, user_id=user_id)
+    result = await _call_ai(
+        messages, max_tokens=200, user_id=user_id,
+        provider="openrouter", model=GEMINI_PERSONA_MODEL,
+    )
     return result.get("raw_feedback", "I'm not sure what to say...")
 
 
@@ -314,6 +462,8 @@ async def score_speaking(
     scenario_title: str = "",
     supabase=None,
     user_id: str = "",
+    model: str = GEMINI_SCORING_FREE_MODEL,
+    criteria_count: int = 9,
 ) -> Dict[str, Any]:
     """
     Score a speaking session using the nurse card's tasks as criteria.
@@ -328,7 +478,44 @@ async def score_speaking(
         for m in conversation_history
     ])
 
-    scoring_prompt = f"""You are an official OET Speaking examiner. Score the nurse's roleplay transcript strictly against the 9 official OET criteria.
+    if criteria_count == 3:
+        scoring_prompt = f"""You are an OET Speaking examiner. Score the nurse's roleplay transcript.
+
+SCENARIO: {scenario_title}
+NURSE'S TASKS:
+{tasks_text}
+
+FULL CONVERSATION:
+{conversation_text}
+
+Score each criterion 0 to 6:
+1. clinical_communication: Did the nurse gather information effectively, explain clearly, and respond to patient cues?
+2. linguistic_delivery: Was speech clear, fluent, and at an appropriate level for the patient?
+3. relationship_building: Did the nurse show empathy, respect, and build rapport with the patient?
+
+BAND DESCRIPTORS:
+6 = Exceptional, 5 = Good, 4 = Adequate, 3 = Limited, 2 = Weak, 1 = Very weak, 0 = Not demonstrated
+
+Return ONLY this JSON:
+{{
+  "scores": {{
+    "clinical_communication": {{"score": 0, "feedback": ""}},
+    "linguistic_delivery": {{"score": 0, "feedback": ""}},
+    "relationship_building": {{"score": 0, "feedback": ""}}
+  }},
+  "overall_band": 0.0,
+  "top_strength": "",
+  "top_improvement": "",
+  "examiner_summary": ""
+}}
+
+RULES:
+- overall_band = mean of all 3 scores
+- top_strength = single most impressive thing
+- top_improvement = single most important area to work on
+- examiner_summary = exactly 3 sentences"""
+    else:
+        scoring_prompt = f"""You are an official OET Speaking examiner. Score the nurse's roleplay transcript strictly against the 9 official OET criteria.
 
 SCENARIO: {scenario_title}
 NURSE'S TASKS (what they needed to do):
@@ -338,7 +525,11 @@ FULL CONVERSATION:
 {conversation_text}
 
 CLINICAL COMMUNICATION -- score each 0 to 6:
-1. relationship_building: Did nurse introduce themselves warmly? Use sympathetic tone? Make patient feel comfortable from the start?
+1. empathy: Evaluate how well the nurse acknowledges the patient's emotional state, validates their concerns, and uses supportive, non-clinical language alongside clinical information. Score 0-6 based on:
+- 5-6: Nurse consistently acknowledges patient distress/concerns, uses validating phrases ("I understand this is worrying"), adapts tone to patient's emotional cues
+- 3-4: Some acknowledgment of patient feelings but inconsistent; mostly task-focused with occasional empathetic moments
+- 1-2: Minimal emotional acknowledgment; almost entirely clinical/transactional language
+- 0: No empathetic engagement; purely procedural
 2. patient_perspective: Did nurse actively listen and respond to patient cues, concerns and questions throughout? Did they acknowledge emotions?
 3. providing_structure: Did conversation follow OET sequence -- introduce → enquire → explain → advise? Were all roleplay card prompts addressed in logical order?
 4. information_gathering: Did nurse use open questions first then closed? Did they summarise and check understanding?
@@ -362,7 +553,7 @@ BAND DESCRIPTORS:
 Return ONLY this JSON, no other text:
 {{
   "scores": {{
-    "relationship_building": {{"score": 0, "feedback": ""}},
+    "empathy": {{"score": 0, "feedback": ""}},
     "patient_perspective": {{"score": 0, "feedback": ""}},
     "providing_structure": {{"score": 0, "feedback": ""}},
     "information_gathering": {{"score": 0, "feedback": ""}},
@@ -394,43 +585,75 @@ RULES:
         [{"role": "user", "content": scoring_prompt}],
         max_tokens=2000,
         json_mode=True,
+        provider="openrouter",
+        model=model,
+    )
+
+    logger.error(
+        "[DEEP_SCORING_DEBUG] score_speaking result type=%s keys=%s has_scores=%s raw=%s",
+        type(result).__name__,
+        list(result.keys()) if isinstance(result, dict) else "N/A",
+        "scores" in result if isinstance(result, dict) else "N/A",
+        result.get("raw_feedback", "")[:500] if isinstance(result, dict) else str(result)[:500],
     )
 
     if "scores" in result:
-        # Enforce weighted band calculation server-side for reliability
         scores = result.get("scores", {})
         try:
-            clinical_scores = [
-                scores.get("relationship_building", {}).get("score", 0),
-                scores.get("patient_perspective", {}).get("score", 0),
-                scores.get("providing_structure", {}).get("score", 0),
-                scores.get("information_gathering", {}).get("score", 0),
-                scores.get("information_giving", {}).get("score", 0),
-            ]
-            linguistic_scores = [
-                scores.get("intelligibility", {}).get("score", 0),
-                scores.get("fluency", {}).get("score", 0),
-                scores.get("appropriateness_of_language", {}).get("score", 0),
-                scores.get("grammar", {}).get("score", 0),
-            ]
-            clinical_average = sum(clinical_scores) / len(clinical_scores) if clinical_scores else 0.0
-            linguistic_average = sum(linguistic_scores) / len(linguistic_scores) if linguistic_scores else 0.0
-            overall_band = round((clinical_average * 0.6) + (linguistic_average * 0.4), 2)
+            if criteria_count == 3:
+                score_values = [
+                    scores.get("clinical_communication", {}).get("score", 0),
+                    scores.get("linguistic_delivery", {}).get("score", 0),
+                    scores.get("relationship_building", {}).get("score", 0),
+                ]
+                overall_band = round(sum(score_values) / len(score_values), 2)
+                result["overall_band"] = overall_band
+            else:
+                clinical_scores = [
+                    scores.get("empathy", {}).get("score", 0),
+                    scores.get("patient_perspective", {}).get("score", 0),
+                    scores.get("providing_structure", {}).get("score", 0),
+                    scores.get("information_gathering", {}).get("score", 0),
+                    scores.get("information_giving", {}).get("score", 0),
+                ]
+                linguistic_scores = [
+                    scores.get("intelligibility", {}).get("score", 0),
+                    scores.get("fluency", {}).get("score", 0),
+                    scores.get("appropriateness_of_language", {}).get("score", 0),
+                    scores.get("grammar", {}).get("score", 0),
+                ]
+                clinical_average = sum(clinical_scores) / len(clinical_scores) if clinical_scores else 0.0
+                linguistic_average = sum(linguistic_scores) / len(linguistic_scores) if linguistic_scores else 0.0
+                overall_band = round((clinical_average * 0.6) + (linguistic_average * 0.4), 2)
 
-            result["clinical_average"] = round(clinical_average, 2)
-            result["linguistic_average"] = round(linguistic_average, 2)
-            result["overall_band"] = overall_band
-        except Exception:
-            pass
+                result["clinical_average"] = round(clinical_average, 2)
+                result["linguistic_average"] = round(linguistic_average, 2)
+                result["overall_band"] = overall_band
+        except Exception as e:
+            logger.error(
+                "[SCORING_CALC_FAILURE] error=%s result_keys=%s",
+                str(e), list(result.keys()) if isinstance(result, dict) else type(result),
+            )
         return result
 
-    # Fallback when AI fails to return valid JSON
-    return {
-        "scores": {c: {"score": 0, "feedback": "Unable to score"} for c in [
-            "relationship_building", "patient_perspective", "providing_structure",
+    logger.error(
+        "[SCORING_FALLBACK] scores key missing, result=%s",
+        {k: str(v)[:200] for k, v in result.items()} if isinstance(result, dict) else result,
+    )
+    if criteria_count == 3:
+        fallback_scores = {
+            "clinical_communication": {"score": 0, "feedback": "Unable to score"},
+            "linguistic_delivery": {"score": 0, "feedback": "Unable to score"},
+            "relationship_building": {"score": 0, "feedback": "Unable to score"},
+        }
+    else:
+        fallback_scores = {c: {"score": 0, "feedback": "Unable to score"} for c in [
+            "empathy", "patient_perspective", "providing_structure",
             "information_gathering", "information_giving", "intelligibility",
             "fluency", "appropriateness_of_language", "grammar"
-        ]},
+        ]}
+    return {
+        "scores": fallback_scores,
         "clinical_average": 0.0,
         "linguistic_average": 0.0,
         "overall_band": 0.0,
