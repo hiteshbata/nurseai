@@ -1,0 +1,12 @@
+venv
+__pycache__
+*.pyc
+.env
+*.db
+_stt_sim_output.txt
+*.webm
+Dockerfile
+Dockerfile.dev
+Dockerfile.prod
+.git
+.gitignore
