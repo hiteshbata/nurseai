@@ -18,6 +18,22 @@ function hasUrlError(): boolean {
   return Boolean(search.get('error') || hash.get('error'))
 }
 
+function hasRecoveryParams(): boolean {
+  if (typeof window === 'undefined') return false
+  const search = new URLSearchParams(window.location.search)
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  // Covers both the PKCE flow (?code=...) and the implicit flow
+  // (#access_token=...&type=recovery) -- this page is only ever the
+  // redirectTo target for password recovery (see requestPasswordReset
+  // in lib/supabase.ts), so any of these params landing here can only
+  // have come from a real recovery email link, regardless of which
+  // flow this Supabase project is configured for.
+  return Boolean(
+    search.get('code') || search.get('type') === 'recovery' ||
+    hash.get('access_token') || hash.get('type') === 'recovery'
+  )
+}
+
 export default function ResetPasswordPage() {
   const router = useRouter()
   const [linkStatus, setLinkStatus] = useState<LinkStatus>('verifying')
@@ -45,13 +61,21 @@ export default function ResetPasswordPage() {
       }
     })
 
-    // Fallback in case the PASSWORD_RECOVERY event fired before this
-    // listener was attached (the recovery session is already active by
-    // the time this effect runs).
-    supabase.auth.getSession().then(({ data: { session } }: any) => {
-      if (cancelled) return
-      setLinkStatus((current) => (current === 'valid' ? current : session ? 'valid' : 'invalid'))
-    })
+    if (hasRecoveryParams()) {
+      // Fallback in case the PASSWORD_RECOVERY event fired before this
+      // listener was attached (the recovery session is already active by
+      // the time this effect runs). Only trusted when the URL itself
+      // carries a recovery token -- otherwise an unrelated pre-existing
+      // session (e.g. someone already logged in on a shared computer who
+      // navigates here directly) would be mistaken for a valid reset link,
+      // letting them change that account's password without knowing it.
+      supabase.auth.getSession().then(({ data: { session } }: any) => {
+        if (cancelled) return
+        setLinkStatus((current) => (current === 'valid' ? current : session ? 'valid' : 'invalid'))
+      })
+    } else {
+      setLinkStatus((current) => (current === 'valid' ? current : 'invalid'))
+    }
 
     return () => {
       cancelled = true

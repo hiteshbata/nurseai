@@ -12,6 +12,7 @@ interface SessionUsage {
   sessions_limit: number
   sessions_remaining: number
   plan: string
+  auto_renew_enabled: boolean
 }
 
 interface UserProfile {
@@ -55,6 +56,7 @@ export default function ProfilePage() {
   const [editTargetBand, setEditTargetBand] = useState('')
   const [editExamDate, setEditExamDate] = useState('')
   const [editDaysPerWeek, setEditDaysPerWeek] = useState<number | null>(null)
+  const [cancellingAutoRenew, setCancellingAutoRenew] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -80,6 +82,22 @@ export default function ProfilePage() {
       console.error('Failed to load profile', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const cancelAutoRenew = async () => {
+    if (!confirm('Turn off auto-renew? Your current plan stays active until it expires, then you’ll drop to Free.')) {
+      return
+    }
+    setCancellingAutoRenew(true)
+    try {
+      await api.post('/payments/cancel-subscription')
+      setSessionUsage((prev) => (prev ? { ...prev, auto_renew_enabled: false } : prev))
+      toast.success('Auto-renew turned off')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to turn off auto-renew')
+    } finally {
+      setCancellingAutoRenew(false)
     }
   }
 
@@ -177,6 +195,25 @@ export default function ProfilePage() {
                 <p className="text-sm font-semibold text-gray-800">{memberSince}</p>
               </div>
             </div>
+            {plan !== 'free' && (
+              <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                <div>
+                  <p className="text-sm text-gray-500">Auto-renew</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {sessionUsage?.auto_renew_enabled ? 'On — renews automatically each month' : 'Off'}
+                  </p>
+                </div>
+                {sessionUsage?.auto_renew_enabled && (
+                  <button
+                    onClick={cancelAutoRenew}
+                    disabled={cancellingAutoRenew}
+                    className="text-sm font-semibold text-red-600 hover:text-red-700 transition-colors disabled:opacity-50"
+                  >
+                    {cancellingAutoRenew ? 'Turning off…' : 'Turn off'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

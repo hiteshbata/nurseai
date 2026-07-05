@@ -2,9 +2,12 @@
 
 import Link from 'next/link'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
+import { useSupabaseSession } from '@/lib/supabase'
 
 export function Footer() {
   const currentYear = new Date().getFullYear()
+  const { status } = useSupabaseSession()
+  const pricingHref = status === 'authenticated' ? '/upgrade' : '/#pricing'
 
   return (
     <footer style={{ backgroundColor: '#0F2356' }} className="text-white py-12">
@@ -80,7 +83,7 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/#pricing" className="text-white/70 hover:text-white transition">
+                <Link href={pricingHref} className="text-white/70 hover:text-white transition">
                   Pricing
                 </Link>
               </li>

@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { CheckCircle2, Zap, Sparkles, Shield } from 'lucide-react'
 import { RazorpayCheckout } from '@/components/RazorpayCheckout'
 import { getPlans, type Plan } from '@/lib/api'
+import { trackEvent } from '@/lib/analytics'
 
 export default function UpgradePage() {
   const { status } = useSupabaseSession()
@@ -21,6 +22,7 @@ export default function UpgradePage() {
 
   useEffect(() => {
     getPlans().then(setPlans).catch(() => setPlans([]))
+    trackEvent('upgrade_page_viewed')
   }, [])
 
   if (status === 'loading' || !plans) {
@@ -111,14 +113,19 @@ export default function UpgradePage() {
                     {plan.cta}
                   </button>
                 ) : (
-                  <RazorpayCheckout
-                    amountPaise={plan.price * 100}
-                    planId={plan.id}
-                    planLabel={`${plan.name} Plan - \u20B9${plan.price}/${plan.period}`}
-                    onSuccess={() => setPaid(true)}
-                    buttonLabel={plan.cta}
-                    className="bg-[#0F2356] text-white hover:bg-[#0F2356]/90"
-                  />
+                  <>
+                    <RazorpayCheckout
+                      amountPaise={plan.price * 100}
+                      planId={plan.id}
+                      planLabel={`${plan.name} Plan - \u20B9${plan.price}/${plan.period}`}
+                      onSuccess={() => setPaid(true)}
+                      buttonLabel={plan.cta}
+                      className="bg-[#0F2356] text-white hover:bg-[#0F2356]/90"
+                    />
+                    <p className="text-xs text-gray-400 text-center mt-2">
+                      Auto-renews monthly \u00B7 Cancel anytime in Settings
+                    </p>
+                  </>
                 )}
               </div>
             </div>

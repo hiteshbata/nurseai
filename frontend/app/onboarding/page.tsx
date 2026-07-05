@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, useSupabaseSession } from '@/lib/supabase'
 import api from '@/lib/api'
+import { trackEvent } from '@/lib/analytics'
 
 type Step = 1 | 2 | 3 | 4 | 5
 
@@ -13,6 +14,7 @@ export default function OnboardingPage() {
   const [step, setStep] = useState<Step>(1)
   const [loading, setLoading] = useState(false)
   const [userName, setUserName] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -109,6 +111,7 @@ export default function OnboardingPage() {
 
   const completeOnboarding = async () => {
     setLoading(true)
+    setSubmitError(null)
     const effectiveCountry = destinationCountry === 'Other' ? otherCountry.trim() : destinationCountry
     try {
       await api.post('/onboarding/complete', {
@@ -125,15 +128,17 @@ export default function OnboardingPage() {
         years_of_experience: yearsOfExperience || null,
         nursing_specialty: nurseSpecialty || null,
       })
+      trackEvent('onboarding_completed', {
+        destination_country: effectiveCountry,
+        target_band: targetBand,
+        skipped_diagnostic: skippedDiagnostic,
+      })
+      router.push('/dashboard')
     } catch (e) {
-      console.error('Failed to complete onboarding (non-fatal):', e)
+      console.error('Failed to complete onboarding:', e)
+      setSubmitError("We couldn't save your details. Please check your connection and try again.")
     } finally {
       setLoading(false)
-      try { router.push('/dashboard') } catch {}
-      // Fallback if router.push fails
-      if (typeof window !== 'undefined') {
-        window.location.href = '/dashboard'
-      }
     }
   }
 
@@ -591,6 +596,12 @@ export default function OnboardingPage() {
                   <p className="text-sm text-amber-800">
                     <span className="font-bold">Daily focus:</span> Speaking — your baseline suggests focusing on Clinical Communication skills.
                   </p>
+                </div>
+              )}
+
+              {submitError && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+                  <p className="text-sm text-red-700">{submitError}</p>
                 </div>
               )}
 

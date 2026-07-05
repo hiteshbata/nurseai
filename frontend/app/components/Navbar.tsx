@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { supabase, signOut, useSupabaseSession } from '@/lib/supabase'
 import { LayoutDashboard, Settings, LogOut } from 'lucide-react'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
+import api from '@/lib/api'
 
 const landingNavLinks = [
   { href: '#how-it-works', label: 'How It Works' },
@@ -17,6 +18,20 @@ const appNavLinks = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/practice/speaking', label: 'Speaking' },
 ]
+
+const PLAN_LABELS: Record<string, string> = {
+  free: 'Free',
+  basic: 'Basic',
+  pro: 'Pro',
+  elite: 'Elite',
+}
+
+interface SessionUsage {
+  sessions_used: number
+  sessions_limit: number
+  sessions_remaining: number
+  plan: string
+}
 
 export function Navbar() {
   const { session, status } = useSupabaseSession()
@@ -39,6 +54,23 @@ export function Navbar() {
   const userName = session?.user?.user_metadata?.full_name || session?.user?.email || ''
   const userEmail = session?.user?.email || ''
 
+  const [usage, setUsage] = useState<SessionUsage | null>(null)
+
+  useEffect(() => {
+    if (status !== 'authenticated') {
+      setUsage(null)
+      return
+    }
+    let cancelled = false
+    api.get('/sessions/usage').then((res) => {
+      if (!cancelled) setUsage(res.data)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [status])
+
+  const planLabel = usage ? (PLAN_LABELS[usage.plan] ?? usage.plan) : null
+  const showUpgrade = usage ? usage.plan !== 'elite' : false
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
@@ -59,6 +91,26 @@ export function Navbar() {
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/practice/speaking', label: 'Speaking' },
   ]
+
+  const PlanUsagePill = ({ onNavigate }: { onNavigate?: () => void }) => {
+    if (!usage) return null
+    return (
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center whitespace-nowrap rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+          {planLabel} &middot; {usage.sessions_used}/{usage.sessions_limit} sessions
+        </span>
+        {showUpgrade && (
+          <Link
+            href="/upgrade"
+            onClick={onNavigate}
+            className="rounded-full bg-[#10B981] px-3 py-1 text-xs font-semibold text-white hover:opacity-90 transition whitespace-nowrap"
+          >
+            Upgrade
+          </Link>
+        )}
+      </div>
+    )
+  }
 
   return (
     <nav
@@ -98,7 +150,11 @@ export function Navbar() {
           {status === 'loading' ? (
             <div className="w-24 h-9" />
           ) : status === 'authenticated' ? (
-            <div className="relative" ref={avatarRef}>
+            <>
+              <div className="hidden sm:flex">
+                <PlanUsagePill />
+              </div>
+              <div className="relative" ref={avatarRef}>
               <button
                 onClick={() => setAvatarOpen(!avatarOpen)}
                 className="w-9 h-9 rounded-full bg-[#0F2356] text-white text-sm font-semibold flex items-center justify-center hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-[#10B981] focus:ring-offset-2"
@@ -113,6 +169,22 @@ export function Navbar() {
                   <div className="px-4 pb-2 text-xs text-gray-500 truncate">
                     {userEmail}
                   </div>
+                  {usage && (
+                    <div className="px-4 pb-2 flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-gray-600">
+                        {planLabel} plan &middot; {usage.sessions_used}/{usage.sessions_limit} sessions
+                      </span>
+                      {showUpgrade && (
+                        <Link
+                          href="/upgrade"
+                          onClick={() => setAvatarOpen(false)}
+                          className="text-xs font-semibold text-[#10B981] hover:underline whitespace-nowrap"
+                        >
+                          Upgrade
+                        </Link>
+                      )}
+                    </div>
+                  )}
                   <div className="border-t border-gray-100 my-1" />
                   <Link
                     href="/dashboard"
@@ -140,7 +212,8 @@ export function Navbar() {
                   </button>
                 </div>
               )}
-            </div>
+              </div>
+            </>
           ) : isLanding ? (
             <>
               <Link
@@ -195,6 +268,22 @@ export function Navbar() {
         }`}
       >
         <div className="px-4 py-2 bg-white">
+          {session && usage && (
+            <div className="sm:hidden flex items-center justify-between gap-2 py-3 border-b border-gray-100 mb-1">
+              <span className="inline-flex items-center whitespace-nowrap rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                {planLabel} &middot; {usage.sessions_used}/{usage.sessions_limit} sessions
+              </span>
+              {showUpgrade && (
+                <Link
+                  href="/upgrade"
+                  onClick={() => setMobileOpen(false)}
+                  className="rounded-full bg-[#10B981] px-3 py-1 text-xs font-semibold text-white hover:opacity-90 transition whitespace-nowrap"
+                >
+                  Upgrade
+                </Link>
+              )}
+            </div>
+          )}
           {(isLanding && !session ? landingNavLinks : appNavLinks).map((link: any) =>
             link.disabled ? (
               <span

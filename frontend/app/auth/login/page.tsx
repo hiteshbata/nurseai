@@ -10,6 +10,16 @@ import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { AuthLeftPanel } from '@/components/auth/auth-left-panel'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
 
+// Only allow same-origin relative paths (e.g. "/practice/speaking") as a
+// redirect target — never an absolute URL or protocol-relative "//host" path,
+// which would let a crafted returnTo param send the user off-site after login.
+function getSafeReturnTo(): string | null {
+  if (typeof window === 'undefined') return null
+  const returnTo = new URLSearchParams(window.location.search).get('returnTo')
+  if (!returnTo || !returnTo.startsWith('/') || returnTo.startsWith('//')) return null
+  return returnTo
+}
+
 function GoogleIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="h-4 w-4 shrink-0" aria-hidden="true">
@@ -33,7 +43,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (authStatus === 'authenticated') {
-      router.push('/dashboard')
+      router.push(getSafeReturnTo() || '/dashboard')
     }
   }, [authStatus, router])
 
@@ -60,6 +70,11 @@ export default function LoginPage() {
     try {
       await signIn(email, password)
       toast.success('Logged in successfully!')
+      const returnTo = getSafeReturnTo()
+      if (returnTo) {
+        router.push(returnTo)
+        return
+      }
       const statusRes = await api.get('/onboarding/status')
       const onboardingComplete = statusRes.data?.onboarding_completed === true
       router.push(onboardingComplete ? '/dashboard' : '/onboarding')

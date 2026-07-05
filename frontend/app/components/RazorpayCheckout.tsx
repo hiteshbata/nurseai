@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import api from '@/lib/api'
+import { trackEvent } from '@/lib/analytics'
 import toast from 'react-hot-toast'
 
 const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || ''
@@ -13,6 +14,10 @@ interface RazorpayCheckoutProps {
   onSuccess?: () => void
   buttonLabel?: string
   className?: string
+  // 'subscription' creates a recurring Razorpay Subscription (auto-renews
+  // monthly until cancelled) -- the default, since manual monthly repurchase
+  // is a real churn source. 'order' is the legacy one-off payment path.
+  mode?: 'order' | 'subscription'
 }
 
 declare global {
@@ -53,6 +58,7 @@ export function RazorpayCheckout({
   onSuccess,
   buttonLabel = 'Pay Now',
   className = '',
+  mode = 'subscription',
 }: RazorpayCheckoutProps) {
   const [isLoading, setIsLoading] = useState(false)
 
@@ -63,6 +69,7 @@ export function RazorpayCheckout({
     }
 
     setIsLoading(true)
+    trackEvent('upgrade_cta_clicked', { plan_id: planId, amount_paise: amountPaise, mode })
 
     try {
       const loaded = await loadRazorpayScript();
@@ -72,61 +79,124 @@ export function RazorpayCheckout({
         return;
       }
 
-      const orderRes = await api.post('/payments/create-order', {
-        plan_id: planId,
-        amount_paise: amountPaise,
-      })
+      let options: any
 
-      const { order_id, amount, currency } = orderRes.data
+      if (mode === 'subscription') {
+        const subRes = await api.post('/payments/create-subscription', {
+          plan_id: planId,
+        })
+        const { subscription_id } = subRes.data
 
-      const options = {
-        key: RAZORPAY_KEY_ID,
-        amount,
-        currency,
-        name: 'NurseAI',
-        description: planLabel,
-        order_id,
-        prefill: {
-          contact: '',
-          method: 'upi',
-        },
-        theme: {
-          color: '#0F2356',
-        },
-        handler: async function (response: any) {
-          const maxRetries = 3
-          const delays = [1000, 2000]
+        options = {
+          key: RAZORPAY_KEY_ID,
+          subscription_id,
+          name: 'NurseAI',
+          description: `${planLabel} (auto-renews monthly)`,
+          prefill: {
+            contact: '',
+            method: 'upi',
+          },
+          theme: {
+            color: '#0F2356',
+          },
+          handler: async function (response: any) {
+            const maxRetries = 3
+            const delays = [1000, 2000]
 
-          for (let attempt = 0; attempt < maxRetries; attempt++) {
-            try {
-              const verifyRes = await api.post('/payments/verify-payment', {
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              })
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+              try {
+                const verifyRes = await api.post('/payments/verify-subscription-payment', {
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_subscription_id: response.razorpay_subscription_id,
+                  razorpay_signature: response.razorpay_signature,
+                })
 
-              if (verifyRes.data.success) {
-                toast.success('Payment successful!')
-                onSuccess?.()
-                return
-              }
-            } catch {
-              if (attempt < delays.length) {
-                await new Promise((r) => setTimeout(r, delays[attempt]))
+                if (verifyRes.data.success) {
+                  toast.success('Subscription activated — auto-renews monthly!')
+                  trackEvent('payment_verified_client', {
+                    plan_id: planId,
+                    amount_paise: amountPaise,
+                    auto_renew: true,
+                  })
+                  onSuccess?.()
+                  return
+                }
+              } catch {
+                if (attempt < delays.length) {
+                  await new Promise((r) => setTimeout(r, delays[attempt]))
+                }
               }
             }
-          }
 
-          toast.error(
-            'Payment verification failed after multiple attempts. Your payment may have gone through — please check your dashboard before trying again, or contact support.'
-          )
-        },
-        modal: {
-          ondismiss: function () {
-            toast.error('Payment cancelled')
-            setIsLoading(false)
+            toast.error(
+              'Payment verification failed after multiple attempts. Your payment may have gone through — please check your dashboard before trying again, or contact support.'
+            )
           },
-        },
+          modal: {
+            ondismiss: function () {
+              toast.error('Payment cancelled')
+              setIsLoading(false)
+            },
+          },
+        }
+      } else {
+        const orderRes = await api.post('/payments/create-order', {
+          plan_id: planId,
+          amount_paise: amountPaise,
+        })
+
+        const { order_id, amount, currency } = orderRes.data
+
+        options = {
+          key: RAZORPAY_KEY_ID,
+          amount,
+          currency,
+          name: 'NurseAI',
+          description: planLabel,
+          order_id,
+          prefill: {
+            contact: '',
+            method: 'upi',
+          },
+          theme: {
+            color: '#0F2356',
+          },
+          handler: async function (response: any) {
+            const maxRetries = 3
+            const delays = [1000, 2000]
+
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+              try {
+                const verifyRes = await api.post('/payments/verify-payment', {
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                })
+
+                if (verifyRes.data.success) {
+                  toast.success('Payment successful!')
+                  trackEvent('payment_verified_client', { plan_id: planId, amount_paise: amountPaise })
+                  onSuccess?.()
+                  return
+                }
+              } catch {
+                if (attempt < delays.length) {
+                  await new Promise((r) => setTimeout(r, delays[attempt]))
+                }
+              }
+            }
+
+            toast.error(
+              'Payment verification failed after multiple attempts. Your payment may have gone through — please check your dashboard before trying again, or contact support.'
+            )
+          },
+          modal: {
+            ondismiss: function () {
+              toast.error('Payment cancelled')
+              setIsLoading(false)
+            },
+          },
+        }
       }
 
       const rzp = new window.Razorpay(options)
@@ -142,7 +212,7 @@ export function RazorpayCheckout({
     } finally {
       setIsLoading(false)
     }
-  }, [amountPaise, planId, planLabel, onSuccess])
+  }, [amountPaise, planId, planLabel, onSuccess, mode])
 
   return (
     <button

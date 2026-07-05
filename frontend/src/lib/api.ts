@@ -40,6 +40,25 @@ if (typeof window !== 'undefined') {
   })
 }
 
+// Describes a request/response payload's shape (field names, lengths) for
+// error-report debugging without ever including the actual values -- this
+// endpoint carries things like payment amounts, letter/conversation content,
+// and profile fields, none of which should land in Sentry as a side effect
+// of ordinary error reporting.
+function describePayload(data: unknown): string | undefined {
+  if (data === undefined || data === null) return undefined
+  if (typeof data === 'string') {
+    try {
+      return describePayload(JSON.parse(data))
+    } catch {
+      return `string(${data.length} chars)`
+    }
+  }
+  if (Array.isArray(data)) return `array(${data.length} items)`
+  if (typeof data === 'object') return `object(keys: ${Object.keys(data as Record<string, unknown>).join(', ')})`
+  return typeof data
+}
+
 // Handle errors
 api.interceptors.response.use(
   (response) => response,
@@ -62,8 +81,8 @@ api.interceptors.response.use(
         status_code: error.response?.status?.toString() || '0',
       },
       extra: {
-        request_data: error.config?.data,
-        response_data: error.response?.data,
+        request_shape: describePayload(error.config?.data),
+        response_shape: describePayload(error.response?.data),
       },
     })
 

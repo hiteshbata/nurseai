@@ -4,7 +4,22 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import api from '@/lib/api'
+import { trackEvent } from '@/lib/analytics'
 import Link from 'next/link'
+
+// A brand-new OAuth signup creates the auth.users row and signs the user in
+// within the same request, so created_at and last_sign_in_at land within
+// milliseconds of each other. A returning login leaves created_at fixed from
+// whenever the account was first made while last_sign_in_at jumps to now —
+// a gap of hours/days/months. No backend flag needed to tell them apart.
+const NEW_SIGNUP_WINDOW_MS = 15_000
+
+function isNewSignup(user: { created_at?: string; last_sign_in_at?: string } | undefined): boolean {
+  if (!user?.created_at || !user?.last_sign_in_at) return false
+  const created = new Date(user.created_at).getTime()
+  const lastSignIn = new Date(user.last_sign_in_at).getTime()
+  return Math.abs(lastSignIn - created) < NEW_SIGNUP_WINDOW_MS
+}
 
 export default function AuthCallbackPage() {
   const router = useRouter()
@@ -15,6 +30,9 @@ export default function AuthCallbackPage() {
 
     const onSession = async (session: any) => {
       if (!session || cancelled) return
+      if (isNewSignup(session.user)) {
+        trackEvent('signup_completed', { method: 'google' })
+      }
       try {
         const statusRes = await api.get('/onboarding/status')
         const onboardingComplete = statusRes.data?.onboarding_completed === true

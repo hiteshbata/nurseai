@@ -30,7 +30,10 @@ export async function middleware(request: NextRequest) {
 
   if (!user) {
     const url = request.nextUrl.clone()
+    const returnTo = pathname + request.nextUrl.search
     url.pathname = '/auth/login'
+    url.search = ''
+    url.searchParams.set('returnTo', returnTo)
     const redirectResponse = NextResponse.redirect(url)
     // getUser() may have called setAll to clear/update auth cookies (e.g. on
     // SIGNED_OUT where _removeSession fires). Those updates are on the internal

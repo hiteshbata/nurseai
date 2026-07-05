@@ -23,6 +23,8 @@ interface Stats {
     feedback: string
     created_at: string
   }>
+  current_streak: number
+  longest_streak: number
 }
 
 interface SessionUsage {
@@ -183,18 +185,7 @@ export default function DashboardPage() {
   const recentSubmissionDates = (stats?.recent_submissions || [])
     .map(s => s.created_at.slice(0, 10))
 
-  const streak = (() => {
-    let s = 0
-    const now = new Date()
-    for (let i = 0; i < 365; i++) {
-      const d = new Date(now)
-      d.setDate(d.getDate() - i)
-      if (recentSubmissionDates.includes(d.toISOString().slice(0, 10))) {
-        s++
-      } else break
-    }
-    return s
-  })()
+  const streak = stats?.current_streak || 0
 
   const criteriaScores = {
     fluency: criteriaAverages?.fluency ?? null,

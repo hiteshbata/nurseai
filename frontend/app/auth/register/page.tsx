@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase, signUp } from '@/lib/supabase'
+import { trackEvent } from '@/lib/analytics'
 import toast from 'react-hot-toast'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { AuthLeftPanel } from '@/components/auth/auth-left-panel'
@@ -57,6 +58,7 @@ export default function RegisterPage() {
     setError('')
     try {
       const data = await signUp(formData.email, formData.password, formData.name)
+      trackEvent('signup_completed', { method: 'email' })
       if (data.session) {
         toast.success('Registration successful! Redirecting to setup...')
         setTimeout(() => router.push('/onboarding'), 2000)

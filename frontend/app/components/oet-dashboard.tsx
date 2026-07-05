@@ -4,6 +4,7 @@ import { ProgressSection } from "./oet/progress-section"
 import { StatsRow } from "./oet/stats-row"
 import { RecommendedCaseCard } from "./oet/RecommendedCaseCard"
 import { CoachSummaryCard } from "./oet/CoachSummaryCard"
+import { StudyPlanCard } from "./oet/StudyPlanCard"
 import { StreakHeatmapCard } from "./oet/StreakHeatmapCard"
 import { CriteriaPentagonCard } from "./oet/CriteriaPentagonCard"
 import { MilestoneBadges } from "./oet/MilestoneBadges"
@@ -117,6 +118,8 @@ export function OetDashboard(props: OetDashboardProps) {
           {props.historyReady === false ? <ChartSkeleton /> : <ProgressChart data={props.scoreHistory || []} />}
 
           <RecommendedCaseCard />
+
+          <StudyPlanCard />
 
           <CoachSummaryCard />
 
