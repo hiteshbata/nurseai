@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from app.core.config import settings
 from app.core.supabase import get_supabase
+from app.core.threading import run_sync
 
 logger = logging.getLogger(__name__)
 
@@ -96,19 +97,19 @@ async def _call_ai(
             status_code = e.response.status_code if e.response else 0
             err_msg = f"HTTP {status_code}: {str(e)[:200]}"
             print(f"[{prov}] {mdl} HTTP error: {err_msg}")
-            _log_ai_error("_call_ai", f"{prov}_http_error", err_msg, user_id)
+            await run_sync(_log_ai_error, "_call_ai", f"{prov}_http_error", err_msg, user_id)
             last_error = err_msg
             continue
         except httpx.TimeoutException as e:
             err_msg = f"Timeout after {max_tokens} tokens: {str(e)[:200]}"
             print(f"[{prov}] {mdl} timeout: {err_msg}")
-            _log_ai_error("_call_ai", f"{prov}_timeout", err_msg, user_id)
+            await run_sync(_log_ai_error, "_call_ai", f"{prov}_timeout", err_msg, user_id)
             last_error = err_msg
             continue
         except json.JSONDecodeError as e:
             err_msg = f"JSON parse error: {str(e)[:200]}"
             print(f"[{prov}] {mdl} JSON error: {err_msg}")
-            _log_ai_error("_call_ai", f"{prov}_json_error", err_msg, user_id)
+            await run_sync(_log_ai_error, "_call_ai", f"{prov}_json_error", err_msg, user_id)
             last_error = err_msg
             continue
         except Exception as e:
@@ -118,18 +119,30 @@ async def _call_ai(
                 prov.upper(), mdl, _redact_api_keys(err_msg),
             )
             print(f"[{prov}] {mdl} failed: {err_msg}")
-            _log_ai_error("_call_ai", f"{prov}_error", err_msg, user_id)
+            await run_sync(_log_ai_error, "_call_ai", f"{prov}_error", err_msg, user_id)
             last_error = err_msg
             continue
 
-    _log_ai_error("_call_ai", "all_providers_failed", last_error, user_id)
-    return {"raw_feedback": "I'm sorry, the AI service is temporarily unavailable. Please try again later."}
+    await run_sync(_log_ai_error, "_call_ai", "all_providers_failed", last_error, user_id)
+    # provider_failure distinguishes "the AI service itself is down" from a
+    # genuine parsing/format problem with a real response, so callers can
+    # avoid persisting a fake 0 score and charging a session for an outage
+    # that isn't the user's fault.
+    return {
+        "raw_feedback": "I'm sorry, the AI service is temporarily unavailable. Please try again later.",
+        "provider_failure": True,
+    }
 
 
 async def _call_gemini(
     messages: list, api_key: str, model: str, max_tokens: int, json_mode: bool
 ) -> Dict[str, Any]:
     """Call Google Gemini API directly."""
+    # Model constants are OpenRouter-namespaced (e.g. "google/gemini-2.5-flash"),
+    # but Google's native API expects the bare model id in the URL path.
+    if model.startswith("google/"):
+        model = model[len("google/"):]
+
     system_parts = []
     contents = []
     for msg in messages:
@@ -220,12 +233,26 @@ async def _call_openai(
         return {"raw_feedback": content}
 
 
+_json_decoder = json.JSONDecoder()
+
+
+def _raw_decode_object(text: str) -> dict:
+    """Parse the first complete top-level JSON value in text, ignoring any
+    trailing content after it. Some models keep emitting a few extra tokens
+    after closing their JSON object (more likely with larger max_tokens
+    headroom), which json.loads() rejects outright as "Extra data" even
+    though the object itself is perfectly valid."""
+    parsed, _ = _json_decoder.raw_decode(text)
+    return parsed
+
+
 def _try_parse_json(model: str, content: str) -> dict | None:
-    """Try to parse JSON from an AI response. Handles markdown code fences."""
-    # First attempt: bare JSON
+    """Try to parse JSON from an AI response. Handles markdown code fences
+    and trailing content after a valid top-level JSON object."""
+    # First attempt: bare JSON (tolerating trailing data after the object)
     try:
-        parsed = json.loads(content)
-        logger.error("[SCORING_PARSE_SUCCESS] model=%s keys=%s", model, list(parsed.keys()))
+        parsed = _raw_decode_object(content.strip())
+        logger.debug("[SCORING_PARSE_SUCCESS] model=%s keys=%s", model, list(parsed.keys()))
         return parsed
     except json.JSONDecodeError:
         pass
@@ -242,23 +269,19 @@ def _try_parse_json(model: str, content: str) -> dict | None:
             lines = lines[:-1]
         de_fenced = "\n".join(lines).strip()
         try:
-            parsed = json.loads(de_fenced)
-            logger.error(
+            parsed = _raw_decode_object(de_fenced)
+            logger.debug(
                 "[SCORING_PARSE_SUCCESS] model=%s keys=%s note=fence_stripped",
                 model, list(parsed.keys()),
             )
             return parsed
         except json.JSONDecodeError:
-            logger.error(
-                "[SCORING_PARSE_FAILURE] model=%s fence_stripped_also_failed raw_content=%s",
-                model, content,
-            )
+            logger.error("[SCORING_PARSE_FAILURE] model=%s fence_stripped_also_failed", model)
+            logger.debug("[SCORING_PARSE_FAILURE] raw_content=%s", content)
             return None
 
-    logger.error(
-        "[SCORING_PARSE_FAILURE] model=%s raw_content=%s",
-        model, content,
-    )
+    logger.error("[SCORING_PARSE_FAILURE] model=%s", model)
+    logger.debug("[SCORING_PARSE_FAILURE] raw_content=%s", content)
     return None
 
 
@@ -303,26 +326,6 @@ def _get_setting(supabase, key: str, default: str = "") -> str:
     except Exception:
         pass
     return default
-
-
-# ── LEGACY WRAPPER FUNCTIONS (for simple question-based scoring) ─────
-
-async def analyze_writing_submission(response: str, question_content: str) -> Dict[str, Any]:
-    """Legacy wrapper: simple question -> score, without card system."""
-    nurse_card = {"tasks": [f"Respond to: {question_content}"]}
-    return await score_writing(
-        content=response, nurse_card=nurse_card, scenario_title=question_content
-    )
-
-
-async def analyze_speaking_submission(response: str, question_content: str) -> Dict[str, Any]:
-    """Legacy wrapper: simple question -> score, without card system."""
-    nurse_card = {"tasks": [f"Respond to: {question_content}"]}
-    return await score_speaking(
-        nurse_card=nurse_card,
-        conversation_history=[{"role": "nurse", "content": response}],
-        scenario_title=question_content,
-    )
 
 
 # ── JARGON DETECTION ────────────────────────────────────────────────
@@ -410,25 +413,7 @@ STRICT RULES:
 4. Do NOT reveal withheld information unless the nurse specifically asks
 5. Keep responses 2-4 sentences — realistic patient length
 6. Occasionally misunderstand or ask for clarification to test the nurse
-7. Never give medical advice or diagnose yourself
-
-JARGON INTERRUPT RULE (HIGHEST PRIORITY):
-This rule overrides all other rules.
-
-If the nurse uses ANY of these medical terms WITHOUT immediately explaining them in simple patient-friendly language:
-
-CLINICAL TERMS:
-hypertension, hypotension, tachycardia, bradycardia, myocardial, infarction, arrhythmia, angina, dyspnea, dyspnoea, oedema, edema, haemorrhage, hemorrhage, thrombosis, embolism, ischaemia, ischemia, angioplasty, catheterization, stent, contraindicated, contraindication, analgesic, analgesia, antipyretic, anticoagulant, antibiotic, diuretic, bronchodilator, corticosteroid, subcutaneous, intravenous, intramuscular, IV, PRN, nil by mouth, NBM, NPO, triage, cannula, catheter, nasogastric, NG tube, PEG, colonoscopy, endoscopy, laparoscopy, cholecystectomy, appendectomy, nephrectomy, mastectomy, colostomy, biopsy, pathology, histology, malignant, benign, metastasis, oncology, chemotherapy, radiotherapy, haemoglobin, haematocrit, platelet, electrolyte, sodium, potassium, creatinine, troponin, INR, PTT, ECG, EEG, MRI, CT scan, ultrasound, spirometry, oxygen saturation, SpO2, FiO2, CPAP, BiPAP, ventilator, sepsis, septicemia, bacteremia, cellulitis, abscess, necrosis, diabetes mellitus, hyperglycemia, hypoglycemia, insulin, glucagon, osteoporosis, osteoarthritis, rheumatoid, fibromyalgia, dementia, delirium, psychosis, anxiety disorder, depression, neuropathy, paraplegia, hemiplegia, renal failure, hepatic, cirrhosis, pneumonia, bronchitis, asthma exacerbation, pulmonary, cardiac, hepatic, renal, cerebral, vascular, peripheral, acute, chronic, bilateral, unilateral, prognosis, diagnosis, etiology, prophylaxis, exacerbation, remission, relapse, comorbidity, complication, sequela
-
-THEN you MUST interrupt immediately with one of these responses (vary them naturally):
-- "I'm sorry sister, I don't understand that word. What does that mean in simple terms?"
-- "Sorry, can you explain that? I'm not a medical person — what does [TERM] mean exactly?"
-- "I'm a bit confused. When you say [TERM], what does that mean? I'm quite worried and I want to understand."
-- "Excuse me, what is [TERM]? My doctor used that word too and I never understood it."
-
-Replace [TERM] with the actual medical term the nurse used.
-
-Only interrupt if the nurse used the term WITHOUT explaining it. If the nurse said "your blood pressure is high — that means your heart is working too hard" then do NOT interrupt because they explained it. If the nurse used multiple jargon terms, interrupt for the first one only. After the nurse explains the term in simple language, continue the conversation normally — do not keep asking about the same term."""
+7. Never give medical advice or diagnose yourself"""
 
     jargon_term = detect_jargon(nurse_message)
     if jargon_term:
@@ -464,6 +449,7 @@ async def score_speaking(
     user_id: str = "",
     model: str = GEMINI_SCORING_FREE_MODEL,
     criteria_count: int = 9,
+    enhanced_feedback: bool = False,
 ) -> Dict[str, Any]:
     """
     Score a speaking session using the nurse card's tasks as criteria.
@@ -575,7 +561,13 @@ RULES:
 - clinical_average = mean of criteria 1 to 5
 - linguistic_average = mean of criteria 6 to 9
 - overall_band = (clinical_average × 0.6) + (linguistic_average × 0.4)
-- feedback per criterion = 1 to 2 sentences, cite specific words or moments from the transcript
+- {(
+    "feedback per criterion = 2 to 3 sentences: reference the specific words or moment from the transcript that justifies the score "
+    "(use single quotes around any quoted phrase, never double quotes, since this feedback is embedded in JSON), "
+    "explain why it matters against the OET band descriptor above, and name one specific thing that would have raised the score"
+    if enhanced_feedback else
+    "feedback per criterion = 1 to 2 sentences, cite specific words or moments from the transcript"
+)}
 - top_strength = single most impressive thing the nurse did
 - top_improvement = single most important thing to work on
 - examiner_summary = exactly 3 sentences, written as an OET examiner would write it
@@ -583,13 +575,29 @@ RULES:
 
     result = await _call_ai(
         [{"role": "user", "content": scoring_prompt}],
-        max_tokens=2000,
+        max_tokens=2600 if enhanced_feedback else 2000,
         json_mode=True,
         provider="openrouter",
         model=model,
     )
 
-    logger.error(
+    # The longer enhanced-feedback output occasionally makes the model splice
+    # a few garbled repeated tokens in before its closing braces, which is a
+    # genuine JSON syntax break (not just recoverable trailing text) --
+    # confirmed empirically at roughly a 1-in-6 rate on gemini-3.5-flash vs.
+    # 0-in-6 on the standard-length prompt. One retry before falling back to
+    # placeholders brings the effective failure rate down substantially
+    # without adding cost to the common (first-try-succeeds) case.
+    if "scores" not in result and not result.get("provider_failure"):
+        result = await _call_ai(
+            [{"role": "user", "content": scoring_prompt}],
+            max_tokens=2600 if enhanced_feedback else 2000,
+            json_mode=True,
+            provider="openrouter",
+            model=model,
+        )
+
+    logger.debug(
         "[DEEP_SCORING_DEBUG] score_speaking result type=%s keys=%s has_scores=%s raw=%s",
         type(result).__name__,
         list(result.keys()) if isinstance(result, dict) else "N/A",
@@ -637,7 +645,12 @@ RULES:
         return result
 
     logger.error(
-        "[SCORING_FALLBACK] scores key missing, result=%s",
+        "[SCORING_FALLBACK] scores key missing | keys=%s provider_failure=%s",
+        list(result.keys()) if isinstance(result, dict) else type(result).__name__,
+        result.get("provider_failure") if isinstance(result, dict) else "N/A",
+    )
+    logger.debug(
+        "[SCORING_FALLBACK] result=%s",
         {k: str(v)[:200] for k, v in result.items()} if isinstance(result, dict) else result,
     )
     if criteria_count == 3:
@@ -660,6 +673,7 @@ RULES:
         "top_strength": "",
         "top_improvement": "",
         "examiner_summary": "Unable to generate summary due to scoring error.",
+        "provider_failure": result.get("provider_failure", False),
     }
 
 
@@ -714,19 +728,33 @@ Return ONLY valid JSON:
         [{"role": "user", "content": scoring_prompt}],
         max_tokens=2000,
         json_mode=True,
+        provider="openrouter",
+        model=GEMINI_SCORING_PREMIUM_MODEL,
     )
 
     if "scores" in result:
+        result["scoring_failed"] = False
         return result
 
+    logger.error(
+        "[WRITING_SCORING_FAILURE] scores key missing | keys=%s provider_failure=%s",
+        list(result.keys()) if isinstance(result, dict) else type(result).__name__,
+        result.get("provider_failure") if isinstance(result, dict) else "N/A",
+    )
+    logger.debug(
+        "[WRITING_SCORING_FAILURE] result=%s",
+        {k: str(v)[:200] for k, v in result.items()} if isinstance(result, dict) else result,
+    )
     return {
-        "scores": {c: {"score": 3, "feedback": "Unable to score"} for c in [
+        "scoring_failed": True,
+        "provider_failure": result.get("provider_failure", False),
+        "scores": {c: {"score": None, "feedback": ""} for c in [
             "purpose", "content", "conciseness", "genre_style", "organization", "language"
         ]},
-        "overall_score": 3.0,
-        "estimated_oet_grade": "C",
+        "overall_score": None,
+        "estimated_oet_grade": None,
         "top_strengths": [],
-        "top_improvements": ["Please try again"],
+        "top_improvements": [],
         "corrected_version": content,
     }
 

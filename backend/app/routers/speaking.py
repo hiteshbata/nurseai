@@ -3,12 +3,16 @@ import io
 import json
 import logging
 import re
+import time
+from collections import deque
 from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from app.core.config import settings
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase, get_auth_client
+from app.core.threading import run_sync
+from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo
 from app.routers.admin import require_admin
 from app.services.speech_to_text import speech_to_text
@@ -20,18 +24,22 @@ from app.services.plan_gating import (
     get_scoring_criteria_count,
     has_pronunciation_access,
     get_tts_voice,
+    is_premium_voice,
+    PREMIUM_PLANS,
 )
 from app.services import tts_service
-from app.routers.sessions import check_and_increment_session, validate_session
+from app.routers.sessions import check_and_increment_session, validate_session, is_first_ever_session
 import websockets.exceptions as ws_exc
 
 logger = logging.getLogger(__name__)
 
 
 async def get_user_profile(supabase, user_id: str) -> dict:
-    result = supabase.table("user_profiles").select(
-        "plan, plan_expires_at, sessions_used_this_month"
-    ).eq("user_id", user_id).execute()
+    result = await run_sync(
+        supabase.table("user_profiles").select(
+            "plan, plan_expires_at, sessions_used_this_month"
+        ).eq("user_id", user_id).execute
+    )
     return result.data[0] if result.data else {}
 
 
@@ -52,6 +60,36 @@ def _classify_deepgram_error(status_code: int) -> str:
 
 router = APIRouter(prefix="/speaking", tags=["speaking"])
 
+MAX_TTS_TEXT_LENGTH = 1000
+
+TTS_RATE_LIMIT_MAX_CALLS = 40
+TTS_RATE_LIMIT_WINDOW_SECONDS = 600
+
+# In-memory sliding-window limiter, keyed by user_id. The prod entrypoint runs
+# a single uvicorn worker (no --workers flag), so a per-process dict is a
+# correct and sufficient backstop against request-flooding without adding new
+# infra. It resets on restart and isn't shared across workers if that ever
+# changes — this is abuse prevention, not the billing-accurate quota (that's
+# sessions_used_this_month, enforced separately via session_id below).
+_tts_call_log: dict[str, deque] = {}
+
+
+def _tts_rate_limited(user_id: str) -> bool:
+    now = time.monotonic()
+    window_start = now - TTS_RATE_LIMIT_WINDOW_SECONDS
+    calls = _tts_call_log.setdefault(user_id, deque())
+    while calls and calls[0] < window_start:
+        calls.popleft()
+    if len(calls) >= TTS_RATE_LIMIT_MAX_CALLS:
+        return True
+    calls.append(now)
+    return False
+
+
+SCORE_RATE_LIMIT_MAX_CALLS = 20
+SCORE_RATE_LIMIT_WINDOW_SECONDS = 600
+_score_rate_limiter = SlidingWindowRateLimiter(SCORE_RATE_LIMIT_MAX_CALLS, SCORE_RATE_LIMIT_WINDOW_SECONDS)
+
 
 @router.post("/tts")
 async def text_to_speech(
@@ -62,11 +100,39 @@ async def text_to_speech(
     if not text:
         return JSONResponse({"fallback": True, "reason": "no_text"})
 
+    if len(text) > MAX_TTS_TEXT_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Text exceeds maximum length of {MAX_TTS_TEXT_LENGTH} characters",
+        )
+
+    session_id = payload.get("session_id")
+    if not session_id or not await run_sync(validate_session, current_user.id, session_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Missing or invalid session — start a speaking session before requesting audio.",
+        )
+
+    if _tts_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many audio requests — please slow down.")
+
     supabase = get_supabase()
     profile = await get_user_profile(supabase, current_user.id)
     plan = get_plan_from_profile(profile)
 
+    is_premium_trial = plan == "free" and await run_sync(is_first_ever_session, current_user.id, "speaking")
+
+    gender = payload.get("gender")
     voice_name = payload.get("voice_name", "")
+    if is_premium_trial:
+        voice_name = get_tts_voice("pro", gender)
+    elif plan in PREMIUM_PLANS and not is_premium_voice(voice_name):
+        # Scenario voice_config defaults to WaveNet regardless of plan (see
+        # tts_service.get_default_voice_config) -- Pro/Elite need to be
+        # upgraded to Chirp3-HD here since nothing upstream requests it.
+        voice_name = get_tts_voice(plan, gender)
+    elif is_premium_voice(voice_name) and plan not in PREMIUM_PLANS:
+        voice_name = get_tts_voice(plan, gender)
     speaking_rate = payload.get("speaking_rate", 0.95)
     pitch = payload.get("pitch", 0.0)
     language_code = payload.get("language_code", "en-GB")
@@ -117,7 +183,8 @@ async def stt_deepgram_stream(websocket: WebSocket):
     user = None
     if token:
         try:
-            user = get_supabase().auth.get_user(token).user
+            auth_result = await run_sync(get_auth_client().auth.get_user, token)
+            user = auth_result.user
         except Exception as e:
             logger.warning("STT stream auth failed: %s", _redact_api_keys(str(e)[:200]))
             user = None
@@ -449,7 +516,7 @@ def list_scenarios(current_user: UserInfo = Depends(get_current_user)):
 
 
 @router.get("/scenarios/recommend")
-async def recommend_scenario(current_user: UserInfo = Depends(get_current_user)):
+def recommend_scenario(current_user: UserInfo = Depends(get_current_user)):
     """Recommend a scenario — alternates between unattempted and lowest-scored."""
     supabase = get_supabase()
 
@@ -460,9 +527,9 @@ async def recommend_scenario(current_user: UserInfo = Depends(get_current_user))
         raise HTTPException(status_code=404, detail="No scenarios available")
 
     attempted_ids = supabase.table("submissions").select(
-        "question_id"
+        "scenario_id"
     ).eq("user_id", current_user.id).eq("module", "speaking").execute()
-    attempted_set = {s["question_id"] for s in attempted_ids.data if s.get("question_id")}
+    attempted_set = {s["scenario_id"] for s in attempted_ids.data if s.get("scenario_id")}
 
     unattempted = [s for s in all_scenarios.data if s["id"] not in attempted_set]
 
@@ -479,12 +546,12 @@ async def recommend_scenario(current_user: UserInfo = Depends(get_current_user))
 
     # All attempted \u2014 find lowest-scored
     feedback_data = supabase.table("submissions").select(
-        "question_id, score"
+        "scenario_id, score"
     ).eq("user_id", current_user.id).eq("module", "speaking").execute()
 
     avg_scores = {}
     for s in feedback_data.data:
-        qid = s.get("question_id")
+        qid = s.get("scenario_id")
         if qid:
             avg_scores.setdefault(qid, []).append(s.get("score", 0))
 
@@ -547,18 +614,19 @@ async def chat_with_patient(
     is never trusted for billing purposes.
     """
     session_id = request.session_id
-    if session_id is not None and not validate_session(current_user.id, session_id):
+    if session_id is not None and not await run_sync(validate_session, current_user.id, session_id):
         session_id = None
     if session_id is None:
-        usage = await check_and_increment_session(current_user)
+        usage = await run_sync(check_and_increment_session, current_user)
         session_id = usage["session_id"]
 
     supabase = get_supabase()
 
     # Get scenario with interlocutor card
-    scenario_data = supabase.table("scenarios").select(
-        "*"
-    ).eq("id", request.scenario_id).eq("is_active", True).execute()
+    scenario_data = await run_sync(
+        supabase.table("scenarios").select("*")
+        .eq("id", request.scenario_id).eq("is_active", True).execute
+    )
 
     if not scenario_data.data:
         raise HTTPException(status_code=404, detail="Scenario not found")
@@ -599,23 +667,30 @@ async def score_speaking_session(
     Score a completed speaking session.
     Uses nurse card tasks as scoring criteria.
     """
-    if not request.session_id or not validate_session(current_user.id, request.session_id):
+    if not request.session_id or not await run_sync(validate_session, current_user.id, request.session_id):
         raise HTTPException(
             status_code=400,
             detail="Missing or invalid session — start a new conversation before scoring.",
         )
+
+    if _score_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many scoring requests — please slow down.")
 
     supabase = get_supabase()
 
     # Get user plan for model selection
     profile = await get_user_profile(supabase, current_user.id)
     plan = get_plan_from_profile(profile)
-    scoring_model = get_scoring_model(plan)
+
+    is_premium_trial = plan == "free" and await run_sync(is_first_ever_session, current_user.id, "speaking")
+    effective_plan = "pro" if is_premium_trial else plan
+    scoring_model = get_scoring_model(effective_plan)
 
     # Get scenario
-    scenario_data = supabase.table("scenarios").select(
-        "id, title, nurse_card, scoring_criteria"
-    ).eq("id", request.scenario_id).execute()
+    scenario_data = await run_sync(
+        supabase.table("scenarios").select("id, title, nurse_card, scoring_criteria")
+        .eq("id", request.scenario_id).execute
+    )
 
     if not scenario_data.data:
         raise HTTPException(status_code=404, detail="Scenario not found")
@@ -627,7 +702,7 @@ async def score_speaking_session(
     history = [{"role": msg.role, "content": msg.content} for msg in request.history]
 
     # Score with plan-appropriate model and criteria count
-    criteria_count = get_scoring_criteria_count(plan)
+    criteria_count = get_scoring_criteria_count(effective_plan)
     feedback = await score_speaking(
         nurse_card=nurse_card,
         conversation_history=history,
@@ -635,7 +710,18 @@ async def score_speaking_session(
         supabase=supabase,
         model=scoring_model,
         criteria_count=criteria_count,
+        enhanced_feedback=effective_plan in PREMIUM_PLANS,
     )
+
+    if feedback.get("provider_failure"):
+        # The AI service itself was unreachable -- don't persist a fake 0/6
+        # or let the client mistake this for a real score. The session was
+        # already charged when the conversation started; the client can
+        # retry scoring without redoing the conversation.
+        raise HTTPException(
+            status_code=503,
+            detail="Scoring is temporarily unavailable. Please try again in a few minutes.",
+        )
 
     # Save submission
     transcript = "\n".join([
@@ -643,17 +729,25 @@ async def score_speaking_session(
         for m in request.history
     ])
 
-    supabase.table("submissions").insert({
-        "user_id": current_user.id,
-        "question_id": request.scenario_id,
-        "module": "speaking",
-        "answer": transcript,
-        "score": feedback.get("overall_band", 0),
-        "feedback": json.dumps(feedback),
-        "duration_seconds": request.duration_seconds,
-    }).execute()
+    await run_sync(
+        supabase.table("submissions").insert({
+            "user_id": current_user.id,
+            "scenario_id": request.scenario_id,
+            "module": "speaking",
+            "answer": transcript,
+            "score": feedback.get("overall_band", 0),
+            "feedback": json.dumps(feedback),
+            "duration_seconds": request.duration_seconds,
+        }).execute
+    )
 
-    return {"success": True, "feedback": feedback}
+    return {
+        "success": True,
+        "feedback": feedback,
+        "is_premium_trial": is_premium_trial,
+        "plan": plan,
+        "criteria_count": criteria_count,
+    }
 
 
 @router.post("/pronunciation")
@@ -783,45 +877,3 @@ Return ONLY this JSON, no other text:
         raise HTTPException(status_code=502, detail="Failed to generate scenario")
     
     return result
-
-
-# Legacy endpoint for backward compatibility
-@router.post("/submit")
-async def submit_speaking_response(
-    audio: UploadFile = File(...),
-    question_id: int = None,
-    current_user: UserInfo = Depends(get_current_user),
-):
-    """Legacy endpoint - uses old questions table."""
-    supabase = get_supabase()
-    try:
-        audio_data = await audio.read()
-        # Fall back to old scoring for backward compatibility
-        transcription = await speech_to_text.transcribe_audio(audio_data)
-        # Use legacy mock feedback for now
-        feedback = {
-            "overall_score": 4.7,
-            "score": 4.7,
-            "grade": "B",
-            "fluency": "Good - minimal hesitation",
-            "vocabulary": "Good use of medical terminology",
-            "grammar": "Mostly accurate with minor errors",
-            "pronunciation": "Clear with understandable accent",
-            "medical_communication": "Well-structured handover with appropriate clinical language",
-            "overall_feedback": "Good performance overall. Your communication was clear and professional.",
-        }
-        supabase.table("submissions").insert({
-            "user_id": current_user.id,
-            "question_id": question_id,
-            "module": "speaking",
-            "answer": transcription,
-            "score": feedback["score"],
-            "feedback": json.dumps(feedback),
-        }).execute()
-
-        return {"success": True, "transcription": transcription, "feedback": feedback}
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process audio")

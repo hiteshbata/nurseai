@@ -4,12 +4,12 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSupabaseSession, getCurrentSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
-import { VoiceChat } from '@/components/VoiceChat'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { CheckCircle2, Mic, Trophy, Target, ArrowLeft } from 'lucide-react'
 import VoiceOrb from '@/components/VoiceOrb'
+import { trackEvent } from '@/lib/analytics'
 
 interface Scenario {
   id: number
@@ -18,6 +18,7 @@ interface Scenario {
   difficulty: string
   nurse_card: any
   specialty?: string
+  patient_gender?: string
   voice_config?: {
     voice_name?: string
     speaking_rate?: number
@@ -33,7 +34,7 @@ interface ChatMessage {
 
 interface Submission {
   id: number
-  question_id: number
+  scenario_id: number
   module: string
   score: number
   created_at: string
@@ -75,6 +76,14 @@ const linguisticLabels: Record<string, string> = {
   grammar: 'Grammar & Expression',
 }
 
+const basicLabels: Record<string, string> = {
+  clinical_communication: 'Clinical Communication',
+  linguistic_delivery: 'Linguistic Delivery',
+  relationship_building: 'Relationship Building',
+}
+
+const LOCKED_CRITERIA_PREVIEW = ['Empathy', 'Information Gathering', 'Fluency', 'Grammar & Expression']
+
 function scoreColor(score: number) {
   if (score >= 4) return 'text-emerald-600'
   if (score >= 3) return 'text-amber-500'
@@ -102,6 +111,7 @@ export default function SpeakingPage() {
   const [feedback, setFeedback] = useState<any>(null)
   const [pastSubmissions, setPastSubmissions] = useState<Submission[]>([])
   const [comparisonResult, setComparisonResult] = useState<any>(null)
+  const [comparisonError, setComparisonError] = useState<string | null>(null)
   const [isComparing, setIsComparing] = useState(false)
   const [readingTime, setReadingTime] = useState(PREP_SECONDS)
 
@@ -117,6 +127,7 @@ export default function SpeakingPage() {
   const audioChunksRef = useRef<Blob[]>([])
   const [pronunciationResult, setPronunciationResult] = useState<any>(null)
   const [isAssessingPronunciation, setIsAssessingPronunciation] = useState(false)
+  const [pronunciationError, setPronunciationError] = useState(false)
   const [hasRestoredSession, setHasRestoredSession] = useState(false)
 
   useEffect(() => {
@@ -262,6 +273,11 @@ export default function SpeakingPage() {
     setExamSeconds(0)
     await startAudioRecording()
     setPhase('conversation')
+    trackEvent('speaking_session_started', {
+      scenario_id: selectedScenario?.id,
+      scenario_title: selectedScenario?.title,
+      difficulty: selectedScenario?.difficulty,
+    })
   }
 
   const handleSessionEnd = (chatHistory: ChatMessage[], resultFeedback: any) => {
@@ -269,6 +285,15 @@ export default function SpeakingPage() {
     setFeedback(resultFeedback)
     setComparisonResult(null)
     setPhase('result')
+    if (resultFeedback) {
+      trackEvent('score_viewed', {
+        module: 'speaking',
+        scenario_id: selectedScenario?.id,
+        overall_band: resultFeedback.overall_band,
+        plan: resultFeedback.plan,
+        is_premium_trial: resultFeedback.is_premium_trial,
+      })
+    }
   }
 
   const handleTryAgain = () => {
@@ -294,7 +319,7 @@ export default function SpeakingPage() {
     if (!selectedScenario) return
     try {
       const res = await api.get('/submissions', {
-        params: { module: 'speaking', question_id: selectedScenario.id }
+        params: { module: 'speaking', scenario_id: selectedScenario.id }
       })
       setPastSubmissions(res.data || [])
     } catch (e) {
@@ -317,6 +342,7 @@ export default function SpeakingPage() {
   const accumulatedTranscriptRef = useRef('')
   const silenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sendToAIRef = useRef<((text: string) => Promise<void>) | null>(null)
+  const startListeningRef = useRef<(() => void) | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const lastInterimUpdate = useRef(0)
   const interimThrottleMs = 100
@@ -345,9 +371,36 @@ export default function SpeakingPage() {
       try { sttRecognitionRef.current.stop() } catch {}
       sttRecognitionRef.current = null
     }
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current)
+      silenceTimeoutRef.current = null
+    }
     setIsListening(false)
     setInterimText('')
   }, [])
+
+  // Unmount cleanup: without this, navigating away mid-conversation leaves
+  // the mic, MediaRecorder, and STT WebSocket running in the background
+  // (browser recording indicator stays lit), and a pending silence timer
+  // can still fire finalizeSilence afterward -- which calls sendToAIRef,
+  // firing a stray /speaking/chat request for a conversation the user
+  // already left.
+  useEffect(() => {
+    return () => {
+      stopListening()
+      if (mediaRecorderRef.current) {
+        try {
+          if (mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop()
+          }
+          mediaRecorderRef.current.stream?.getTracks().forEach(track => track.stop())
+        } catch {}
+      }
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [stopListening])
 
   useEffect(() => {
     if (sttError) {
@@ -364,7 +417,7 @@ export default function SpeakingPage() {
     window.speechSynthesis.speak(utterance)
   }, [])
 
-  const speakPatientReply = useCallback(async (text: string) => {
+  const speakPatientReply = useCallback(async (text: string, sessionIdForCall: number | null) => {
     const voiceConfig = selectedScenario?.voice_config ?? {
       voice_name: "en-GB-Wavenet-A",
       speaking_rate: 0.95,
@@ -373,7 +426,11 @@ export default function SpeakingPage() {
     }
 
     try {
-      const response = await api.post("/speaking/tts", { text, ...voiceConfig }, { responseType: "blob" })
+      const response = await api.post(
+        "/speaking/tts",
+        { text, session_id: sessionIdForCall, gender: selectedScenario?.patient_gender, ...voiceConfig },
+        { responseType: "blob" }
+      )
 
       const contentType = String(response.headers["content-type"] || "")
 
@@ -419,13 +476,15 @@ export default function SpeakingPage() {
         content: m.content,
       }))
       setConvHistory(updatedHistory)
+      const effectiveSessionId = typeof res.data.session_id === 'number' ? res.data.session_id : sessionId
       if (typeof res.data.session_id === 'number') {
         setSessionId(res.data.session_id)
       }
-      speakPatientReply(patientReply)
-      setTimeout(() => startListening(), 300)
+      speakPatientReply(patientReply, effectiveSessionId)
+      setTimeout(() => startListeningRef.current?.(), 300)
     } catch (e: any) {
       console.error('Chat error:', e)
+      setSttError("The patient couldn't respond — please try again.")
     } finally {
       setIsProcessing(false)
     }
@@ -621,6 +680,10 @@ export default function SpeakingPage() {
     }
   }, [isProcessing, isEnding, stopListening, sendToAI, startFallbackListening, usingFallbackStt])
 
+  useEffect(() => {
+    startListeningRef.current = startListening
+  }, [startListening])
+
   const startAudioRecording = async () => {
     try {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
@@ -698,12 +761,18 @@ export default function SpeakingPage() {
         duration_seconds: examSeconds,
         session_id: sessionId,
       })
-      handleSessionEnd(convHistory, res.data.feedback)
+      handleSessionEnd(convHistory, {
+        ...res.data.feedback,
+        is_premium_trial: res.data.is_premium_trial,
+        plan: res.data.plan,
+        criteria_count: res.data.criteria_count,
+      })
       
       // Get pronunciation assessment
       try {
         setIsAssessingPronunciation(true)
-        
+        setPronunciationError(false)
+
         // Stop recording and get audio blob
         const audioBlob = await stopAudioRecording()
         
@@ -732,6 +801,7 @@ export default function SpeakingPage() {
       } catch (pronError) {
         console.error('Pronunciation assessment failed:', pronError)
         // Non-critical — don't block results display
+        setPronunciationError(true)
       } finally {
         setIsAssessingPronunciation(false)
       }
@@ -762,6 +832,7 @@ export default function SpeakingPage() {
   const handleCompare = async () => {
     if (!selectedScenario || pastSubmissions.length < 2) return
     setIsComparing(true)
+    setComparisonError(null)
     try {
       const sorted = [...pastSubmissions].sort(
         (a: Submission, b: Submission) =>
@@ -773,8 +844,13 @@ export default function SpeakingPage() {
         attempt2_id: sorted[0].id,
       })
       setComparisonResult(res.data)
-    } catch (e) {
+    } catch (e: any) {
       console.error('Comparison failed:', e)
+      if (e?.response?.status === 403) {
+        setComparisonError('That attempt is outside your plan’s comparison window — upgrade to Pro for unlimited attempt comparison.')
+      } else {
+        setComparisonError('Comparison failed. Please try again.')
+      }
     } finally {
       setIsComparing(false)
     }
@@ -1161,6 +1237,10 @@ export default function SpeakingPage() {
     const linguisticAverage = feedback?.linguistic_average ?? 0
     const overallBand = feedback?.overall_band ?? 0
     const oetGrade = scoreToGrade(overallBand)
+    // criteria_count comes from the API; fall back to key-shape detection for
+    // any session restored from localStorage before this field existed.
+    const isNineCriteria = feedback?.criteria_count === 9 || 'empathy' in scores
+    const isPremiumTrial = !!feedback?.is_premium_trial
 
     const renderCriterion = (key: string, label: string) => {
       const c = scores[key] || {}
@@ -1209,6 +1289,22 @@ export default function SpeakingPage() {
                 <p className="text-gray-500 mt-2">Here&apos;s how you performed</p>
               </div>
 
+              {isPremiumTrial && (
+                <div className="rounded-2xl bg-gradient-to-r from-indigo-50 to-emerald-50 border border-indigo-100 p-5 mb-6 text-center">
+                  <p className="text-sm font-bold text-indigo-700">🎉 Your Free Premium Session</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    This report used the full 9-criteria examiner breakdown and premium voice — normally a Pro feature.
+                    Your next sessions will use standard scoring unless you upgrade.
+                  </p>
+                  <a
+                    href="/upgrade"
+                    className="inline-block mt-3 bg-[#0F2356] text-white rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#0F2356]/90 transition"
+                  >
+                    Keep Full Reports — Upgrade to Pro →
+                  </a>
+                </div>
+              )}
+
               <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-6 mb-6">
                 <div className="grid grid-cols-3 divide-x divide-emerald-200">
                   <div className="flex flex-col items-center gap-1 pr-4">
@@ -1230,19 +1326,54 @@ export default function SpeakingPage() {
                 </div>
               </div>
 
-              <div className="mb-6">
-                <h2 className="text-sm font-bold text-[#0F2356] uppercase tracking-wide mb-3">Clinical Communication</h2>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {Object.entries(clinicalLabels).map(([key, label]) => renderCriterion(key, label))}
-                </div>
-              </div>
+              {isNineCriteria ? (
+                <>
+                  <div className="mb-6">
+                    <h2 className="text-sm font-bold text-[#0F2356] uppercase tracking-wide mb-3">Clinical Communication</h2>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {Object.entries(clinicalLabels).map(([key, label]) => renderCriterion(key, label))}
+                    </div>
+                  </div>
 
-              <div className="mb-6">
-                <h2 className="text-sm font-bold text-[#0F2356] uppercase tracking-wide mb-3">Linguistic Performance</h2>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {Object.entries(linguisticLabels).map(([key, label]) => renderCriterion(key, label))}
-                </div>
-              </div>
+                  <div className="mb-6">
+                    <h2 className="text-sm font-bold text-[#0F2356] uppercase tracking-wide mb-3">Linguistic Performance</h2>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {Object.entries(linguisticLabels).map(([key, label]) => renderCriterion(key, label))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mb-6">
+                    <h2 className="text-sm font-bold text-[#0F2356] uppercase tracking-wide mb-3">Your Report</h2>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {Object.entries(basicLabels).map(([key, label]) => renderCriterion(key, label))}
+                    </div>
+                  </div>
+
+                  <div className="mb-6 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-lg">🔒</span>
+                      <p className="text-sm font-bold text-gray-500 uppercase tracking-wide">
+                        Unlock the Full 9-Criteria Examiner Report
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mb-4 opacity-60 select-none">
+                      {LOCKED_CRITERIA_PREVIEW.map((label) => (
+                        <div key={label} className="rounded-lg bg-white px-3 py-2 text-xs font-medium text-gray-500 blur-[1.5px]">
+                          {label} — ?/6
+                        </div>
+                      ))}
+                    </div>
+                    <a
+                      href="/upgrade"
+                      className="inline-block bg-[#0F2356] text-white rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#0F2356]/90 transition"
+                    >
+                      Upgrade to Pro →
+                    </a>
+                  </div>
+                </>
+              )}
 
               <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2">
                 <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-5">
@@ -1269,9 +1400,9 @@ export default function SpeakingPage() {
               )}
 
               {/* Pronunciation Analysis Section */}
-              {(pronunciationResult || isAssessingPronunciation) && (
+              {(pronunciationResult || isAssessingPronunciation || pronunciationError) && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mt-6">
-                  
+
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
                       <Mic className="w-4 h-4 text-blue-600" />
@@ -1280,14 +1411,20 @@ export default function SpeakingPage() {
                       Pronunciation Analysis
                     </h3>
                   </div>
-                  
+
                   {isAssessingPronunciation && (
                     <div className="flex items-center gap-2 text-gray-500 text-sm">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#10B981]"/>
                       Analyzing pronunciation...
                     </div>
                   )}
-                  
+
+                  {pronunciationError && !isAssessingPronunciation && (
+                    <p className="text-sm text-red-500">
+                      We couldn't analyze your pronunciation this time. Your speaking score above is unaffected — please try again next session.
+                    </p>
+                  )}
+
                   {pronunciationResult && !isAssessingPronunciation && (
                     <>
                       {/* Azure scores if available */}
@@ -1456,6 +1593,9 @@ export default function SpeakingPage() {
                   >
                     {isComparing ? 'Comparing...' : 'Compare with Previous Attempt'}
                   </button>
+                  {comparisonError && (
+                    <p className="text-sm text-amber-600 text-center mt-2">{comparisonError}</p>
+                  )}
                 </div>
               )}
 

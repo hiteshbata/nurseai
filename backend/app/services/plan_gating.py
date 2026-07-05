@@ -9,6 +9,7 @@ PREMIUM_PLANS = ["pro", "elite"]
 WRITING_PLANS = ["pro", "elite"]
 PRONUNCIATION_PLANS = ["elite"]
 MOCK_TEST_PLANS = ["elite"]
+STUDY_PLAN_PLANS = ["elite"]
 
 
 def parse_timestamp(value) -> Optional[datetime]:
@@ -68,10 +69,16 @@ def get_scoring_model(plan: str) -> str:
     return "google/gemini-2.5-flash"
 
 
-def get_tts_voice(plan: str) -> str:
+def get_tts_voice(plan: str, gender: Optional[str] = None) -> str:
     if plan in PREMIUM_PLANS:
-        return "en-GB-Chirp3-HD-Aoede"
+        return "en-GB-Chirp3-HD-Charon" if gender == "male" else "en-GB-Chirp3-HD-Aoede"
     return "en-GB-Wavenet-A"
+
+
+def is_premium_voice(voice_name: str) -> bool:
+    """True for the higher-cost Chirp3-HD voice tier — gated to Pro/Elite
+    so a free/basic client can't request it directly to run up TTS costs."""
+    return "Chirp3-HD" in (voice_name or "")
 
 
 def has_writing_access(plan: str) -> bool:
@@ -86,8 +93,18 @@ def has_mock_test_access(plan: str) -> bool:
     return plan in MOCK_TEST_PLANS
 
 
+def has_study_plan_access(plan: str) -> bool:
+    return plan in STUDY_PLAN_PLANS
+
+
 def get_scoring_criteria_count(plan: str) -> int:
-    return 9 if plan in PREMIUM_PLANS else 3
+    """All plans now score against the full 9 OET criteria — differentiation
+    between tiers is the scoring model (see get_scoring_model), not criteria
+    depth. Kept as a function (rather than inlining 9 at call sites) so a
+    future tier change has one place to edit. Historical submissions scored
+    before this change may still carry the old 3-criteria shape; callers that
+    render past feedback must keep handling both (see score_speaking)."""
+    return 9
 
 
 def get_history_limit(plan: str) -> int:
