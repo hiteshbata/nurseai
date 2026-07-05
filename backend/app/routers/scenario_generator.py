@@ -243,13 +243,13 @@ def save_scenario(payload: Dict[str, Any], _admin=Depends(require_admin)):
         "title": payload["title"],
         "setting": payload.get("setting", ""),
         "difficulty": payload.get("difficulty", "intermediate"),
-        "nurse_card": json.dumps({
+        "nurse_card": {
             "role": nurse.get("role", "You are the nurse in charge"),
             "tasks": nurse.get("tasks", []),
             "setting_description": payload.get("setting", ""),
             "patient_summary": f"{patient.get('name', '')}, {patient.get('age', '')}, {patient.get('reason_for_admission', '')}",
-        }),
-        "interlocutor_card": json.dumps({
+        },
+        "interlocutor_card": {
             "patient_name": patient.get("name", "Patient"),
             "age": str(patient.get("age", "")),
             "condition": patient.get("reason_for_admission", ""),
@@ -257,8 +257,8 @@ def save_scenario(payload: Dict[str, Any], _admin=Depends(require_admin)):
             "background": patient.get("background", ""),
             "concerns": inter.get("questions_to_ask", []),
             "instructions_for_ai": inter.get("persona", ""),
-        }),
-        "scoring_criteria": json.dumps(SCORING_CRITERIA),
+        },
+        "scoring_criteria": SCORING_CRITERIA,
         "specialty": payload.get("specialty", ""),
     }).execute()
     return data.data[0]

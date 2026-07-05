@@ -1,10 +1,16 @@
 """
 Tests for the subscription expiry/renewal lifecycle (LB-6).
 
-These are pure unit tests against app.services.plan_gating and the
-renewal-calculation helper used by app.routers.payments.grant_subscription_period.
-No network, no Supabase — datetimes are injected explicitly so the tests
-are deterministic and don't depend on wall-clock time.
+Pure unit tests against app.services.plan_gating (the read-side gating
+logic, which is real production code) plus contract tests against
+app.routers.payments' thin RPC wrappers (get_current_plan,
+grant_subscription_period). The actual read-decide-write for extending
+plan_expires_at is atomic SQL (grant_subscription_period in
+supabase-subscription-lifecycle-migration.sql), not Python — see that
+migration for the authoritative implementation. compute_renewed_expiry
+below is kept as the algorithmic spec the SQL function mirrors.
+No network, no Supabase, no live DB — datetimes are injected explicitly
+so the tests are deterministic and don't depend on wall-clock time.
 """
 import sys
 from pathlib import Path
@@ -91,6 +97,10 @@ def test_missing_plan_defaults_to_free():
 
 
 # ── compute_renewed_expiry ────────────────────────────────────────────
+# No longer called by production code directly — kept as the algorithmic
+# spec that supabase-subscription-lifecycle-migration.sql's
+# grant_subscription_period SQL function mirrors (same same-plan +
+# still-active + GREATEST(now, current_expires_at) logic).
 
 def test_fresh_purchase_starts_full_period_from_now():
     expires_at, is_fresh = compute_renewed_expiry(
@@ -188,37 +198,28 @@ def test_effective_status_within_grace_still_active():
     assert get_effective_subscription_status(profile, now=NOW) == "active"
 
 
-# ── grant_subscription_period end-to-end (fake Supabase double) ──────
-# Verifies points 2/3/4 of the LB-6 lifecycle review against the actual
-# DB read -> compute -> write path, not just the pure compute function.
+# ── grant_subscription_period / get_current_plan (RPC-wrapper contract) ──
+# The actual read-decide-write now happens atomically inside the
+# grant_subscription_period SQL function (supabase-subscription-lifecycle-
+# migration.sql), not in Python — see the LB-6 concurrency review: the
+# previous Python-side implementation had both a lost-update race AND a
+# tautological same-plan check (it read user_profiles.plan AFTER
+# process_payment_rpc had already overwritten it to the new plan). These
+# tests verify the Python wrapper is a correct, thin pass-through: it
+# reads previous_plan BEFORE the payment is processed, and forwards the
+# right arguments to the RPC. compute_renewed_expiry (tested above)
+# remains the algorithmic spec — the SQL function mirrors it exactly.
 
-class _FakeQuery:
-    def __init__(self, table, op, payload=None):
-        self.table = table
-        self.op = op
-        self.payload = payload
-        self.filters = {}
-
-    def select(self, _cols):
-        return self
-
-    def update(self, payload):
-        self.op = "update"
-        self.payload = payload
-        return self
-
-    def eq(self, col, val):
-        self.filters[col] = val
-        return self
+class _FakeRpcCall:
+    def __init__(self, recorder, name, params, response_data):
+        self.recorder = recorder
+        self.name = name
+        self.params = params
+        self.response_data = response_data
 
     def execute(self):
-        row = self.table.rows.get(self.filters.get("user_id"))
-        if self.op == "update":
-            row = row or {}
-            row.update(self.payload)
-            self.table.rows[self.filters["user_id"]] = row
-            return _FakeResult([row])
-        return _FakeResult([row] if row else [])
+        self.recorder.append((self.name, self.params))
+        return _FakeResult(self.response_data)
 
 
 class _FakeResult:
@@ -226,82 +227,106 @@ class _FakeResult:
         self.data = data
 
 
-class _FakeTable:
-    def __init__(self):
-        self.rows = {}
+class _FakeRpcSupabase:
+    """Records every .rpc(name, params).execute() call; table() reads
+    return canned data for get_current_plan."""
+    def __init__(self, table_rows=None, rpc_response=None):
+        self.table_rows = table_rows or {}
+        self.rpc_response = rpc_response if rpc_response is not None else [
+            {"plan_expires_at": iso(NOW + timedelta(days=PLAN_PERIOD_DAYS)), "is_fresh_start": True}
+        ]
+        self.rpc_calls = []
 
-    def select(self, _cols):
-        return _FakeQuery(self, "select")
-
-    def update(self, payload):
-        return _FakeQuery(self, "update", payload)
-
-
-class _FakeSupabase:
-    def __init__(self):
-        self._tables = {"user_profiles": _FakeTable()}
+    def rpc(self, name, params):
+        return _FakeRpcCall(self.rpc_calls, name, params, self.rpc_response)
 
     def table(self, name):
-        return self._tables[name]
+        return _FakeReadOnlyTable(self.table_rows)
 
 
-def test_grant_subscription_period_fresh_grant_and_renewal(monkeypatch):
+class _FakeReadOnlyTable:
+    def __init__(self, rows):
+        self.rows = rows
+        self._filter_user_id = None
+
+    def select(self, _cols):
+        return self
+
+    def eq(self, col, val):
+        if col == "user_id":
+            self._filter_user_id = val
+        return self
+
+    def execute(self):
+        row = self.rows.get(self._filter_user_id)
+        return _FakeResult([row] if row else [])
+
+
+def test_get_current_plan_reads_before_any_payment_processing(monkeypatch):
     import app.routers.payments as payments_mod
 
-    fake = _FakeSupabase()
+    fake = _FakeRpcSupabase(table_rows={"user-1": {"plan": "basic"}})
     monkeypatch.setattr(payments_mod, "get_supabase", lambda: fake)
 
-    user_id = "user-1"
-    fake._tables["user_profiles"].rows[user_id] = {"plan": "free", "plan_expires_at": None}
-
-    # First payment: fresh grant (point 2 — paid access exists after payment)
-    payments_mod.grant_subscription_period(user_id, "pro")
-    row = fake._tables["user_profiles"].rows[user_id]
-    assert row["subscription_status"] == "active"
-    first_expiry = parse_timestamp(row["plan_expires_at"])
-    assert first_expiry is not None
-    assert first_expiry > datetime.now(timezone.utc) + timedelta(days=PLAN_PERIOD_DAYS - 1)
-    assert "plan_started_at" in row  # fresh start records when the period began
-
-    # Second payment for the SAME plan before expiry: renewal extends,
-    # doesn't reset the clock (point 4).
-    row["plan"] = "pro"  # simulates process_payment_rpc having set this
-    payments_mod.grant_subscription_period(user_id, "pro")
-    second_expiry = parse_timestamp(fake._tables["user_profiles"].rows[user_id]["plan_expires_at"])
-    assert second_expiry > first_expiry  # extended, not reset to a shorter/equal date
-    assert second_expiry - first_expiry >= timedelta(days=PLAN_PERIOD_DAYS - 1)
+    assert payments_mod.get_current_plan("user-1") == "basic"
+    assert payments_mod.get_current_plan("no-such-user") is None
 
 
-def test_grant_subscription_period_sequential_double_call_is_additive_not_corrupt():
-    # Guards point 5 ("multiple payments do not create inconsistent state")
-    # for the *sequential* case (e.g. a user legitimately buys two months
-    # back to back). True concurrent-race safety depends on process_payment_rpc's
-    # own locking, which isn't in this repo — see the review notes for that gap.
-    #
-    # grant_subscription_period's renewal-vs-fresh-start decision reads
-    # user_profiles.plan and compares it to the new plan being granted. In
-    # production this only works correctly because process_payment_rpc is
-    # called (and presumed to synchronously commit user_profiles.plan)
-    # BEFORE grant_subscription_period runs — so this test sets row["plan"]
-    # between calls to reproduce that same ordering. If that RPC assumption
-    # is ever wrong (async/deferred write), this same-plan detection would
-    # silently misfire — see the review notes.
+def test_grant_subscription_period_calls_rpc_with_previous_plan_and_period_constants(monkeypatch):
+    # This is the regression test for the tautology bug: previous_plan
+    # must be threaded through to the RPC exactly as the caller captured
+    # it (e.g. "basic", from BEFORE process_payment overwrote the column
+    # to "elite") — never re-derived from the (by-then-already-new) plan.
     import app.routers.payments as payments_mod
 
-    fake = _FakeSupabase()
-    user_id = "user-2"
-    fake._tables["user_profiles"].rows[user_id] = {"plan": "free", "plan_expires_at": None}
+    fake = _FakeRpcSupabase()
+    monkeypatch.setattr(payments_mod, "get_supabase", lambda: fake)
 
-    import unittest.mock as mock
-    with mock.patch.object(payments_mod, "get_supabase", lambda: fake):
-        payments_mod.grant_subscription_period(user_id, "elite")
-        fake._tables["user_profiles"].rows[user_id]["plan"] = "elite"  # simulates process_payment_rpc's write
-        payments_mod.grant_subscription_period(user_id, "elite")
+    payments_mod.grant_subscription_period("user-1", "elite", previous_plan="basic")
 
-    row = fake._tables["user_profiles"].rows[user_id]
-    expiry = parse_timestamp(row["plan_expires_at"])
-    # Two full periods stacked, not a single period and not corrupted/reset.
-    assert expiry >= datetime.now(timezone.utc) + timedelta(days=2 * PLAN_PERIOD_DAYS - 1)
+    assert len(fake.rpc_calls) == 1
+    name, params = fake.rpc_calls[0]
+    assert name == "grant_subscription_period"
+    assert params == {
+        "p_user_id": "user-1",
+        "p_new_plan": "elite",
+        "p_previous_plan": "basic",
+        "p_period_days": PLAN_PERIOD_DAYS,
+        "p_grace_days": GRACE_PERIOD_DAYS,
+    }
+
+
+def test_grant_subscription_period_raises_if_rpc_returns_no_row(monkeypatch):
+    import app.routers.payments as payments_mod
+    import pytest
+
+    fake = _FakeRpcSupabase(rpc_response=[])
+    monkeypatch.setattr(payments_mod, "get_supabase", lambda: fake)
+
+    with pytest.raises(RuntimeError):
+        payments_mod.grant_subscription_period("ghost-user", "pro", previous_plan="free")
+
+
+def test_previous_plan_is_captured_before_process_payment_call_in_verify_payment():
+    # Structural check: get_current_plan(...) must appear before
+    # process_payment_rpc(...) in verify_payment's source, or previous_plan
+    # would be read after user_profiles.plan has already been overwritten.
+    import inspect
+    import app.routers.payments as payments_mod
+
+    src = inspect.getsource(payments_mod.verify_payment)
+    assert src.index("get_current_plan(") < src.index("process_payment_rpc(")
+
+
+def test_previous_plan_is_captured_before_process_payment_call_in_webhook():
+    # The actual payment.captured handling lives in _process_webhook_body
+    # (extracted so razorpay_webhook can stay a thin async shell around
+    # request.body() while the blocking work runs via run_sync/threadpool).
+    import inspect
+    import app.routers.payments as payments_mod
+
+    src = inspect.getsource(payments_mod._process_webhook_body)
+    assert src.index("get_current_plan(") < src.index("process_payment_rpc(")
 
 
 # ── structural invariants (points 6/7) ────────────────────────────────
@@ -311,6 +336,20 @@ def test_grant_subscription_period_sequential_double_call_is_additive_not_corrup
 # make retries/failures safe, by inspecting the actual source — so a
 # future edit that reorders these calls breaks a test instead of
 # silently reopening the double-extension / activate-on-failure holes.
+
+def _extract_event_branch(webhook_src: str, event_marker: str) -> str:
+    """Slice out just the `elif event_type == ...` (or `in (...)`) branch
+    that contains event_marker, bounded by the next `elif event_type` or
+    the final `else:` -- whichever comes first. Scoping to a single branch
+    (rather than rindex/index over the whole function) keeps these tests
+    correct as more event types are added alongside payment.captured."""
+    branch_start = webhook_src.index(event_marker)
+    next_elif_idx = webhook_src.find("elif event_type", branch_start + 1)
+    next_else_idx = webhook_src.find("\n    else:", branch_start)
+    candidates = [i for i in (next_elif_idx, next_else_idx) if i != -1]
+    branch_end = min(candidates)
+    return webhook_src[branch_start:branch_end]
+
 
 def test_grant_subscription_period_only_called_after_already_processed_check():
     import inspect
@@ -324,22 +363,104 @@ def test_grant_subscription_period_only_called_after_already_processed_check():
         "check in verify_payment, or a webhook race can double-extend a single payment"
     )
 
-    webhook_src = inspect.getsource(payments_mod.razorpay_webhook)
-    already_processed_idx = webhook_src.rindex('"already_processed"')  # the payment.captured one, not verify's
-    grant_call_idx = webhook_src.index("grant_subscription_period(")
-    assert grant_call_idx > already_processed_idx
+    webhook_src = inspect.getsource(payments_mod._process_webhook_body)
+
+    for event_marker in ('"payment.captured"', '"subscription.charged"'):
+        branch = _extract_event_branch(webhook_src, event_marker)
+        already_processed_idx = branch.rindex('"already_processed"')
+        grant_call_idx = branch.index("grant_subscription_period(")
+        assert grant_call_idx > already_processed_idx, (
+            f"grant_subscription_period must be called after the already_processed "
+            f"check in the {event_marker} branch"
+        )
 
 
 def test_payment_failed_path_never_grants_a_subscription():
     import inspect
     import app.routers.payments as payments_mod
 
-    webhook_src = inspect.getsource(payments_mod.razorpay_webhook)
-    failed_branch_start = webhook_src.index('"payment.failed"')
-    failed_branch_end = webhook_src.index("else:", failed_branch_start)
-    failed_branch = webhook_src[failed_branch_start:failed_branch_end]
+    webhook_src = inspect.getsource(payments_mod._process_webhook_body)
+    failed_branch = _extract_event_branch(webhook_src, '"payment.failed"')
     assert "grant_subscription_period" not in failed_branch
     assert "process_payment_rpc" not in failed_branch
+
+
+def test_subscription_lifecycle_events_never_grant_or_charge():
+    """subscription.cancelled/completed/halted only flip auto_renew_enabled
+    off -- they must never call grant_subscription_period or
+    process_payment_rpc (that's subscription.charged's job, tested above)."""
+    import inspect
+    import app.routers.payments as payments_mod
+
+    webhook_src = inspect.getsource(payments_mod._process_webhook_body)
+    branch = _extract_event_branch(webhook_src, '"subscription.cancelled"')
+    assert "grant_subscription_period" not in branch
+    assert "process_payment_rpc" not in branch
+
+
+# ── get_notes: Razorpay sends [] instead of {} for "no notes" on some ──
+# ── entities (e.g. subscription-generated payments) -- caught live via ──
+# ── ngrok testing: entity.get("notes", {}) doesn't help since the key IS ──
+# ── present, just wrongly typed, so .get() on it crashed with 500. ──────
+
+def test_get_notes_handles_list_notes():
+    import app.routers.payments as payments_mod
+
+    assert payments_mod.get_notes({"notes": []}) == {}
+
+
+def test_get_notes_handles_missing_notes():
+    import app.routers.payments as payments_mod
+
+    assert payments_mod.get_notes({}) == {}
+
+
+def test_get_notes_handles_none_notes():
+    import app.routers.payments as payments_mod
+
+    assert payments_mod.get_notes({"notes": None}) == {}
+
+
+def test_get_notes_returns_real_notes_dict():
+    import app.routers.payments as payments_mod
+
+    assert payments_mod.get_notes({"notes": {"plan_id": "pro", "user_id": "u1"}}) == {
+        "plan_id": "pro",
+        "user_id": "u1",
+    }
+
+
+# ── parse_process_payment_result: process_payment is RETURNS text (a ──
+# ── scalar) -- PostgREST/postgrest-py hands that back as a bare string, ──
+# ── not [{"process_payment": "..."}]. Caught live: every real payment ──
+# ── (webhook AND synchronous verify) crashed with TypeError: string ──
+# ── indices must be integers the moment this code path actually ran. ──
+
+def test_parse_process_payment_result_handles_bare_string():
+    import app.routers.payments as payments_mod
+
+    assert payments_mod.parse_process_payment_result("ok") == "ok"
+    assert payments_mod.parse_process_payment_result("already_processed") == "already_processed"
+
+
+def test_parse_process_payment_result_handles_dict_wrapped_list():
+    import app.routers.payments as payments_mod
+
+    assert payments_mod.parse_process_payment_result([{"process_payment": "ok"}]) == "ok"
+
+
+def test_parse_process_payment_result_handles_raw_string_list():
+    import app.routers.payments as payments_mod
+
+    assert payments_mod.parse_process_payment_result(["ok"]) == "ok"
+
+
+def test_parse_process_payment_result_raises_on_empty():
+    import app.routers.payments as payments_mod
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        payments_mod.parse_process_payment_result([])
 
 
 if __name__ == "__main__":

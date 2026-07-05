@@ -15,7 +15,7 @@ class PracticePlanUpdate(BaseModel):
 
 
 @router.put("/practice-plan")
-async def update_practice_plan(
+def update_practice_plan(
     payload: PracticePlanUpdate,
     current_user: UserInfo = Depends(get_current_user),
 ):

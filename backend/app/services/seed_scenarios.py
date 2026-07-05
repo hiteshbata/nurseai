@@ -383,10 +383,134 @@ SPEAKING_SCENARIOS = [
 ]
 
 
+WRITING_SCENARIOS = [
+    # ── 1. Referral Letter - Post-Fall Elderly Patient ──
+    {
+        "module": "writing",
+        "title": "Referral Letter - Post-Fall Elderly Patient",
+        "difficulty": "medium",
+        "setting": (
+            "You are a nurse at Riverside Medical Centre. Mrs. Margaret Ellis, 78, attended today "
+            "after a fall at home two days ago. She has bruising to her right hip and reports "
+            "increasing pain when walking. She lives alone and her daughter visits twice a week. "
+            "She has a history of osteoporosis and takes alendronic acid weekly. Blood pressure "
+            "138/84, pulse 78. No loss of consciousness during the fall. She is reluctant to use "
+            "a walking frame. You are referring her to Dr. Sarah Chen, Geriatrician, at City "
+            "General Hospital for a falls risk assessment."
+        ),
+        "nurse_card": {
+            "role": "Write a referral letter to Dr. Sarah Chen, Geriatrician, City General Hospital, requesting a falls risk assessment for this patient.",
+            "tasks": [
+                "State the purpose of the referral clearly in the opening",
+                "Summarise the fall — when it happened, mechanism, and current symptoms",
+                "Include relevant medical history (osteoporosis, medication) and social circumstances (lives alone, level of support)",
+                "Explain what you have already assessed or advised, and why specialist input is needed now",
+                "Request a specific action — a falls risk assessment appointment — and provide your contact details for follow-up",
+            ],
+        },
+    },
+    # ── 2. Discharge Letter - Diabetic Patient to Community Nurse ──
+    {
+        "module": "writing",
+        "title": "Discharge Letter - Diabetic Patient to Community Nurse",
+        "difficulty": "medium",
+        "setting": (
+            "You are a ward nurse at Northside Hospital. Mr. David Okafor, 54, is being discharged "
+            "today after a 4-day admission for a diabetic foot ulcer on his left heel, now healing "
+            "well with daily dressing changes. He has Type 2 diabetes (HbA1c 9.2%, poorly controlled) "
+            "and was started on a revised insulin regimen during this admission. He needs continued "
+            "wound care and glucose monitoring at home. You are writing to the community district "
+            "nurse, Ms. Fiona Reilly, who will take over his care."
+        ),
+        "nurse_card": {
+            "role": "Write a discharge letter to Ms. Fiona Reilly, Community District Nurse, handing over this patient's ongoing wound care and diabetes management.",
+            "tasks": [
+                "State the reason for admission and the purpose of this handover letter",
+                "Describe the wound's current state and the dressing regimen to continue",
+                "Explain the new insulin regimen and what glucose monitoring is required",
+                "Note any complications during admission and what to watch for at home",
+                "Specify the follow-up plan and when the patient should be reviewed",
+            ],
+        },
+    },
+    # ── 3. Referral Letter - Antenatal Patient to Obstetrician ──
+    {
+        "module": "writing",
+        "title": "Referral Letter - Antenatal Patient with Gestational Diabetes",
+        "difficulty": "hard",
+        "setting": (
+            "You are a midwife at a community antenatal clinic. Mrs. Anjali Desai, 31, is 28 weeks "
+            "pregnant with her second child. Her oral glucose tolerance test today shows gestational "
+            "diabetes (fasting 6.1 mmol/L, 2-hour 9.8 mmol/L). Her first pregnancy was uncomplicated. "
+            "She is otherwise well, BMI 27, blood pressure 122/78. She is anxious about what this "
+            "means for her baby. You are referring her to Dr. Michael Tan, Obstetrician, at Westfield "
+            "Maternity Hospital for specialist antenatal management."
+        ),
+        "nurse_card": {
+            "role": "Write a referral letter to Dr. Michael Tan, Obstetrician, Westfield Maternity Hospital, for specialist management of this patient's newly diagnosed gestational diabetes.",
+            "tasks": [
+                "State the reason for referral and current gestation clearly",
+                "Report the glucose tolerance test results and relevant background (BMI, obstetric history)",
+                "Describe the patient's current wellbeing and emotional response to the diagnosis",
+                "Explain any initial advice already given (diet, monitoring) and what you are asking the specialist to do",
+                "Indicate the urgency of the referral given the gestation and request an early appointment",
+            ],
+        },
+    },
+    # ── 4. Letter to Physiotherapist - Post Hip Replacement ──
+    {
+        "module": "writing",
+        "title": "Referral Letter - Post Hip Replacement Rehabilitation",
+        "difficulty": "easy",
+        "setting": (
+            "You are a ward nurse at Eastgate Orthopaedic Unit. Mrs. Carmen Alves, 67, had a total "
+            "hip replacement 5 days ago and is being discharged home. She is mobilising with a "
+            "walking frame but still needs supervision on stairs. She lives with her husband in a "
+            "two-storey house. You are referring her to Mr. James Doyle, Community Physiotherapist, "
+            "for ongoing rehabilitation at home."
+        ),
+        "nurse_card": {
+            "role": "Write a referral letter to Mr. James Doyle, Community Physiotherapist, requesting home-based rehabilitation follow-up for this patient.",
+            "tasks": [
+                "State the purpose of the referral and the surgery performed with the date",
+                "Describe her current mobility level and any precautions still in place",
+                "Mention her home environment (stairs, level of support from her husband)",
+                "Summarise the exercises and hip precautions she has already been taught",
+                "Request a home visit and specify what you would like the physiotherapist to assess or continue",
+            ],
+        },
+    },
+    # ── 5. Letter to General Practitioner - Medication Review ──
+    {
+        "module": "writing",
+        "title": "Referral Letter - Medication Review After Recurrent Falls",
+        "difficulty": "medium",
+        "setting": (
+            "You are a practice nurse at Elmwood Health Centre. Mr. Thomas Nguyen, 82, has had two "
+            "falls in the past month, neither resulting in injury. He is on five regular medications, "
+            "including a diuretic and an antihypertensive, and mentions feeling dizzy on standing. "
+            "He lives with his son. His blood pressure lying is 142/88 and standing (after 2 minutes) "
+            "is 116/70. You are writing to his general practitioner, Dr. Elena Vasquez, requesting a "
+            "medication review."
+        ),
+        "nurse_card": {
+            "role": "Write a referral letter to Dr. Elena Vasquez, General Practitioner, requesting a medication review for this patient given his recurrent falls and postural blood pressure drop.",
+            "tasks": [
+                "State the purpose of the letter — request for medication review — in the opening",
+                "Summarise the falls history and the postural blood pressure findings",
+                "List the current medications relevant to the concern",
+                "Explain the impact on the patient's daily life and living situation",
+                "Request specific action — a medication review appointment — and offer to provide further observations if needed",
+            ],
+        },
+    },
+]
+
+
 def seed_scenarios():
     supabase = get_supabase()
     count = 0
-    for scenario in SPEAKING_SCENARIOS:
+    for scenario in SPEAKING_SCENARIOS + WRITING_SCENARIOS:
         existing = supabase.table("scenarios").select("id").eq("title", scenario["title"]).execute()
         if not existing.data:
             supabase.table("scenarios").insert(scenario).execute()

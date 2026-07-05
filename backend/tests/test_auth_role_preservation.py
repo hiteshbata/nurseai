@@ -81,15 +81,24 @@ class FakeAuthUser:
 
 
 def run_get_current_user(fake_supabase, user_id):
-    """Invoke the real get_current_user() logic against a fake Supabase client."""
+    """Invoke the real get_current_user() logic against a fake Supabase client.
+
+    get_current_user() now verifies tokens via get_auth_client() (a separate
+    client, kept isolated from the service-role client used for table
+    writes -- see core/supabase.py). fake_supabase.auth doubles as that
+    auth client here since both just need a working .auth.get_user().
+    """
     fake_supabase.auth.get_user.return_value = MagicMock(user=FakeAuthUser(user_id))
     credentials = MagicMock(credentials="fake-token")
     original_get_supabase = auth_module.get_supabase
+    original_get_auth_client = auth_module.get_auth_client
     auth_module.get_supabase = lambda: fake_supabase
+    auth_module.get_auth_client = lambda: fake_supabase
     try:
         return auth_module.get_current_user(credentials)
     finally:
         auth_module.get_supabase = original_get_supabase
+        auth_module.get_auth_client = original_get_auth_client
 
 
 class AdminSelfDemotionTests(unittest.TestCase):

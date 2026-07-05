@@ -5,5 +5,5 @@ router = APIRouter(prefix="/plans", tags=["plans"])
 
 
 @router.get("/")
-async def get_plans():
+def get_plans():
     return {"plans": PLANS}

@@ -17,15 +17,22 @@ def get_month_start_utc():
 
 
 @router.get("/usage")
-async def get_session_usage(current_user: UserInfo = Depends(get_current_user)):
+def get_session_usage(current_user: UserInfo = Depends(get_current_user)):
     supabase = get_supabase()
 
     profile = supabase.table("user_profiles").select(
-        "plan, plan_expires_at, sessions_used_this_month, sessions_reset_date"
+        "plan, plan_expires_at, sessions_used_this_month, sessions_reset_date, auto_renew_enabled"
     ).eq("user_id", current_user.id).execute()
 
     if not profile.data:
-        return {"sessions_used": 0, "sessions_limit": 3, "plan": "free"}
+        free_limit = PLAN_LIMITS["free"]
+        return {
+            "sessions_used": 0,
+            "sessions_limit": free_limit,
+            "sessions_remaining": free_limit,
+            "plan": "free",
+            "auto_renew_enabled": False,
+        }
 
     profile_data = profile.data[0]
     plan = get_plan_from_profile(profile_data)
@@ -48,17 +55,29 @@ async def get_session_usage(current_user: UserInfo = Depends(get_current_user)):
         "sessions_limit": limit,
         "sessions_remaining": max(0, limit - sessions_used),
         "plan": plan,
+        "auto_renew_enabled": bool(profile_data.get("auto_renew_enabled")),
     }
 
 
 @router.post("/check-and-increment")
-async def check_and_increment_session(
+def check_and_increment_session(
     current_user: UserInfo = Depends(get_current_user),
 ):
     supabase = get_supabase()
 
+    # The compare-and-swap update below only ever matches an existing row;
+    # a user with no user_profiles row yet (e.g. registered but never
+    # completed onboarding) would fail every retry and always 409. This
+    # upsert only creates a row when one is missing (ON CONFLICT DO
+    # NOTHING) -- it never touches an existing row's data.
+    supabase.table("user_profiles").upsert(
+        {"user_id": current_user.id, "sessions_used_this_month": 0},
+        on_conflict="user_id",
+        ignore_duplicates=True,
+    ).execute()
+
     for _ in range(MAX_INCREMENT_RETRIES):
-        usage = await get_session_usage(current_user)
+        usage = get_session_usage(current_user)
 
         if usage["sessions_remaining"] <= 0:
             raise HTTPException(
@@ -117,3 +136,21 @@ def validate_session(user_id: str, session_id: int) -> bool:
         .execute()
     )
     return bool(result.data)
+
+
+def is_first_ever_session(user_id: str, session_type: str = "speaking") -> bool:
+    """True if this user has at most one session_usage row of this type ever.
+    session_usage rows are created by check_and_increment_session at session
+    start (before any /chat or /tts calls), so this stays true for the whole
+    duration of a user's very first session and flips to false the moment
+    they start a second one — used to grant free-tier users one full-quality
+    "premium trial" session."""
+    supabase = get_supabase()
+    result = (
+        supabase.table("session_usage")
+        .select("id", count="exact")
+        .eq("user_id", user_id)
+        .eq("session_type", session_type)
+        .execute()
+    )
+    return (result.count or 0) <= 1

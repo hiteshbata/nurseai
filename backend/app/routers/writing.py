@@ -2,12 +2,25 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from app.core.supabase import get_supabase
+from app.core.threading import run_sync
+from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo
 from app.services.ai_scoring import score_writing
 from app.services.plan_gating import has_writing_access, get_plan_from_profile
+import base64
 import json
 
 router = APIRouter(prefix="/writing", tags=["writing"])
+
+SUBMIT_RATE_LIMIT_MAX_CALLS = 20
+SUBMIT_RATE_LIMIT_WINDOW_SECONDS = 600
+_submit_rate_limiter = SlidingWindowRateLimiter(SUBMIT_RATE_LIMIT_MAX_CALLS, SUBMIT_RATE_LIMIT_WINDOW_SECONDS)
+
+SUBMIT_IMAGE_RATE_LIMIT_MAX_CALLS = 10
+SUBMIT_IMAGE_RATE_LIMIT_WINDOW_SECONDS = 600
+_submit_image_rate_limiter = SlidingWindowRateLimiter(SUBMIT_IMAGE_RATE_LIMIT_MAX_CALLS, SUBMIT_IMAGE_RATE_LIMIT_WINDOW_SECONDS)
+
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
 class WritingSubmitRequest(BaseModel):
@@ -48,10 +61,15 @@ async def submit_writing(
     current_user: UserInfo = Depends(get_current_user),
 ):
     """Submit a typed writing response for scoring."""
+    if _submit_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many submissions — please slow down.")
+
     supabase = get_supabase()
 
     # Plan gate — writing requires Pro or Elite
-    profile = supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute()
+    profile = await run_sync(
+        supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute
+    )
     plan = get_plan_from_profile(profile.data[0] if profile.data else {})
     if not has_writing_access(plan):
         raise HTTPException(
@@ -63,9 +81,9 @@ async def submit_writing(
             },
         )
 
-    scenario_data = supabase.table("scenarios").select(
-        "id, title, nurse_card"
-    ).eq("id", request.scenario_id).execute()
+    scenario_data = await run_sync(
+        supabase.table("scenarios").select("id, title, nurse_card").eq("id", request.scenario_id).execute
+    )
 
     if not scenario_data.data:
         raise HTTPException(status_code=404, detail="Scenario not found")
@@ -80,14 +98,22 @@ async def submit_writing(
         supabase=supabase,
     )
 
-    supabase.table("submissions").insert({
-        "user_id": current_user.id,
-        "question_id": request.scenario_id,
-        "module": "writing",
-        "answer": request.content,
-        "score": feedback.get("overall_score", 0),
-        "feedback": json.dumps(feedback),
-    }).execute()
+    if feedback.get("provider_failure"):
+        raise HTTPException(
+            status_code=503,
+            detail="Scoring is temporarily unavailable. Please try again in a few minutes.",
+        )
+
+    await run_sync(
+        supabase.table("submissions").insert({
+            "user_id": current_user.id,
+            "scenario_id": request.scenario_id,
+            "module": "writing",
+            "answer": request.content,
+            "score": feedback.get("overall_score") or 0,
+            "feedback": json.dumps(feedback),
+        }).execute
+    )
 
     return {"success": True, "feedback": feedback}
 
@@ -99,13 +125,24 @@ async def submit_writing_image(
 ):
     """Submit a photo of handwritten letter - uses Gemini Vision."""
     import httpx
-    import base64
     from app.core.config import settings
+
+    if _submit_image_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many submissions — please slow down.")
+
+    try:
+        decoded_image = base64.b64decode(request.image_base64, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image data")
+    if len(decoded_image) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="Image must be under 5MB")
 
     supabase = get_supabase()
 
     # Plan gate — writing requires Pro or Elite
-    profile = supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute()
+    profile = await run_sync(
+        supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute
+    )
     plan = get_plan_from_profile(profile.data[0] if profile.data else {})
     if not has_writing_access(plan):
         raise HTTPException(
@@ -117,9 +154,9 @@ async def submit_writing_image(
             },
         )
 
-    scenario_data = supabase.table("scenarios").select(
-        "id, title, nurse_card"
-    ).eq("id", request.scenario_id).execute()
+    scenario_data = await run_sync(
+        supabase.table("scenarios").select("id, title, nurse_card").eq("id", request.scenario_id).execute
+    )
 
     if not scenario_data.data:
         raise HTTPException(status_code=404, detail="Scenario not found")
@@ -175,13 +212,21 @@ async def submit_writing_image(
         supabase=supabase,
     )
 
-    supabase.table("submissions").insert({
-        "user_id": current_user.id,
-        "question_id": request.scenario_id,
-        "module": "writing",
-        "answer": extracted_text,
-        "score": feedback.get("overall_score", 0),
-        "feedback": json.dumps(feedback),
-    }).execute()
+    if feedback.get("provider_failure"):
+        raise HTTPException(
+            status_code=503,
+            detail="Scoring is temporarily unavailable. Please try again in a few minutes.",
+        )
+
+    await run_sync(
+        supabase.table("submissions").insert({
+            "user_id": current_user.id,
+            "scenario_id": request.scenario_id,
+            "module": "writing",
+            "answer": extracted_text,
+            "score": feedback.get("overall_score") or 0,
+            "feedback": json.dumps(feedback),
+        }).execute
+    )
 
     return {"success": True, "extracted_text": extracted_text, "feedback": feedback}

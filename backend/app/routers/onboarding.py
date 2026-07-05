@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Depends
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException
 from app.core.supabase import get_supabase
 from app.routers.auth import get_current_user, UserInfo
 from app.schemas.onboarding import OnboardingCreate, OnboardingResponse
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 
@@ -14,10 +18,12 @@ def get_onboarding_status(
     supabase = get_supabase()
     try:
         data = supabase.table("user_profiles").select("*").eq("user_id", current_user.id).execute()
-        if data.data:
-            return data.data[0]
     except Exception:
-        pass
+        logger.error("Failed to fetch onboarding status for user_id=%s", current_user.id, exc_info=True)
+        raise HTTPException(status_code=503, detail="Could not check onboarding status. Please try again.")
+
+    if data.data:
+        return data.data[0]
     return {"onboarding_completed": False}
 
 
@@ -46,18 +52,7 @@ def complete_onboarding(
         "updated_at": now,
     }
 
-    try:
-        existing = supabase.table("user_profiles").select("user_id").eq("user_id", current_user.id).execute()
-    except Exception:
-        return OnboardingResponse(user_id=current_user.id, onboarding_completed=True)
-
-    if existing.data:
-        supabase.table("user_profiles").update(body).eq("user_id", current_user.id).execute()
-    else:
-        body["created_at"] = now
-        supabase.table("user_profiles").insert(body).execute()
-
-    result = supabase.table("user_profiles").select("*").eq("user_id", current_user.id).execute()
+    result = supabase.table("user_profiles").upsert(body, on_conflict="user_id").execute()
     return result.data[0]
 
 
@@ -69,20 +64,10 @@ def save_baseline_score(
     supabase = get_supabase()
     now = datetime.utcnow().isoformat()
 
-    existing = supabase.table("user_profiles").select("user_id").eq("user_id", current_user.id).execute()
-    if existing.data:
-        supabase.table("user_profiles").update({
-            "baseline_score": baseline_score,
-            "updated_at": now,
-        }).eq("user_id", current_user.id).execute()
-    else:
-        supabase.table("user_profiles").insert({
-            "user_id": current_user.id,
-            "baseline_score": baseline_score,
-            "onboarding_completed": False,
-            "has_taken_oet": False,
-            "created_at": now,
-            "updated_at": now,
-        }).execute()
+    supabase.table("user_profiles").upsert({
+        "user_id": current_user.id,
+        "baseline_score": baseline_score,
+        "updated_at": now,
+    }, on_conflict="user_id").execute()
 
     return {"baseline_score": baseline_score}

@@ -1,7 +1,9 @@
+import os
 import tempfile
 import asyncio
 from typing import Dict, Any, List
 from app.core.config import settings
+from app.core.threading import run_sync
 
 # Azure Speech SDK
 # Install: pip install azure-cognitiveservices-speech
@@ -71,7 +73,21 @@ async def assess_pronunciation_azure(
     """
     Send audio to Azure Pronunciation Assessment API.
     Returns word-level pronunciation scores.
+
+    The Azure SDK call itself is fully synchronous (recognize_once() blocks
+    for the whole recognition round trip), so it runs in a worker thread via
+    run_sync instead of on the event loop.
     """
+    return await run_sync(
+        _assess_pronunciation_azure_sync, audio_data, audio_format, reference_text
+    )
+
+
+def _assess_pronunciation_azure_sync(
+    audio_data: bytes,
+    audio_format: str = "webm",
+    reference_text: str = ""
+) -> Dict[str, Any]:
     try:
         import azure.cognitiveservices.speech as speechsdk
         
@@ -90,36 +106,37 @@ async def assess_pronunciation_azure(
             tmp.write(audio_data)
             tmp_path = tmp.name
         
-        # Configure Azure Speech
-        speech_config = speechsdk.SpeechConfig(
-            subscription=AZURE_SPEECH_KEY,
-            region=AZURE_SPEECH_REGION
-        )
-        speech_config.speech_recognition_language = "en-US"
-        
-        # Configure Pronunciation Assessment
-        pronunciation_config = speechsdk.PronunciationAssessmentConfig(
-            reference_text=reference_text,
-            grading_system=speechsdk.PronunciationAssessmentGradingSystem.HundredMark,
-            granularity=speechsdk.PronunciationAssessmentGranularity.Word,
-            enable_miscue=True
-        )
-        
-        # Create audio config from file
-        audio_config = speechsdk.AudioConfig(filename=tmp_path)
-        
-        # Create recognizer
-        recognizer = speechsdk.SpeechRecognizer(
-            speech_config=speech_config,
-            audio_config=audio_config
-        )
-        pronunciation_config.apply_to(recognizer)
-        
-        # Run recognition
-        result = recognizer.recognize_once()
-        
-        # Clean up temp file
-        os.unlink(tmp_path)
+        try:
+            # Configure Azure Speech
+            speech_config = speechsdk.SpeechConfig(
+                subscription=AZURE_SPEECH_KEY,
+                region=AZURE_SPEECH_REGION
+            )
+            speech_config.speech_recognition_language = "en-US"
+
+            # Configure Pronunciation Assessment
+            pronunciation_config = speechsdk.PronunciationAssessmentConfig(
+                reference_text=reference_text,
+                grading_system=speechsdk.PronunciationAssessmentGradingSystem.HundredMark,
+                granularity=speechsdk.PronunciationAssessmentGranularity.Word,
+                enable_miscue=True
+            )
+
+            # Create audio config from file
+            audio_config = speechsdk.AudioConfig(filename=tmp_path)
+
+            # Create recognizer
+            recognizer = speechsdk.SpeechRecognizer(
+                speech_config=speech_config,
+                audio_config=audio_config
+            )
+            pronunciation_config.apply_to(recognizer)
+
+            # Run recognition
+            result = recognizer.recognize_once()
+        finally:
+            # Clean up temp file even if recognition raised
+            os.unlink(tmp_path)
         
         if result.reason == speechsdk.ResultReason.RecognizedSpeech:
             pronunciation_result = speechsdk.PronunciationAssessmentResult(result)

@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from app.core.config import settings
 from app.core.supabase import get_supabase
-from app.routers import auth, questions, speaking, scoring, progress, admin, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans
+from app.routers import auth, questions, speaking, scoring, progress, admin, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions
 from app.services.oet_questions import oet_service
 from app.services.seed_scenarios import seed_scenarios
 
@@ -38,6 +38,7 @@ app.include_router(payments.router)
 app.include_router(sessions.router)
 app.include_router(profile.router)
 app.include_router(plans.router)
+app.include_router(submissions.router)
 
 @app.get("/")
 def read_root():

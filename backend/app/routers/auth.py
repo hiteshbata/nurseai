@@ -1,7 +1,7 @@
 ﻿import time
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase, get_auth_client
 from app.schemas.user import UserCreate, UserLogin, UserResponse
 from app.services.plan_gating import get_plan_from_profile, get_effective_subscription_status
 from pydantic import BaseModel
@@ -27,8 +27,9 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> UserInfo:
     supabase = get_supabase()
+    auth_client = get_auth_client()
     try:
-        resp = supabase.auth.get_user(credentials.credentials)
+        resp = auth_client.auth.get_user(credentials.credentials)
         user = resp.user
         if not user:
             raise HTTPException(status_code=401, detail="Invalid token")
@@ -45,6 +46,14 @@ def get_current_user(
                 "user_id": user.id,
                 "role": "user",
             }, on_conflict="user_id", ignore_duplicates=True).execute()
+            # Opportunistically prune stale entries so the dict never grows
+            # unbounded across the process lifetime.
+            expired_keys = [
+                key for key, ts in _user_role_cache.items()
+                if now - ts > USER_ROLE_CACHE_TTL
+            ]
+            for key in expired_keys:
+                del _user_role_cache[key]
             _user_role_cache[user.id] = now
 
         return UserInfo(
@@ -56,9 +65,9 @@ def get_current_user(
         raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
 
 @router.post("/register")
-async def register(user: UserCreate):
-    supabase = get_supabase()
-    resp = supabase.auth.sign_up({
+def register(user: UserCreate):
+    auth_client = get_auth_client()
+    resp = auth_client.auth.sign_up({
         "email": user.email,
         "password": user.password,
         "options": {"data": {"name": user.name}},
@@ -72,10 +81,10 @@ async def register(user: UserCreate):
     }
 
 @router.post("/login", response_model=LoginResponse)
-async def login(user: UserLogin):
-    supabase = get_supabase()
+def login(user: UserLogin):
+    auth_client = get_auth_client()
     try:
-        resp = supabase.auth.sign_in_with_password({
+        resp = auth_client.auth.sign_in_with_password({
             "email": user.email,
             "password": user.password,
         })
@@ -94,7 +103,7 @@ async def login(user: UserLogin):
         raise HTTPException(status_code=401, detail=f"Invalid credentials: {str(e)}")
 
 @router.get("/me")
-async def get_current_user_info(
+def get_current_user_info(
     current_user: UserInfo = Depends(get_current_user),
 ):
     supabase = get_supabase()

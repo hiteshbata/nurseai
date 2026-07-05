@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from app.core.supabase import get_supabase
 from app.core.plans import GRACE_PERIOD_DAYS
 from app.routers.auth import get_current_user, UserInfo
-import json
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -66,9 +65,9 @@ def admin_create_scenario(
         "title": scenario.title,
         "setting": scenario.setting,
         "difficulty": scenario.difficulty,
-        "interlocutor_card": json.dumps(scenario.interlocutor_card),
-        "nurse_card": json.dumps(scenario.nurse_card),
-        "scoring_criteria": json.dumps(scenario.scoring_criteria),
+        "interlocutor_card": scenario.interlocutor_card,
+        "nurse_card": scenario.nurse_card,
+        "scoring_criteria": scenario.scoring_criteria,
     }).execute()
     return data.data[0]
 
@@ -89,18 +88,18 @@ def admin_update_scenario(
     if scenario.difficulty is not None:
         update_data["difficulty"] = scenario.difficulty
     if scenario.interlocutor_card is not None:
-        update_data["interlocutor_card"] = json.dumps(scenario.interlocutor_card)
+        update_data["interlocutor_card"] = scenario.interlocutor_card
     if scenario.nurse_card is not None:
-        update_data["nurse_card"] = json.dumps(scenario.nurse_card)
+        update_data["nurse_card"] = scenario.nurse_card
     if scenario.scoring_criteria is not None:
-        update_data["scoring_criteria"] = json.dumps(scenario.scoring_criteria)
+        update_data["scoring_criteria"] = scenario.scoring_criteria
     if scenario.is_active is not None:
         update_data["is_active"] = scenario.is_active
 
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    update_data["updated_at"] = "now()"
+    update_data["updated_at"] = datetime.utcnow().isoformat()
     data = supabase.table("scenarios").update(update_data).eq("id", scenario_id).execute()
     return data.data[0]
 
@@ -141,7 +140,7 @@ def admin_update_setting(
     data = supabase.table("settings").upsert({
         "key": key,
         "value": setting.value,
-        "updated_at": "now()",
+        "updated_at": datetime.utcnow().isoformat(),
     }).execute()
     return data.data[0]
 
@@ -156,6 +155,9 @@ def admin_list_users(current_user: UserInfo = Depends(require_admin)):
     return roles
 
 
+ALLOWED_ROLES = {"user", "admin"}
+
+
 class SetRoleRequest(BaseModel):
     user_id: str
     role: str
@@ -167,6 +169,8 @@ def admin_set_user_role(
     current_user: UserInfo = Depends(require_admin),
 ):
     """Set a user's role."""
+    if req.role not in ALLOWED_ROLES:
+        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {sorted(ALLOWED_ROLES)}")
     supabase = get_supabase()
     supabase.table("user_roles").upsert({
         "user_id": req.user_id,

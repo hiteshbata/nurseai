@@ -19,7 +19,6 @@ class OnboardingCreate(BaseModel):
 
 
 class OnboardingResponse(BaseModel):
-    id: str
     user_id: str
     onboarding_completed: bool
     exam_date: Optional[date] = None
