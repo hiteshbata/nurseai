@@ -513,13 +513,13 @@ async def transcribe_audio(
 
 class ChatMessage(BaseModel):
     role: str  # "nurse" or "patient"
-    content: str
+    content: str = Field(max_length=MAX_CHAT_MESSAGE_LENGTH)
 
 
 class PatientChatRequest(BaseModel):
     scenario_id: int
-    message: str
-    history: List[ChatMessage] = Field(default_factory=list)
+    message: str = Field(max_length=MAX_CHAT_MESSAGE_LENGTH)
+    history: List[ChatMessage] = Field(default_factory=list, max_length=MAX_CHAT_HISTORY_MESSAGES)
     session_id: Optional[int] = None
 
 
@@ -824,12 +824,18 @@ async def assess_pronunciation(
     Assess pronunciation from audio recording.
     Called after session ends alongside /score.
     """
+    if _pronunciation_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many pronunciation requests — please slow down.")
+
+    audio_data = await audio.read()
+    if len(audio_data) > MAX_PRONUNCIATION_AUDIO_BYTES:
+        raise HTTPException(status_code=400, detail="Audio file too large")
+
     supabase = get_supabase()
     profile = await get_user_profile(supabase, current_user.id)
     plan = get_plan_from_profile(profile)
 
     try:
-        audio_data = await audio.read()
         audio_format = "webm"
 
         # Determine format from content type
