@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import Link from 'next/link'
 
 const CRITERIA = ['Fluency', 'Grammar', 'Pronunciation', 'Empathy', 'Intelligibility'] as const
 const MAX = 6
@@ -142,11 +143,19 @@ export function CriteriaPentagonCard({
       </h2>
 
       {totalSessions < 3 ? (
-        <p className="text-sm text-slate-400 text-center py-8">
-          {totalSessions === 0
-            ? 'Complete your first speaking session to see your skill breakdown'
-            : 'Complete 3 sessions to see your skill breakdown'}
-        </p>
+        <div className="text-center py-8">
+          <p className="text-sm text-slate-400 mb-3">
+            {totalSessions === 0
+              ? 'Complete your first speaking session to see your skill breakdown'
+              : 'Complete 3 sessions to see your skill breakdown'}
+          </p>
+          <Link
+            href="/practice/speaking"
+            className="inline-block rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary/90"
+          >
+            Start Practicing
+          </Link>
+        </div>
       ) : (
         <>
           <div className="flex justify-center">

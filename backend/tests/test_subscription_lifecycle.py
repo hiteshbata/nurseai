@@ -319,13 +319,13 @@ def test_previous_plan_is_captured_before_process_payment_call_in_verify_payment
 
 
 def test_previous_plan_is_captured_before_process_payment_call_in_webhook():
-    # The actual payment.captured handling lives in _process_webhook_body
-    # (extracted so razorpay_webhook can stay a thin async shell around
-    # request.body() while the blocking work runs via run_sync/threadpool).
+    # Both the payment.captured and subscription.charged branches of
+    # _process_webhook_body share their finalization logic via
+    # _finalize_payment, so the ordering guarantee is checked there once.
     import inspect
     import app.routers.payments as payments_mod
 
-    src = inspect.getsource(payments_mod._process_webhook_body)
+    src = inspect.getsource(payments_mod._finalize_payment)
     assert src.index("get_current_plan(") < src.index("process_payment_rpc(")
 
 
@@ -363,16 +363,15 @@ def test_grant_subscription_period_only_called_after_already_processed_check():
         "check in verify_payment, or a webhook race can double-extend a single payment"
     )
 
-    webhook_src = inspect.getsource(payments_mod._process_webhook_body)
-
-    for event_marker in ('"payment.captured"', '"subscription.charged"'):
-        branch = _extract_event_branch(webhook_src, event_marker)
-        already_processed_idx = branch.rindex('"already_processed"')
-        grant_call_idx = branch.index("grant_subscription_period(")
-        assert grant_call_idx > already_processed_idx, (
-            f"grant_subscription_period must be called after the already_processed "
-            f"check in the {event_marker} branch"
-        )
+    # Both the payment.captured and subscription.charged branches share
+    # this finalization logic via _finalize_payment, so it's checked once.
+    finalize_src = inspect.getsource(payments_mod._finalize_payment)
+    already_processed_idx = finalize_src.rindex('"already_processed"')
+    grant_call_idx = finalize_src.index("grant_subscription_period(")
+    assert grant_call_idx > already_processed_idx, (
+        "grant_subscription_period must be called after the already_processed "
+        "check in _finalize_payment"
+    )
 
 
 def test_payment_failed_path_never_grants_a_subscription():

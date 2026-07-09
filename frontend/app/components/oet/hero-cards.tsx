@@ -1,14 +1,31 @@
+'use client'
+
+import { useState } from "react"
 import { Calendar, TrendingUp, Trophy } from "lucide-react"
 
 export function HeroCards({
   examDaysLeft,
   currentGrade,
   targetBand,
+  onSetExamDate,
+  savingExamDate,
 }: {
   examDaysLeft: number | null
   currentGrade: string
   targetBand: string
+  onSetExamDate?: (date: string) => void
+  savingExamDate?: boolean
 }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [dateValue, setDateValue] = useState('')
+
+  const handleSave = () => {
+    if (dateValue && onSetExamDate) {
+      onSetExamDate(dateValue)
+      setIsEditing(false)
+    }
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
       {/* Days until exam — navy */}
@@ -21,9 +38,36 @@ export function HeroCards({
             <Calendar className="h-5 w-5" aria-hidden="true" />
           </span>
         </div>
-        <p className="mt-6 text-5xl font-bold tabular-nums">
-          {examDaysLeft ?? "—"}
-        </p>
+
+        {examDaysLeft !== null ? (
+          <p className="mt-6 text-5xl font-bold tabular-nums">{examDaysLeft}</p>
+        ) : isEditing ? (
+          <div className="mt-6 flex items-center gap-2">
+            <input
+              type="date"
+              autoFocus
+              value={dateValue}
+              onChange={(e) => setDateValue(e.target.value)}
+              className="rounded-lg bg-white/10 px-2 py-1.5 text-sm text-white [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-white/40"
+            />
+            <button
+              onClick={handleSave}
+              disabled={!dateValue || savingExamDate}
+              className="rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-primary transition disabled:opacity-50"
+            >
+              {savingExamDate ? 'Saving…' : 'Set'}
+            </button>
+          </div>
+        ) : onSetExamDate ? (
+          <button
+            onClick={() => setIsEditing(true)}
+            className="mt-6 self-start text-sm font-semibold text-white underline decoration-white/40 underline-offset-4 transition hover:decoration-white"
+          >
+            Set your exam date →
+          </button>
+        ) : (
+          <p className="mt-6 text-5xl font-bold tabular-nums">—</p>
+        )}
       </div>
 
       {/* Current level — emerald accent */}
@@ -36,7 +80,7 @@ export function HeroCards({
             <TrendingUp className="h-5 w-5 text-accent" aria-hidden="true" />
           </span>
         </div>
-        <p className="mt-6 text-5xl font-bold text-accent">{currentGrade}</p>
+        <p className="mt-6 text-5xl font-bold text-emerald-700">{currentGrade}</p>
       </div>
 
       {/* Target band — navy accent */}

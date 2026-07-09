@@ -8,16 +8,20 @@ import { LayoutDashboard, Settings, LogOut } from 'lucide-react'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
 import api from '@/lib/api'
 
-const landingNavLinks = [
-  { href: '#how-it-works', label: 'How It Works' },
-  { href: '#features', label: 'Features' },
-  { href: '#pricing', label: 'Pricing' },
+const publicNavLinks = [
+  { href: '/#how-it-works', label: 'How It Works' },
+  { href: '/#pricing', label: 'Pricing' },
+  { href: '/about', label: 'About' },
+  { href: '/blog', label: 'Blog' },
 ]
 
 const appNavLinks = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/practice/speaking', label: 'Speaking' },
+  { href: '/practice/writing', label: 'Writing' },
 ]
+
+const WRITING_PLANS = ['pro', 'elite']
 
 const PLAN_LABELS: Record<string, string> = {
   free: 'Free',
@@ -42,6 +46,10 @@ export function Navbar() {
   const router = useRouter()
   const pathname = usePathname()
   const isLanding = pathname === '/'
+  const publicPaths = ['/', '/about', '/support', '/blog', '/privacy', '/terms']
+  const isPublicPage = publicPaths.includes(pathname || '') || (pathname?.startsWith('/learn') ?? false)
+  const navLinksToShow = !session && isPublicPage ? publicNavLinks : appNavLinks
+  const isActiveLink = (href: string) => !href.startsWith('/#') && pathname === href
 
   const getInitials = (name: string) => {
     const parts = name.trim().split(' ')
@@ -87,11 +95,6 @@ export function Navbar() {
     return () => window.removeEventListener('scroll', handler)
   }, [])
 
-  const navLinks = [
-    { href: '/dashboard', label: 'Dashboard' },
-    { href: '/practice/speaking', label: 'Speaking' },
-  ]
-
   const PlanUsagePill = ({ onNavigate }: { onNavigate?: () => void }) => {
     if (!usage) return null
     return (
@@ -103,7 +106,7 @@ export function Navbar() {
           <Link
             href="/upgrade"
             onClick={onNavigate}
-            className="rounded-full bg-[#10B981] px-3 py-1 text-xs font-semibold text-white hover:opacity-90 transition whitespace-nowrap"
+            className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white hover:opacity-90 transition whitespace-nowrap"
           >
             Upgrade
           </Link>
@@ -124,7 +127,7 @@ export function Navbar() {
 
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-6">
-          {(isLanding && !session ? landingNavLinks : appNavLinks).map((link: any) =>
+          {navLinksToShow.map((link: any) =>
             link.disabled ? (
               <span
                 key={link.href}
@@ -138,9 +141,17 @@ export function Navbar() {
                 key={link.href}
                 href={link.href}
                 prefetch={true}
-                className="text-gray-700 hover:text-blue-600 transition text-sm font-semibold"
+                aria-current={isActiveLink(link.href) ? 'page' : undefined}
+                className={`inline-flex items-center gap-1.5 min-h-11 transition text-sm font-semibold ${
+                  isActiveLink(link.href)
+                    ? 'text-emerald-700 border-b-2 border-emerald-700'
+                    : 'text-gray-700 hover:text-blue-600'
+                }`}
               >
                 {link.label}
+                {link.href === '/practice/writing' && usage && !WRITING_PLANS.includes(usage.plan) && (
+                  <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">Pro</span>
+                )}
               </Link>
             )
           )}
@@ -178,7 +189,7 @@ export function Navbar() {
                         <Link
                           href="/upgrade"
                           onClick={() => setAvatarOpen(false)}
-                          className="text-xs font-semibold text-[#10B981] hover:underline whitespace-nowrap"
+                          className="text-xs font-semibold text-emerald-700 hover:underline whitespace-nowrap"
                         >
                           Upgrade
                         </Link>
@@ -277,14 +288,14 @@ export function Navbar() {
                 <Link
                   href="/upgrade"
                   onClick={() => setMobileOpen(false)}
-                  className="rounded-full bg-[#10B981] px-3 py-1 text-xs font-semibold text-white hover:opacity-90 transition whitespace-nowrap"
+                  className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white hover:opacity-90 transition whitespace-nowrap"
                 >
                   Upgrade
                 </Link>
               )}
             </div>
           )}
-          {(isLanding && !session ? landingNavLinks : appNavLinks).map((link: any) =>
+          {navLinksToShow.map((link: any) =>
             link.disabled ? (
               <span
                 key={link.href}
@@ -298,18 +309,24 @@ export function Navbar() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setMobileOpen(false)}
-                className="block py-2 text-gray-700 hover:text-blue-600 transition text-sm"
+                aria-current={isActiveLink(link.href) ? 'page' : undefined}
+                className={`flex items-center gap-1.5 min-h-11 transition text-sm ${
+                  isActiveLink(link.href) ? 'text-emerald-700 font-semibold' : 'text-gray-700 hover:text-blue-600'
+                }`}
               >
                 {link.label}
+                {link.href === '/practice/writing' && usage && !WRITING_PLANS.includes(usage.plan) && (
+                  <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">Pro</span>
+                )}
               </Link>
             )
           )}
           {status !== 'loading' && !session && (
             <>
-              <Link href="/auth/login" onClick={() => setMobileOpen(false)} className="block py-2 text-gray-700 hover:text-blue-600 transition text-sm">
+              <Link href="/auth/login" onClick={() => setMobileOpen(false)} className="flex items-center min-h-11 text-gray-700 hover:text-blue-600 transition text-sm">
                 Sign In
               </Link>
-              <Link href="/auth/register" onClick={() => setMobileOpen(false)} className="block py-2 text-blue-600 font-semibold text-sm">
+              <Link href="/auth/register" onClick={() => setMobileOpen(false)} className="flex items-center min-h-11 text-blue-600 font-semibold text-sm">
                 Sign Up
               </Link>
             </>

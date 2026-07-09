@@ -70,20 +70,20 @@ export function Footer() {
 
           {/* Column 2 — Product */}
           <div>
-            <h4 className="text-white font-semibold mb-4">Product</h4>
-            <ul className="space-y-2 text-sm">
+            <h3 className="text-white font-semibold mb-4">Product</h3>
+            <ul className="text-sm">
               <li>
-                <Link href="/practice/speaking" className="text-white/70 hover:text-white transition">
+                <Link href="/practice/speaking" className="inline-flex items-center min-h-11 text-white/70 hover:text-white transition">
                   Speaking Practice
                 </Link>
               </li>
               <li>
-                <Link href="/#how-it-works" className="text-white/70 hover:text-white transition">
+                <Link href="/#how-it-works" className="inline-flex items-center min-h-11 text-white/70 hover:text-white transition">
                   How It Works
                 </Link>
               </li>
               <li>
-                <Link href={pricingHref} className="text-white/70 hover:text-white transition">
+                <Link href={pricingHref} className="inline-flex items-center min-h-11 text-white/70 hover:text-white transition">
                   Pricing
                 </Link>
               </li>
@@ -92,8 +92,8 @@ export function Footer() {
 
           {/* Column 3 — Learn */}
           <div>
-            <h4 className="text-white font-semibold mb-4">Learn</h4>
-            <ul className="space-y-2 text-sm">
+            <h3 className="text-white font-semibold mb-4">Learn</h3>
+            <ul className="text-sm">
               {[
                 { href: "/learn/what-is-oet-speaking", label: "What is OET Speaking" },
                 { href: "/learn/oet-band-scores", label: "OET Band Scores" },
@@ -102,7 +102,7 @@ export function Footer() {
                 { href: "/learn/oet-for-indian-nurses", label: "OET for Indian Nurses" },
               ].map(({ href, label }) => (
                 <li key={href}>
-                  <Link href={href} className="text-white/70 hover:text-white transition">
+                  <Link href={href} className="inline-flex items-center min-h-11 text-white/70 hover:text-white transition">
                     {label}
                   </Link>
                 </li>
@@ -112,8 +112,8 @@ export function Footer() {
 
           {/* Column 4 — Company */}
           <div>
-            <h4 className="text-white font-semibold mb-4">Company</h4>
-            <ul className="space-y-2 text-sm">
+            <h3 className="text-white font-semibold mb-4">Company</h3>
+            <ul className="text-sm">
               {[
                 { href: "/about", label: "About" },
                 { href: "/support", label: "Support" },
@@ -122,7 +122,7 @@ export function Footer() {
                 { href: "/terms", label: "Terms of Service" },
               ].map(({ href, label }) => (
                 <li key={href}>
-                  <Link href={href} className="text-white/70 hover:text-white transition">
+                  <Link href={href} className="inline-flex items-center min-h-11 text-white/70 hover:text-white transition">
                     {label}
                   </Link>
                 </li>

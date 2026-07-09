@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { Star } from 'lucide-react'
 import api from '@/lib/api'
 
 interface CaseData {
@@ -46,9 +48,15 @@ export function RecommendedCaseCard() {
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
             Recommended for you
           </span>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-slate-400 mb-3">
             Complete a speaking session to get a personalized recommendation.
           </p>
+          <Link
+            href="/practice/speaking"
+            className="inline-block rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary/90 self-start"
+          >
+            Start Practicing
+          </Link>
         </div>
       </div>
     )
@@ -64,13 +72,13 @@ export function RecommendedCaseCard() {
   return (
     <button
       onClick={() => router.push(`/practice/speaking?scenario=${rec.scenario_id}`)}
-      className="w-full text-left rounded-2xl p-5 flex items-center justify-between gap-4 cursor-pointer hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+      className="w-full text-left rounded-2xl p-5 flex items-center justify-between gap-4 cursor-pointer hover:opacity-90 hover:shadow-md active:opacity-80 active:scale-[0.99] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
       style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)' }}
       aria-label={`Start ${rec.title} case`}
     >
       <div className="flex flex-col gap-1 min-w-0">
-        <span className="text-xs font-semibold uppercase tracking-wide text-teal-600">
-          ⭐ Recommended for you
+        <span className="text-xs font-semibold uppercase tracking-wide text-teal-700 flex items-center gap-1">
+          <Star className="w-3.5 h-3.5" aria-hidden="true" /> Recommended for you
         </span>
         <h3 className="text-xl font-bold text-slate-800 text-balance truncate">
           {rec.title}

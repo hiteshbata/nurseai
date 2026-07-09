@@ -1,12 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 
 export default function NewScenarioPage() {
-  const { session, status } = useSupabaseSession()
   const router = useRouter()
   const [formData, setFormData] = useState({
     module: 'speaking',
@@ -30,15 +28,6 @@ export default function NewScenarioPage() {
     },
   })
   const [loading, setLoading] = useState(false)
-
-  if (status === 'loading') {
-    return <div className="flex items-center justify-center min-h-screen"><div>Loading...</div></div>
-  }
-
-  if (!session?.user) {
-    router.push('/auth/login')
-    return null
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

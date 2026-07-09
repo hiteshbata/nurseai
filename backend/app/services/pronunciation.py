@@ -1,4 +1,6 @@
+import logging
 import os
+import subprocess
 import tempfile
 import asyncio
 from typing import Dict, Any, List
@@ -8,8 +10,17 @@ from app.core.threading import run_sync
 # Azure Speech SDK
 # Install: pip install azure-cognitiveservices-speech
 
+logger = logging.getLogger(__name__)
+
 AZURE_SPEECH_KEY = settings.AZURE_SPEECH_KEY
 AZURE_SPEECH_REGION = settings.AZURE_SPEECH_REGION
+
+# Generic, user-safe message shown whenever Azure phoneme-level scoring
+# couldn't run for any reason -- the real cause (missing key, SDK error,
+# transcoding failure, etc.) is logged server-side only, never returned
+# to the client, since earlier versions leaked setup instructions like
+# "Add AZURE_SPEECH_KEY to .env" straight into the results page.
+PRONUNCIATION_UNAVAILABLE_MESSAGE = "Pronunciation analysis is currently unavailable."
 
 # Common Indian English pronunciation 
 # patterns to flag specifically
@@ -83,6 +94,34 @@ async def assess_pronunciation_azure(
     )
 
 
+def _transcode_to_wav(audio_data: bytes, audio_format: str) -> str:
+    """Transcode arbitrary browser-recorded audio (webm/ogg/mp4/...) to the
+    16kHz mono PCM WAV Azure's AudioConfig(filename=...) actually requires --
+    it only accepts WAV by default and does not auto-detect/decode compressed
+    containers, so handing it a raw webm/mp3 file fails with SPXERR_INVALID_HEADER
+    regardless of the file's suffix. Returns the path to the WAV temp file;
+    caller is responsible for deleting it."""
+    src_fd, src_path = tempfile.mkstemp(suffix=f".{audio_format}")
+    dst_fd, dst_path = tempfile.mkstemp(suffix=".wav")
+    os.close(src_fd)
+    os.close(dst_fd)
+    try:
+        with open(src_path, "wb") as f:
+            f.write(audio_data)
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", src_path,
+                "-ar", "16000", "-ac", "1", "-f", "wav", dst_path,
+            ],
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+    finally:
+        os.unlink(src_path)
+    return dst_path
+
+
 def _assess_pronunciation_azure_sync(
     audio_data: bytes,
     audio_format: str = "webm",
@@ -90,22 +129,31 @@ def _assess_pronunciation_azure_sync(
 ) -> Dict[str, Any]:
     try:
         import azure.cognitiveservices.speech as speechsdk
-        
+
         if not AZURE_SPEECH_KEY:
+            logger.error("[PRONUNCIATION_FAILURE] AZURE_SPEECH_KEY is not configured")
             return {
-                "error": "Azure Speech key not configured",
+                "error": PRONUNCIATION_UNAVAILABLE_MESSAGE,
                 "available": False
             }
-        
-        # Save audio to temp file
-        suffix = f".{audio_format}"
-        with tempfile.NamedTemporaryFile(
-            suffix=suffix, 
-            delete=False
-        ) as tmp:
-            tmp.write(audio_data)
-            tmp_path = tmp.name
-        
+
+        try:
+            tmp_path = _transcode_to_wav(audio_data, audio_format)
+        except subprocess.CalledProcessError as e:
+            logger.error(
+                "[PRONUNCIATION_FAILURE] audio transcoding failed: %s",
+                e.stderr.decode(errors="replace")[:500],
+            )
+            return {
+                "error": PRONUNCIATION_UNAVAILABLE_MESSAGE,
+                "available": False,
+                "overall_score": 0,
+                "words": [],
+                "problem_words": [],
+            }
+
+        recognizer = None
+        audio_config = None
         try:
             # Configure Azure Speech
             speech_config = speechsdk.SpeechConfig(
@@ -135,9 +183,17 @@ def _assess_pronunciation_azure_sync(
             # Run recognition
             result = recognizer.recognize_once()
         finally:
-            # Clean up temp file even if recognition raised
-            os.unlink(tmp_path)
-        
+            # Dispose the recognizer/audio_config first so the native SDK
+            # releases its file handle before we unlink -- otherwise deleting
+            # the temp file here can raise (observed as WinError 32 on
+            # Windows) and mask whatever the actual recognition result was.
+            del recognizer
+            del audio_config
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
         if result.reason == speechsdk.ResultReason.RecognizedSpeech:
             pronunciation_result = speechsdk.PronunciationAssessmentResult(result)
             
@@ -172,22 +228,25 @@ def _assess_pronunciation_azure_sync(
                 "transcript": result.text
             }
         else:
+            logger.warning("[PRONUNCIATION_FAILURE] recognition failed: %s", result.reason)
             return {
-                "available": True,
-                "error": f"Recognition failed: {result.reason}",
+                "available": False,
+                "error": PRONUNCIATION_UNAVAILABLE_MESSAGE,
                 "overall_score": 0,
                 "words": [],
                 "problem_words": []
             }
-            
+
     except ImportError:
+        logger.error("[PRONUNCIATION_FAILURE] azure-cognitiveservices-speech is not installed")
         return {
-            "error": "Azure Speech SDK not installed. Run: pip install azure-cognitiveservices-speech",
+            "error": PRONUNCIATION_UNAVAILABLE_MESSAGE,
             "available": False
         }
     except Exception as e:
+        logger.error("[PRONUNCIATION_FAILURE] unexpected error: %s", str(e))
         return {
-            "error": str(e),
+            "error": PRONUNCIATION_UNAVAILABLE_MESSAGE,
             "available": False,
             "overall_score": 0,
             "words": [],
@@ -246,11 +305,14 @@ async def get_pronunciation_feedback(
             "has_azure": True
         }
     else:
-        # Azure not configured — use pattern analysis only
+        # Azure not configured — use pattern analysis only. Elite users hitting
+        # this path means the plan grants Azure access but the server-side key
+        # is missing, which is an ops problem, not something to surface to the user.
+        logger.error("[PRONUNCIATION_FAILURE] AZURE_SPEECH_KEY is not configured")
         return {
             "method": "pattern_analysis",
             "azure": None,
             "pattern_analysis": pattern_findings,
             "has_azure": False,
-            "message": "Add AZURE_SPEECH_KEY to .env for word-level scoring"
+            "message": PRONUNCIATION_UNAVAILABLE_MESSAGE,
         }

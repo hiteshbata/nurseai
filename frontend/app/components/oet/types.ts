@@ -51,6 +51,10 @@ export type SessionUsageData = {
 export type OetDashboardProps = {
   userName: string
   examDaysLeft: number | null
+  examDateSet: boolean
+  targetBandSet: boolean
+  onSetExamDate?: (date: string) => void
+  savingExamDate?: boolean
   sessionUsage?: SessionUsageData | null
   baselineGrade: string
   currentGrade: string

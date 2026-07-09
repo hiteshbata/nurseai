@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
-import { useSupabaseSession } from '@/lib/supabase'
 
 type Step = 'upload' | 'review' | 'generated' | 'saved'
 type Difficulty = 'beginner' | 'intermediate' | 'advanced'
@@ -64,7 +63,6 @@ const emptyData = (): ScenarioData => ({
 
 export default function ScenarioGeneratorPage() {
   const router = useRouter()
-  const { session, status } = useSupabaseSession()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState<Step>('upload')
   const [scenario, setScenario] = useState<ScenarioData>(emptyData)
@@ -77,13 +75,6 @@ export default function ScenarioGeneratorPage() {
   const [savedId, setSavedId] = useState<number | null>(null)
   const [savedTitle, setSavedTitle] = useState<string>('')
   const [savedSpecialty, setSavedSpecialty] = useState<string>('')
-
-  useEffect(() => {
-    if (status === 'loading') return
-    if (!session?.user) {
-      router.push('/auth/login')
-    }
-  }, [status, session, router])
 
   const handleFileSelect = (file: File | null) => {
     setError(null)

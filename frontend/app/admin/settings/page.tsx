@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 
@@ -18,20 +17,14 @@ const SETTINGS_SCHEMA: Record<string, string> = {
 }
 
 export default function AdminSettingsPage() {
-  const { session, status } = useSupabaseSession()
   const router = useRouter()
   const [settings, setSettings] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
 
   useEffect(() => {
-    if (status === 'loading') return
-    if (!session?.user) {
-      router.push('/auth/login')
-      return
-    }
     fetchSettings()
-  }, [status, session])
+  }, [])
 
   const fetchSettings = async () => {
     try {
@@ -63,7 +56,7 @@ export default function AdminSettingsPage() {
     }
   }
 
-  if (status === 'loading' || loading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl">Loading settings...</div>

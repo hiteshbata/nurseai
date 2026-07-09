@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import Link from 'next/link'
 
 function getLast28Days(): Date[] {
   const days: Date[] = []
@@ -71,6 +72,14 @@ export function StreakHeatmapCard({
         <p className="text-sm text-slate-500 mt-0.5">
           {streak > 0 ? 'Practice today to keep it' : 'Start a session to begin your streak'}
         </p>
+        {streak === 0 && (
+          <Link
+            href="/practice/speaking"
+            className="inline-block mt-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary/90"
+          >
+            Start Practicing
+          </Link>
+        )}
       </div>
 
       <div className="grid grid-cols-7 gap-1.5">

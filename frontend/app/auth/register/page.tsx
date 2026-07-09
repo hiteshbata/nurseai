@@ -172,12 +172,13 @@ export default function RegisterPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F2356]/40 rounded"
+                    className="absolute right-0 top-0 h-11 w-11 flex items-center justify-center text-gray-400 transition-colors hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F2356]/40 rounded-xl"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                <p className="text-xs text-gray-400">Must be at least 6 characters</p>
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -196,6 +197,18 @@ export default function RegisterPage() {
                   className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-3 focus:ring-[#0F2356]/8 hover:border-gray-300"
                 />
               </div>
+
+              <p className="text-center text-xs leading-relaxed text-gray-400">
+                By creating an account, you agree to our{' '}
+                <Link href="/terms" className="font-medium text-gray-500 underline hover:text-[#0F2356]">
+                  Terms
+                </Link>{' '}
+                and{' '}
+                <Link href="/privacy" className="font-medium text-gray-500 underline hover:text-[#0F2356]">
+                  Privacy Policy
+                </Link>
+                .
+              </p>
 
               <button
                 type="submit"

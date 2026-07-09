@@ -5,10 +5,17 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID}
+        NEXT_PUBLIC_POSTHOG_KEY: ${NEXT_PUBLIC_POSTHOG_KEY}
+        NEXT_PUBLIC_POSTHOG_HOST: ${NEXT_PUBLIC_POSTHOG_HOST}
     ports:
       - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    env_file:
+      - ./frontend/.env.local
     depends_on:
       - backend
     networks:
@@ -20,10 +27,8 @@ services:
       dockerfile: Dockerfile.prod
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=sqlite:///./nurseai.db
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - SECRET_KEY=${SECRET_KEY}
+    env_file:
+      - ./backend/.env
     networks:
       - nurseai-network
 

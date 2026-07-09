@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 
@@ -17,19 +16,13 @@ interface Scenario {
 }
 
 export default function AdminScenariosPage() {
-  const { session, status } = useSupabaseSession()
   const router = useRouter()
   const [scenarios, setScenarios] = useState<Scenario[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (status === 'loading') return
-    if (!session?.user) {
-      router.push('/auth/login')
-      return
-    }
     fetchScenarios()
-  }, [status, session])
+  }, [])
 
   const fetchScenarios = async () => {
     try {
@@ -65,7 +58,7 @@ export default function AdminScenariosPage() {
     }
   }
 
-  if (status === 'loading' || loading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl">Loading scenarios...</div>

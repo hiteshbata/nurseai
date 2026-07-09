@@ -71,51 +71,6 @@ async def _call_vision_api(image_base64: str, prompt: str, json_mode: bool = Tru
             )
             print(f"[OpenRouter vision] failed: {e}")
 
-    # Fallback — try OpenRouter with a different model
-    if openrouter_key:
-        try:
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
-                        },
-                    ],
-                }
-            ]
-            payload = {
-                "model": "google/gemini-2.5-flash",
-                "messages": messages,
-                "temperature": 0.2,
-                "max_tokens": 4000,
-            }
-            if json_mode:
-                payload["response_format"] = {"type": "json_object"}
-
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {openrouter_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                )
-                if resp.status_code == 200:
-                    content = resp.json()["choices"][0]["message"]["content"]
-                    if json_mode:
-                        return json.loads(content)
-                    return {"raw_feedback": content}
-        except Exception as e:
-            logger.error(
-                "[EXTERNAL_API_FAILURE] service=OPENROUTER type=unknown model=google/gemini-2.5-flash detail=%s",
-                _redact_api_keys(str(e)[:500]),
-            )
-            print(f"[OpenRouter vision fallback] failed: {e}")
-
     raise HTTPException(status_code=502, detail="AI vision provider unavailable")
 
 

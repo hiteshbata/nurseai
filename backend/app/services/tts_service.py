@@ -14,6 +14,20 @@ def _redact_api_keys(text: str) -> str:
     return re.sub(r'(?i)(key|api[_-]?key|token|secret)(["\s:=]+)([A-Za-z0-9_-]{20,})', r'\1\2***REDACTED***', text)
 
 
+# The patient-persona LLM sometimes narrates non-verbal stage directions
+# inline, e.g. "*starts to tear up* I just don't know what to do." These are
+# written for the transcript, not meant to be read aloud -- without stripping
+# them, Google TTS synthesizes the literal words "starts to tear up" audibly.
+# Matches *...* spans up to 80 chars (no nested asterisk/newline) so a lone
+# "*" used for emphasis or multiplication in normal text is left untouched.
+_ACTION_TAG_RE = re.compile(r'\*[^*\n]{1,80}\*')
+
+
+def strip_action_tags(text: str) -> str:
+    cleaned = _ACTION_TAG_RE.sub('', text)
+    return re.sub(r'[ \t]{2,}', ' ', cleaned).strip()
+
+
 def _classify_tts_error(status_code: int) -> str:
     if status_code in (401, 403):
         return "auth"
@@ -40,6 +54,7 @@ async def synthesize_speech(
         logger.error("[EXTERNAL_API_FAILURE] service=GOOGLE_TTS type=auth detail=no_key_configured")
         raise Exception("no_key")
 
+    text = strip_action_tags(text) or text
     effective_voice = voice_name or get_tts_voice(plan)
     payload = {
         "input": {"text": text},

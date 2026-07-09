@@ -5,46 +5,21 @@ import { useEffect, useRef, useState } from 'react'
 interface VoiceOrbProps {
   isListening: boolean
   isProcessing: boolean
+  isSpeaking?: boolean
   isEnding: boolean
   canEndSession?: boolean
+  statusOverride?: string
   onToggle: () => void
   onEndSession: () => void
 }
 
-export default function VoiceOrb({ isListening, isProcessing, isEnding, canEndSession = true, onToggle, onEndSession }: VoiceOrbProps) {
+export default function VoiceOrb({ isListening, isProcessing, isSpeaking = false, isEnding, canEndSession = true, statusOverride, onToggle, onEndSession }: VoiceOrbProps) {
   const [orbScale, setOrbScale] = useState(1)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
   const animFrameRef = useRef<number | null>(null)
   const orbRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const id = 'voice-orb-styles'
-    if (!document.getElementById(id)) {
-      const s = document.createElement('style')
-      s.id = id
-      s.textContent = `
-        @keyframes orb-breathe {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.06); }
-        }
-        @keyframes orb-pulse {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.04); }
-        }
-        @keyframes ripple {
-          0% { transform: scale(1); opacity: 0.6; }
-          100% { transform: scale(2.2); opacity: 0; }
-        }
-        @keyframes spin-arc {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `
-      document.head.appendChild(s)
-    }
-  }, [])
 
   useEffect(() => {
     if (!isListening) {
@@ -114,16 +89,19 @@ export default function VoiceOrb({ isListening, isProcessing, isEnding, canEndSe
     }
   }, [])
 
-  const orbColor = isEnding ? '#6B7280' : isProcessing ? '#F59E0B' : isListening ? '#10B981' : '#0F2356'
+  const orbColor = isEnding ? '#6B7280' : isProcessing ? '#F59E0B' : isSpeaking ? '#3B82F6' : isListening ? '#10B981' : '#0F2356'
+  const orbDisabled = isProcessing || isSpeaking || isEnding
 
   let statusText = 'Tap to speak'
-  if (isEnding) statusText = 'Ending session...'
+  if (isEnding) statusText = statusOverride || 'Ending session...'
   else if (isProcessing) statusText = 'Processing...'
+  else if (isSpeaking) statusText = 'Patient speaking...'
   else if (isListening) statusText = 'Listening...'
 
   let orbAnimation = ''
   if (isEnding) orbAnimation = 'none'
   else if (isProcessing) orbAnimation = 'none'
+  else if (isSpeaking) orbAnimation = 'orb-pulse 0.6s ease-in-out infinite'
   else if (isListening) orbAnimation = 'orb-pulse 1s ease-in-out infinite'
   else orbAnimation = 'orb-breathe 3s ease-in-out infinite'
 
@@ -160,6 +138,22 @@ export default function VoiceOrb({ isListening, isProcessing, isEnding, canEndSe
             </>
           )}
 
+          {isSpeaking && (
+            <div className="absolute z-20 flex items-end gap-1" style={{ height: 28 }}>
+              {[0, 1, 2, 3].map((i) => (
+                <span
+                  key={i}
+                  className="w-1 rounded-full bg-white/90"
+                  style={{
+                    height: 28,
+                    animation: `orb-speak-bar ${0.5 + i * 0.1}s ease-in-out infinite`,
+                    animationDelay: `${i * 0.08}s`,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
           {isProcessing && (
             <svg
               className="absolute"
@@ -181,6 +175,9 @@ export default function VoiceOrb({ isListening, isProcessing, isEnding, canEndSe
 
           <div
             ref={orbRef}
+            role="button"
+            aria-disabled={orbDisabled}
+            title={orbDisabled ? "You can't respond while this is in progress" : undefined}
             className="rounded-full relative z-10"
             style={{
               width: 64,
@@ -188,14 +185,15 @@ export default function VoiceOrb({ isListening, isProcessing, isEnding, canEndSe
               backgroundColor: orbColor,
               animation: orbAnimation,
               transform: isListening ? `scale(${orbScale})` : undefined,
-              transition: 'background-color 0.3s ease',
-              cursor: 'pointer',
+              transition: 'background-color 0.3s ease, opacity 0.2s ease',
+              opacity: orbDisabled ? 0.5 : 1,
+              cursor: orbDisabled ? 'not-allowed' : 'pointer',
             }}
-            onClick={onToggle}
+            onClick={() => { if (!orbDisabled) onToggle() }}
           />
         </div>
 
-        <p className="text-xs text-gray-400">{statusText}</p>
+        <p className="text-xs text-gray-400" role="status" aria-live="polite">{statusText}</p>
       </div>
     </div>
   )

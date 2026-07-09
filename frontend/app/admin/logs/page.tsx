@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSupabaseSession } from '@/lib/supabase'
 import api from '@/lib/api'
 
 interface LogEntry {
@@ -19,7 +18,6 @@ type LogFilter = 'all' | 'unresolved' | 'today' | 'week'
 
 export default function AdminLogsPage() {
   const router = useRouter()
-  const { session, status } = useSupabaseSession()
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [filter, setFilter] = useState<LogFilter>('unresolved')
   const [loading, setLoading] = useState(true)
@@ -46,13 +44,8 @@ export default function AdminLogsPage() {
   }
 
   useEffect(() => {
-    if (status === 'loading') return
-    if (!session?.user) {
-      router.push('/auth/login')
-      return
-    }
     fetchLogs(filter)
-  }, [status, session, router])
+  }, [])
 
   const handleFilter = (newFilter: LogFilter) => {
     setFilter(newFilter)

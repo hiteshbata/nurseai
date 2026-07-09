@@ -10,13 +10,13 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   const hideFooter = pathname?.startsWith('/practice/speaking')
 
   if (isFullPage) {
-    return <>{children}</>
+    return <main id="main-content">{children}</main>
   }
 
   return (
     <>
       <Navbar />
-      <main className="min-h-screen flex flex-col">{children}</main>
+      <main id="main-content" className="min-h-screen flex flex-col">{children}</main>
       {!hideFooter && <Footer />}
     </>
   )

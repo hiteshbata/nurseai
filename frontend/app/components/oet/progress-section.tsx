@@ -57,7 +57,7 @@ export function ProgressSection({
           </div>
           <div>
             <p className="text-xs font-medium text-muted-foreground">Now</p>
-            <p className="text-sm font-bold text-accent">{currentGrade}</p>
+            <p className="text-sm font-bold text-emerald-700">{currentGrade}</p>
           </div>
           <div className="text-right">
             <p className="text-xs font-medium text-muted-foreground">Target</p>

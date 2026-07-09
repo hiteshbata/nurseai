@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from datetime import date, datetime
@@ -6,6 +6,11 @@ from app.core.supabase import get_supabase
 from app.routers.auth import get_current_user, UserInfo
 
 router = APIRouter(prefix="/profile", tags=["profile"])
+
+# Tables that store rows keyed by user_id and aren't already guaranteed to
+# cascade-delete at the DB level -- cleaned up explicitly so account deletion
+# doesn't leave orphaned rows regardless of how FKs are configured in Supabase.
+_USER_OWNED_TABLES = ["submissions", "session_usage", "user_profiles", "user_roles"]
 
 
 class PracticePlanUpdate(BaseModel):
@@ -45,3 +50,18 @@ def update_practice_plan(
     if result.data:
         return result.data[0]
     return {"onboarding_completed": False}
+
+
+@router.delete("/account", status_code=204)
+def delete_account(
+    current_user: UserInfo = Depends(get_current_user),
+):
+    supabase = get_supabase()
+
+    for table in _USER_OWNED_TABLES:
+        supabase.table(table).delete().eq("user_id", current_user.id).execute()
+
+    try:
+        supabase.auth.admin.delete_user(current_user.id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete account: {str(e)}")

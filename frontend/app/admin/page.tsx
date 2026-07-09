@@ -1,8 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useSupabaseSession } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 
 interface Stats {
@@ -19,22 +17,14 @@ interface User {
 }
 
 export default function AdminDashboard() {
-  const { session, status } = useSupabaseSession()
-  const router = useRouter()
   const [stats, setStats] = useState<Stats | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (status === 'loading') return
-    if (!session?.user) {
-      router.push('/auth/login')
-      return
-    }
-
     fetchStats()
     fetchUsers()
-  }, [status, session])
+  }, [])
 
   const fetchStats = async () => {
     try {
@@ -56,15 +46,13 @@ export default function AdminDashboard() {
     }
   }
 
-  if (status === 'loading' || loading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl">Loading admin panel...</div>
       </div>
     )
   }
-
-  if (!session?.user) return null
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">

@@ -33,6 +33,59 @@ class WritingImageSubmitRequest(BaseModel):
     image_base64: str
 
 
+async def _require_writing_scenario(supabase, user_id: str, scenario_id: int) -> dict:
+    """Plan-gate writing access and fetch the scenario. Shared by /submit and /submit-image."""
+    profile = await run_sync(
+        supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", user_id).execute
+    )
+    plan = get_plan_from_profile(profile.data[0] if profile.data else {})
+    if not has_writing_access(plan):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "Writing practice requires Pro or Elite plan",
+                "upgrade_required": True,
+                "current_plan": plan,
+            },
+        )
+
+    scenario_data = await run_sync(
+        supabase.table("scenarios").select("id, title, nurse_card").eq("id", scenario_id).execute
+    )
+    if not scenario_data.data:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    return scenario_data.data[0]
+
+
+async def _score_and_save(supabase, user_id: str, scenario_id: int, content: str, nurse_card: dict, scenario_title: str) -> dict:
+    """Score writing content and persist the submission. Shared by /submit and /submit-image."""
+    feedback = await score_writing(
+        content=content,
+        nurse_card=nurse_card,
+        scenario_title=scenario_title,
+        supabase=supabase,
+    )
+
+    if feedback.get("provider_failure"):
+        raise HTTPException(
+            status_code=503,
+            detail="Scoring is temporarily unavailable. Please try again in a few minutes.",
+        )
+
+    await run_sync(
+        supabase.table("submissions").insert({
+            "user_id": user_id,
+            "scenario_id": scenario_id,
+            "module": "writing",
+            "answer": content,
+            "score": feedback.get("overall_score") or 0,
+            "feedback": json.dumps(feedback),
+        }).execute
+    )
+
+    return feedback
+
+
 @router.get("/scenarios")
 def list_scenarios(current_user: UserInfo = Depends(get_current_user)):
     """List all active writing scenarios."""
@@ -65,54 +118,11 @@ async def submit_writing(
         raise HTTPException(status_code=429, detail="Too many submissions — please slow down.")
 
     supabase = get_supabase()
+    scenario = await _require_writing_scenario(supabase, current_user.id, request.scenario_id)
 
-    # Plan gate — writing requires Pro or Elite
-    profile = await run_sync(
-        supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute
-    )
-    plan = get_plan_from_profile(profile.data[0] if profile.data else {})
-    if not has_writing_access(plan):
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "error": "Writing practice requires Pro or Elite plan",
-                "upgrade_required": True,
-                "current_plan": plan,
-            },
-        )
-
-    scenario_data = await run_sync(
-        supabase.table("scenarios").select("id, title, nurse_card").eq("id", request.scenario_id).execute
-    )
-
-    if not scenario_data.data:
-        raise HTTPException(status_code=404, detail="Scenario not found")
-
-    scenario = scenario_data.data[0]
-    nurse_card = scenario.get("nurse_card", {})
-
-    feedback = await score_writing(
-        content=request.content,
-        nurse_card=nurse_card,
-        scenario_title=scenario.get("title", ""),
-        supabase=supabase,
-    )
-
-    if feedback.get("provider_failure"):
-        raise HTTPException(
-            status_code=503,
-            detail="Scoring is temporarily unavailable. Please try again in a few minutes.",
-        )
-
-    await run_sync(
-        supabase.table("submissions").insert({
-            "user_id": current_user.id,
-            "scenario_id": request.scenario_id,
-            "module": "writing",
-            "answer": request.content,
-            "score": feedback.get("overall_score") or 0,
-            "feedback": json.dumps(feedback),
-        }).execute
+    feedback = await _score_and_save(
+        supabase, current_user.id, request.scenario_id,
+        request.content, scenario.get("nurse_card", {}), scenario.get("title", ""),
     )
 
     return {"success": True, "feedback": feedback}
@@ -138,30 +148,7 @@ async def submit_writing_image(
         raise HTTPException(status_code=400, detail="Image must be under 5MB")
 
     supabase = get_supabase()
-
-    # Plan gate — writing requires Pro or Elite
-    profile = await run_sync(
-        supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute
-    )
-    plan = get_plan_from_profile(profile.data[0] if profile.data else {})
-    if not has_writing_access(plan):
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "error": "Writing practice requires Pro or Elite plan",
-                "upgrade_required": True,
-                "current_plan": plan,
-            },
-        )
-
-    scenario_data = await run_sync(
-        supabase.table("scenarios").select("id, title, nurse_card").eq("id", request.scenario_id).execute
-    )
-
-    if not scenario_data.data:
-        raise HTTPException(status_code=404, detail="Scenario not found")
-
-    scenario = scenario_data.data[0]
+    scenario = await _require_writing_scenario(supabase, current_user.id, request.scenario_id)
     nurse_card = scenario.get("nurse_card", {})
 
     # Use Gemini Vision to read the handwritten letter
@@ -205,28 +192,9 @@ async def submit_writing_image(
         raise HTTPException(status_code=500, detail=f"Image OCR failed: {last_error}")
 
     # Score the extracted text
-    feedback = await score_writing(
-        content=extracted_text,
-        nurse_card=nurse_card,
-        scenario_title=scenario.get("title", ""),
-        supabase=supabase,
-    )
-
-    if feedback.get("provider_failure"):
-        raise HTTPException(
-            status_code=503,
-            detail="Scoring is temporarily unavailable. Please try again in a few minutes.",
-        )
-
-    await run_sync(
-        supabase.table("submissions").insert({
-            "user_id": current_user.id,
-            "scenario_id": request.scenario_id,
-            "module": "writing",
-            "answer": extracted_text,
-            "score": feedback.get("overall_score") or 0,
-            "feedback": json.dumps(feedback),
-        }).execute
+    feedback = await _score_and_save(
+        supabase, current_user.id, request.scenario_id,
+        extracted_text, nurse_card, scenario.get("title", ""),
     )
 
     return {"success": True, "extracted_text": extracted_text, "feedback": feedback}

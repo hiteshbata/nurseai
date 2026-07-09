@@ -34,6 +34,18 @@ PLAN_PRICE_PAISE = {
     if plan["id"] in PLAN_TO_PROFILE
 }
 
+# Annual billing = 10x the monthly price ("2 months free"), charged as a
+# one-time order rather than a recurring Razorpay subscription -- recurring
+# annual would need separate yearly-interval Plan entities set up in the
+# Razorpay dashboard, which don't exist yet.
+ANNUAL_MULTIPLIER = 10
+ANNUAL_PLAN_PRICE_PAISE = {
+    plan_id: price * ANNUAL_MULTIPLIER
+    for plan_id, price in PLAN_PRICE_PAISE.items()
+}
+ANNUAL_PERIOD_DAYS = 365
+BILLING_CYCLES = {"monthly", "annual"}
+
 
 def get_notes(entity: dict) -> dict:
     """Razorpay represents "no notes" as [] (an empty list) on some entities
@@ -52,10 +64,29 @@ def validate_plan_id(plan_id: str) -> str:
     return PLAN_TO_PROFILE[plan_id]
 
 
-def get_expected_amount_paise(plan_id: str) -> int:
-    if plan_id not in PLAN_PRICE_PAISE:
+def get_expected_amount_paise(plan_id: str, billing_cycle: str = "monthly") -> int:
+    prices = ANNUAL_PLAN_PRICE_PAISE if billing_cycle == "annual" else PLAN_PRICE_PAISE
+    if plan_id not in prices:
         raise HTTPException(status_code=400, detail=f"No price configured for plan_id: {plan_id}")
-    return PLAN_PRICE_PAISE[plan_id]
+    return prices[plan_id]
+
+
+def get_subscription_expected_amount_paise(client: "razorpay.Client", subscription: dict) -> int:
+    """Recurring subscriptions bill whatever amount is fixed on their Razorpay
+    Plan entity at creation time -- NOT our local PLAN_PRICE_PAISE, which only
+    reflects the current price. If pricing is ever changed, every existing
+    subscriber's renewal would otherwise fail this check forever (comparing
+    their old locked-in price against the new one), silently killing
+    auto-renew. Fetch the Plan Razorpay actually attached to this
+    subscription instead of trusting our static config."""
+    plan = client.plan.fetch(subscription.get("plan_id"))
+    return plan["item"]["amount"]
+
+
+def validate_billing_cycle(billing_cycle: str) -> str:
+    if billing_cycle not in BILLING_CYCLES:
+        raise HTTPException(status_code=400, detail=f"Unrecognized billing_cycle: {billing_cycle}")
+    return billing_cycle
 
 
 def parse_process_payment_result(data) -> str:
@@ -110,7 +141,12 @@ def get_current_plan(user_id: str) -> Optional[str]:
     return existing.data[0].get("plan") if existing.data else None
 
 
-def grant_subscription_period(user_id: str, profile_plan: str, previous_plan: Optional[str]) -> None:
+def grant_subscription_period(
+    user_id: str,
+    profile_plan: str,
+    previous_plan: Optional[str],
+    period_days: int = PLAN_PERIOD_DAYS,
+) -> None:
     """Extend/start plan_expires_at after a verified, non-duplicate payment.
     Delegates the read-decide-write to a single atomic SQL function
     (grant_subscription_period — see supabase-subscription-lifecycle-migration.sql)
@@ -131,7 +167,7 @@ def grant_subscription_period(user_id: str, profile_plan: str, previous_plan: Op
         "p_user_id": user_id,
         "p_new_plan": profile_plan,
         "p_previous_plan": previous_plan,
-        "p_period_days": PLAN_PERIOD_DAYS,
+        "p_period_days": period_days,
         "p_grace_days": GRACE_PERIOD_DAYS,
     }).execute()
     if not result.data:
@@ -176,6 +212,7 @@ def verify_subscription_payment_signature(payment_id: str, subscription_id: str,
 
 class CreateOrderRequest(BaseModel):
     plan_id: str = "basic"
+    billing_cycle: str = "monthly"
 
 
 class CreateOrderResponse(BaseModel):
@@ -191,7 +228,8 @@ def create_order(
     current_user: UserInfo = Depends(get_current_user),
 ):
     validate_plan_id(req.plan_id)
-    amount_paise = get_expected_amount_paise(req.plan_id)
+    billing_cycle = validate_billing_cycle(req.billing_cycle)
+    amount_paise = get_expected_amount_paise(req.plan_id, billing_cycle)
 
     client = get_razorpay_client()
     short_id = current_user.id.replace("-", "")[:12]
@@ -205,6 +243,7 @@ def create_order(
             "notes": {
                 "user_id": current_user.id,
                 "plan_id": req.plan_id,
+                "billing_cycle": billing_cycle,
             },
         })
     except Exception as e:
@@ -272,6 +311,10 @@ def verify_payment(
         order = client.order.fetch(req.razorpay_order_id)
         notes = get_notes(order)
         plan_id = notes.get("plan_id", "")
+        # Orders created before the annual-billing feature have no
+        # billing_cycle note -- default to monthly so old in-flight payments
+        # still verify correctly.
+        billing_cycle = notes.get("billing_cycle") or "monthly"
         if not plan_id:
             raise HTTPException(
                 status_code=400,
@@ -288,7 +331,7 @@ def verify_payment(
 
     profile_plan = validate_plan_id(plan_id)
 
-    expected_amount = get_expected_amount_paise(plan_id)
+    expected_amount = get_expected_amount_paise(plan_id, billing_cycle)
     if amount != expected_amount:
         logger.error(
             "verify-payment amount mismatch | order_id=%s plan_id=%s expected=%s got=%s user_id=%s",
@@ -314,13 +357,15 @@ def verify_payment(
         )
         return VerifyPaymentResponse(success=True, message="Payment already verified")
 
-    grant_subscription_period(str(current_user.id), profile_plan, previous_plan)
+    period_days = ANNUAL_PERIOD_DAYS if billing_cycle == "annual" else PLAN_PERIOD_DAYS
+    grant_subscription_period(str(current_user.id), profile_plan, previous_plan, period_days=period_days)
 
     track_event(str(current_user.id), "payment_completed", {
         "plan_id": plan_id,
         "amount_paise": amount,
         "currency": "INR",
         "source": "verify_payment",
+        "billing_cycle": billing_cycle,
     })
 
     return VerifyPaymentResponse(success=True, message="Payment verified successfully")
@@ -419,7 +464,7 @@ def verify_subscription_payment(
     profile_plan = validate_plan_id(plan_id)
 
     amount = payment.get("amount")
-    expected_amount = get_expected_amount_paise(plan_id)
+    expected_amount = get_subscription_expected_amount_paise(client, subscription)
     if amount != expected_amount:
         logger.error(
             "verify-subscription-payment amount mismatch | subscription_id=%s plan_id=%s expected=%s got=%s user_id=%s",
@@ -516,6 +561,80 @@ async def razorpay_webhook(request: Request):
     return await run_sync(_process_webhook_body, body_str, signature)
 
 
+def _finalize_payment(
+    *,
+    user_id: str,
+    order_id: str,
+    payment_id: str,
+    plan_id: str,
+    amount: int,
+    label: str,
+    verb: str,
+    event_source: str,
+    billing_cycle: str = "monthly",
+    extra_profile_update: dict | None = None,
+    extra_event_fields: dict | None = None,
+    expected_amount_paise: int | None = None,
+) -> Response:
+    """Shared tail for payment.captured / subscription.charged: validate the
+    plan, verify the amount, grant the subscription period, and log. The
+    idempotency dedupe check and id/notes extraction differ per event type,
+    so those stay in each caller. expected_amount_paise lets callers override
+    the amount check -- subscription.charged must pass the price locked on
+    the Razorpay Plan at subscription creation (see
+    get_subscription_expected_amount_paise), not today's live price."""
+    try:
+        profile_plan = validate_plan_id(plan_id)
+    except HTTPException:
+        logger.warning("%s unrecognized plan_id: %s", label, plan_id)
+        return Response(status_code=200)
+
+    expected_amount = (
+        expected_amount_paise
+        if expected_amount_paise is not None
+        else get_expected_amount_paise(plan_id, billing_cycle)
+    )
+    if amount != expected_amount:
+        logger.error(
+            "%s amount mismatch | plan_id=%s expected=%s got=%s user_id=%s — refusing to grant plan",
+            label, plan_id, expected_amount, amount, user_id,
+        )
+        return Response(status_code=200)
+
+    previous_plan = get_current_plan(user_id)
+
+    result = process_payment_rpc(
+        user_id=user_id,
+        order_id=order_id,
+        payment_id=payment_id,
+        plan_id=plan_id,
+        amount=amount,
+        profile_plan=profile_plan,
+    )
+
+    if extra_profile_update:
+        get_supabase().table("user_profiles").update(extra_profile_update).eq("user_id", user_id).execute()
+
+    if result == "already_processed":
+        logger.info("%s %s already processed (race with another path) — skipping", label, payment_id)
+        return Response(status_code=200)
+
+    period_days = ANNUAL_PERIOD_DAYS if billing_cycle == "annual" else PLAN_PERIOD_DAYS
+    grant_subscription_period(user_id, profile_plan, previous_plan, period_days=period_days)
+
+    track_event(user_id, "payment_completed", {
+        "plan_id": plan_id,
+        "amount_paise": amount,
+        "currency": "INR",
+        "source": event_source,
+        "billing_cycle": billing_cycle,
+        **(extra_event_fields or {}),
+    })
+
+    logger.info("%s %s processed — user %s %s %s", label, payment_id, user_id, verb, profile_plan)
+    return Response(status_code=200)
+
+
 def _process_webhook_body(body_str: str, signature: str) -> Response:
     if not settings.RAZORPAY_WEBHOOK_SECRET:
         logger.error("RAZORPAY_WEBHOOK_SECRET not configured")
@@ -551,6 +670,7 @@ def _process_webhook_body(body_str: str, signature: str) -> Response:
         notes = get_notes(payment)
         plan_id = notes.get("plan_id")
         user_id = notes.get("user_id")
+        billing_cycle = notes.get("billing_cycle") or "monthly"
 
         if not payment_id or not order_id:
             logger.warning("payment.captured missing payment_id or order_id")
@@ -572,59 +692,22 @@ def _process_webhook_body(body_str: str, signature: str) -> Response:
             logger.warning("Payment %s missing plan_id in order notes", payment_id)
             return Response(status_code=200)
 
-        try:
-            profile_plan = validate_plan_id(plan_id)
-        except HTTPException:
-            logger.warning(
-                "Payment %s unrecognized plan_id: %s", payment_id, plan_id
-            )
-            return Response(status_code=200)
-
         if not user_id:
             logger.warning("Payment %s missing user_id in order notes", payment_id)
             return Response(status_code=200)
 
         amount = payment.get("amount", 0)
-        expected_amount = get_expected_amount_paise(plan_id)
-        if amount != expected_amount:
-            logger.error(
-                "Payment %s amount mismatch | plan_id=%s expected=%s got=%s user_id=%s — refusing to grant plan",
-                payment_id, plan_id, expected_amount, amount, user_id,
-            )
-            return Response(status_code=200)
-
-        previous_plan = get_current_plan(user_id)
-
-        result = process_payment_rpc(
+        return _finalize_payment(
             user_id=user_id,
             order_id=order_id,
             payment_id=payment_id,
             plan_id=plan_id,
             amount=amount,
-            profile_plan=profile_plan,
+            label="Payment",
+            verb="upgraded to",
+            event_source="webhook",
+            billing_cycle=billing_cycle,
         )
-
-        if result == "already_processed":
-            logger.info(
-                "Payment %s already processed (race with another path) — skipping",
-                payment_id,
-            )
-            return Response(status_code=200)
-
-        grant_subscription_period(user_id, profile_plan, previous_plan)
-
-        track_event(user_id, "payment_completed", {
-            "plan_id": plan_id,
-            "amount_paise": amount,
-            "currency": "INR",
-            "source": "webhook",
-        })
-
-        logger.info(
-            "Payment %s processed — user %s upgraded to %s",
-            payment_id, user_id, profile_plan,
-        )
-        return Response(status_code=200)
 
     elif event_type == "payment.failed":
         payment = event.get("payload", {}).get("payment", {}).get("entity", {})
@@ -673,59 +756,24 @@ def _process_webhook_body(body_str: str, signature: str) -> Response:
             )
             return Response(status_code=200)
 
-        try:
-            profile_plan = validate_plan_id(plan_id)
-        except HTTPException:
-            logger.warning("subscription.charged unrecognized plan_id: %s", plan_id)
-            return Response(status_code=200)
-
         amount = payment.get("amount", 0)
-        expected_amount = get_expected_amount_paise(plan_id)
-        if amount != expected_amount:
-            logger.error(
-                "subscription.charged amount mismatch | subscription_id=%s plan_id=%s expected=%s got=%s user_id=%s — refusing to grant plan",
-                subscription_id, plan_id, expected_amount, amount, user_id,
-            )
-            return Response(status_code=200)
-
-        previous_plan = get_current_plan(user_id)
-
-        result = process_payment_rpc(
+        expected_amount = get_subscription_expected_amount_paise(get_razorpay_client(), subscription)
+        return _finalize_payment(
             user_id=user_id,
             order_id=payment.get("order_id") or subscription_id,
             payment_id=payment_id,
             plan_id=plan_id,
             amount=amount,
-            profile_plan=profile_plan,
+            label=f"subscription.charged (subscription_id={subscription_id})",
+            verb="renewed",
+            event_source="subscription_webhook",
+            expected_amount_paise=expected_amount,
+            extra_profile_update={
+                "razorpay_subscription_id": subscription_id,
+                "auto_renew_enabled": True,
+            },
+            extra_event_fields={"auto_renew": True},
         )
-
-        supabase.table("user_profiles").update({
-            "razorpay_subscription_id": subscription_id,
-            "auto_renew_enabled": True,
-        }).eq("user_id", user_id).execute()
-
-        if result == "already_processed":
-            logger.info(
-                "Subscription payment %s already processed (race with another path) — skipping",
-                payment_id,
-            )
-            return Response(status_code=200)
-
-        grant_subscription_period(user_id, profile_plan, previous_plan)
-
-        track_event(user_id, "payment_completed", {
-            "plan_id": plan_id,
-            "amount_paise": amount,
-            "currency": "INR",
-            "source": "subscription_webhook",
-            "auto_renew": True,
-        })
-
-        logger.info(
-            "Subscription payment %s processed — user %s renewed %s",
-            payment_id, user_id, profile_plan,
-        )
-        return Response(status_code=200)
 
     elif event_type in ("subscription.cancelled", "subscription.completed", "subscription.halted"):
         # halted = repeated renewal charge failures (e.g. card declined) --

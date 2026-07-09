@@ -1,5 +1,6 @@
+import Link from "next/link"
 import { ArrowRight, Mic, PenTool } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { ScorePill, BandBadge } from "./score-pill"
 import type { Submission } from "./types"
 
@@ -37,7 +38,36 @@ export function RecentSessions({
         </button>
       </div>
 
-      <div className="mt-4 overflow-x-auto">
+      {/* Mobile: stacked cards */}
+      <div className="mt-4 space-y-3 sm:hidden">
+        {rows.map((row) => (
+          <div
+            key={row.id}
+            className="rounded-xl border border-gray-100 p-4"
+          >
+            <div className="flex items-center justify-between">
+              <TypeBadge type={row.type} />
+              <span className="text-sm text-muted-foreground">{row.date}</span>
+            </div>
+            <div className="mt-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ScorePill score={row.score} />
+                <BandBadge band={row.band} />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-input text-primary"
+              >
+                View
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop/tablet: table */}
+      <div className="mt-4 hidden overflow-x-auto sm:block">
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="border-b border-gray-100 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -79,13 +109,18 @@ export function RecentSessions({
             ))}
           </tbody>
         </table>
+      </div>
 
-        {rows.length === 0 && (
-          <p className="py-8 text-center text-sm text-muted-foreground">
+      {rows.length === 0 && (
+        <div className="py-8 text-center">
+          <p className="mb-3 text-sm text-muted-foreground">
             No sessions yet. Start your first practice!
           </p>
-        )}
-      </div>
+          <Link href="/practice/speaking" className={buttonVariants({ size: "sm" })}>
+            Start Practicing
+          </Link>
+        </div>
+      )}
     </section>
   )
 }

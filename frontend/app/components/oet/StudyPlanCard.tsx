@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import api from '@/lib/api'
 
 interface WeakCriterion {
@@ -89,7 +90,13 @@ export function StudyPlanCard() {
         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-1">
           AI Study Plan
         </p>
-        <p className="text-sm text-slate-400">{data.message}</p>
+        <p className="text-sm text-slate-400 mb-3">{data.message}</p>
+        <Link
+          href="/practice/speaking"
+          className="inline-block rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary/90"
+        >
+          Start Practicing
+        </Link>
       </div>
     )
   }

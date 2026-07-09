@@ -44,12 +44,12 @@ export function UpgradeBanner({ sessionsUsed, sessionsLimit, sessionsRemaining, 
 
   return (
     <section className="mx-auto w-full max-w-5xl px-4 sm:px-6">
-      <div className="rounded-2xl bg-gradient-to-r from-teal-500 to-amber-500 p-5 sm:p-6 shadow-md">
+      <div className="rounded-2xl bg-[#0F2356] p-5 sm:p-6 shadow-md">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex-1 min-w-0">
-            <h3 className="text-base sm:text-lg font-bold text-white leading-tight">
+            <h2 className="text-base sm:text-lg font-bold text-white leading-tight">
               {headline}
-            </h3>
+            </h2>
             <p className="text-sm text-white/80 mt-1 max-w-md">
               {subtitle}
             </p>
@@ -69,7 +69,7 @@ export function UpgradeBanner({ sessionsUsed, sessionsLimit, sessionsRemaining, 
 
           <Link
             href="/upgrade"
-            className="shrink-0 inline-flex items-center justify-center rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-teal-700 hover:text-teal-600 shadow-sm hover:shadow-md transition-all active:scale-[0.97]"
+            className="shrink-0 inline-flex items-center justify-center rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-[#0F2356] hover:bg-white/90 shadow-sm hover:shadow-md transition-all active:scale-[0.97]"
           >
             {ctaLabel}
             <span className="ml-1.5" aria-hidden="true">&rarr;</span>

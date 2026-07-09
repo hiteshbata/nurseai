@@ -32,6 +32,7 @@ def get_session_usage(current_user: UserInfo = Depends(get_current_user)):
             "sessions_remaining": free_limit,
             "plan": "free",
             "auto_renew_enabled": False,
+            "plan_expires_at": None,
         }
 
     profile_data = profile.data[0]
@@ -56,6 +57,7 @@ def get_session_usage(current_user: UserInfo = Depends(get_current_user)):
         "sessions_remaining": max(0, limit - sessions_used),
         "plan": plan,
         "auto_renew_enabled": bool(profile_data.get("auto_renew_enabled")),
+        "plan_expires_at": profile_data.get("plan_expires_at"),
     }
 
 

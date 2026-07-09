@@ -9,11 +9,19 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const { session, status } = useSupabaseSession()
 
   useEffect(() => {
+    // Sentry's beforeSend no-ops every event in development anyway, and its
+    // deferred dynamic import races Turbopack's dev-mode HMR (the chunk gets
+    // invalidated before it loads, throwing "module factory is not
+    // available") — so skip initializing it outside production entirely.
+    const initSentryDeferred = process.env.NODE_ENV === 'production'
+      ? () => import('@/lib/sentry-client').then(m => m.initSentry())
+      : () => {}
+
     const id = requestIdleCallback ? requestIdleCallback(() => {
-      import('../sentry.client.config').then(m => m.initSentry())
+      initSentryDeferred()
       initAnalytics()
     }, { timeout: 2000 }) : setTimeout(() => {
-      import('../sentry.client.config').then(m => m.initSentry())
+      initSentryDeferred()
       initAnalytics()
     }, 2000)
 

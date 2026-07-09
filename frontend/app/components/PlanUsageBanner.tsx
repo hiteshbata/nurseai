@@ -1,0 +1,71 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { Progress } from '@/components/ui/progress'
+import api from '@/lib/api'
+
+interface SessionUsage {
+  plan: string
+  sessions_used: number
+  sessions_limit: number
+  sessions_remaining: number
+}
+
+const PLAN_LABELS: Record<string, string> = {
+  free: 'Free',
+  basic: 'Basic',
+  pro: 'Pro',
+  elite: 'Elite',
+}
+
+// Upgrade CTAs live in the single contextual upsell banner elsewhere on the Results
+// page (see `activeUpsell` in practice/speaking/page.tsx) — this banner is usage
+// info only, so the page never stacks more than one upgrade prompt.
+export default function PlanUsageBanner() {
+  const [usage, setUsage] = useState<SessionUsage | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    api.get('/sessions/usage').then((res) => {
+      if (!cancelled) setUsage(res.data)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  if (!usage) return null
+
+  const planLabel = PLAN_LABELS[usage.plan] ?? usage.plan
+  const pct = usage.sessions_limit > 0 ? (usage.sessions_used / usage.sessions_limit) * 100 : 0
+  const isAtLimit = usage.sessions_remaining <= 0
+
+  return (
+    <div
+      className={`rounded-2xl border p-5 mb-6 ${
+        isAtLimit ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-100 shadow-sm'
+      }`}
+    >
+      <p className={`text-sm font-bold ${isAtLimit ? 'text-amber-700' : 'text-[#0F2356]'}`}>
+        {isAtLimit && <span className="mr-1">⚠</span>}
+        {planLabel} Plan
+      </p>
+      <p className="text-xs text-gray-500 mt-0.5">
+        {usage.sessions_used} / {usage.sessions_limit} sessions used this month
+        {' · '}
+        {usage.sessions_remaining} remaining
+      </p>
+
+      <div className="mt-2.5 flex items-center gap-3 max-w-[220px]">
+        <Progress
+          value={Math.min(pct, 100)}
+          className={`h-1.5 ${isAtLimit ? '[&>div]:bg-amber-500' : '[&>div]:bg-[#10B981]'}`}
+        />
+      </div>
+
+      {isAtLimit && (
+        <p className="text-xs text-amber-700 mt-2">
+          You&apos;ve used all your {planLabel.toLowerCase()} sessions this month.
+        </p>
+      )}
+    </div>
+  )
+}

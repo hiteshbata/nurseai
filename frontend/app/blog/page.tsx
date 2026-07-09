@@ -1,12 +1,33 @@
+import Link from 'next/link'
+import type { Metadata } from 'next'
+import { learnArticles } from '../learn/articles'
+
+export const metadata: Metadata = {
+  title: 'Blog - SpeakOET',
+  description:
+    'Guides on OET Speaking: exam format, band scores, OET vs IELTS, speaking tips, and advice for Indian nurses.',
+}
+
 export default function BlogPage() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-4 py-20">
-      <h1 className="text-3xl font-bold text-[#0F2356] mb-4">
-        Blog
-      </h1>
-      <p className="text-gray-500 text-center max-w-md">
-        Tips and guides for OET preparation. Coming soon.
+    <main className="min-h-screen px-4 py-20 max-w-3xl mx-auto">
+      <h1 className="text-3xl font-bold text-[#0F2356] mb-4">Blog</h1>
+      <p className="text-gray-500 text-lg mb-10">
+        Guides on OET Speaking — format, scoring, and how to actually prepare.
       </p>
+
+      <div className="space-y-4">
+        {learnArticles.map((article) => (
+          <Link
+            key={article.href}
+            href={article.href}
+            className="block rounded-2xl border border-gray-100 bg-white shadow-sm p-6 hover:shadow-md transition"
+          >
+            <h2 className="text-lg font-bold text-[#0F2356] mb-1">{article.title}</h2>
+            <p className="text-gray-500 text-sm">{article.description}</p>
+          </Link>
+        ))}
+      </div>
     </main>
   )
 }

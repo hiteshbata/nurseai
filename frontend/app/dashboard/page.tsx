@@ -81,6 +81,7 @@ export default function DashboardPage() {
   const [sessionUsageReady, setSessionUsageReady] = useState(false)
   const [criteriaReady, setCriteriaReady] = useState(false)
   const [historyReady, setHistoryReady] = useState(false)
+  const [savingExamDate, setSavingExamDate] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -128,6 +129,21 @@ export default function DashboardPage() {
       .then(res => setScoreHistory(res.data))
       .catch(() => null)
       .finally(() => setHistoryReady(true))
+  }
+
+  const setExamDate = async (dateStr: string) => {
+    setSavingExamDate(true)
+    try {
+      const res = await api.put('/profile/practice-plan', { exam_date: dateStr })
+      if (res.data?.user_id) {
+        setProfile(res.data)
+      }
+      toast.success('Exam date set')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to set exam date')
+    } finally {
+      setSavingExamDate(false)
+    }
   }
 
   const userName =
@@ -204,6 +220,10 @@ export default function DashboardPage() {
       <OetDashboard
         userName={userName}
         examDaysLeft={examDaysLeft}
+        examDateSet={!!profile?.exam_date}
+        targetBandSet={!!profile?.target_band}
+        onSetExamDate={setExamDate}
+        savingExamDate={savingExamDate}
         baselineGrade={baselineGrade}
         currentGrade={currentGrade}
         targetBand={targetBand}

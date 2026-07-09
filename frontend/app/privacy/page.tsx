@@ -1,3 +1,10 @@
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = {
+  title: 'Privacy Policy - SpeakOET',
+  description: 'How SpeakOET collects, uses, and protects your data.',
+}
+
 export default function PrivacyPage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 py-20">

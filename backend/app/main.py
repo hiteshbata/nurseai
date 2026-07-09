@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from app.core.config import settings
 from app.core.supabase import get_supabase
-from app.routers import auth, questions, speaking, scoring, progress, admin, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions
+from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions
 from app.services.oet_questions import oet_service
 from app.services.seed_scenarios import seed_scenarios
 
@@ -26,6 +26,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(questions.router)
 app.include_router(speaking.router)
+app.include_router(speaking_realtime.router)
 app.include_router(scoring.router)
 app.include_router(progress.router)
 app.include_router(admin.router)

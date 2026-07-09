@@ -1,6 +1,7 @@
 'use client'
 
 import { LineChart, Line, Tooltip, ResponsiveContainer, YAxis } from 'recharts'
+import Link from 'next/link'
 
 interface ProgressChartProps {
   data: Array<{
@@ -16,11 +17,19 @@ export function ProgressChart({ data }: ProgressChartProps) {
     return (
       <div className="rounded-2xl bg-white border border-slate-200 p-4">
         <p className="text-xs font-semibold text-slate-800 uppercase tracking-wide mb-1">Score Trend</p>
-        <p className="text-xs text-slate-400 py-6 text-center">
+        <p className="text-xs text-slate-500 pt-6 pb-3 text-center">
           {data.length === 0
             ? 'No sessions yet — start practicing to see your trend'
             : 'Not enough sessions yet to show a trend'}
         </p>
+        <div className="text-center pb-2">
+          <Link
+            href="/practice/speaking"
+            className="inline-block rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary/90"
+          >
+            Start Practicing
+          </Link>
+        </div>
       </div>
     )
   }

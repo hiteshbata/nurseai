@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
 import toast from 'react-hot-toast'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 
 interface Scenario {
   id: number
@@ -185,25 +187,22 @@ export default function WritingPracticePage() {
                     ? 'bg-red-100 text-red-700'
                     : 'bg-amber-100 text-amber-700'
                 return (
-                  <div
+                  <Card
                     key={s.id}
-                    className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col gap-4 hover:shadow-md transition-all"
+                    className="p-6 flex flex-col gap-4 hover:shadow-md transition-all"
                   >
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold w-fit ${difficultyBadge}`}>
                       {s.difficulty}
                     </span>
-                    <h3 className="text-xl font-bold text-[#0F2356]">{s.title}</h3>
+                    <h3 className="text-xl font-bold text-primary">{s.title}</h3>
                     <p className="text-gray-600 text-sm line-clamp-3 leading-relaxed">{s.setting}</p>
                     {tasks.length > 0 && (
                       <p className="text-sm text-gray-500">{tasks.length} writing tasks</p>
                     )}
-                    <button
-                      onClick={() => handleSelectScenario(s)}
-                      className="w-full bg-orange-600 text-white rounded-xl py-3 font-semibold text-sm hover:bg-orange-700 transition-colors"
-                    >
+                    <Button onClick={() => handleSelectScenario(s)} className="w-full">
                       Start Writing →
-                    </button>
-                  </div>
+                    </Button>
+                  </Card>
                 )
               })}
             </div>
@@ -222,8 +221,8 @@ export default function WritingPracticePage() {
             ← Back to scenarios
           </button>
 
-          <div className="bg-white p-8 rounded-lg shadow mb-6">
-            <span className="inline-block bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-semibold mb-4">
+          <Card className="p-8 mb-6">
+            <span className="inline-block bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-semibold mb-4">
               Writing Module
             </span>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">{selectedScenario.title}</h2>
@@ -239,7 +238,7 @@ export default function WritingPracticePage() {
                 <ol className="space-y-2">
                   {tasks.map((task, i) => (
                     <li key={i} className="flex gap-3 text-gray-700 text-sm">
-                      <span className="shrink-0 w-5 h-5 rounded-full bg-orange-100 text-orange-700 text-xs font-bold flex items-center justify-center mt-0.5">
+                      <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center mt-0.5">
                         {i + 1}
                       </span>
                       <span>{task}</span>
@@ -248,9 +247,9 @@ export default function WritingPracticePage() {
                 </ol>
               </div>
             )}
-          </div>
+          </Card>
 
-          <div className="bg-white p-8 rounded-lg shadow">
+          <Card className="p-8">
             <label htmlFor="writing" className="block text-sm font-semibold text-gray-700 mb-2">
               Your Letter (minimum 100 characters)
             </label>
@@ -258,19 +257,15 @@ export default function WritingPracticePage() {
               id="writing"
               value={writingText}
               onChange={(e) => setWritingText(e.target.value)}
-              className="w-full h-64 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none resize-none"
+              className="w-full h-64 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-100 focus:border-emerald-500 outline-none resize-none"
               placeholder="Write your letter here..."
             />
             <div className="text-sm text-gray-500 mt-2">{writingText.length} characters</div>
 
-            <button
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-              className="w-full mt-4 px-6 py-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 transition disabled:opacity-50"
-            >
+            <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full mt-4">
               {isSubmitting ? 'Scoring...' : 'Submit for Scoring'}
-            </button>
-          </div>
+            </Button>
+          </Card>
         </div>
       </div>
     )
@@ -280,24 +275,18 @@ export default function WritingPracticePage() {
     if (feedback.scoring_failed) {
       return (
         <div className="min-h-screen bg-gray-50 py-12 px-4">
-          <div className="max-w-2xl mx-auto text-center bg-white p-8 rounded-lg shadow">
+          <Card className="max-w-2xl mx-auto text-center p-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Scoring is temporarily unavailable</h2>
             <p className="text-gray-500 mb-6">Your letter was saved, but we couldn&apos;t generate feedback right now. Please try again shortly.</p>
             <div className="flex gap-4 justify-center">
-              <button
-                onClick={() => setPhase('write')}
-                className="px-6 py-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 transition"
-              >
+              <Button onClick={() => setPhase('write')}>
                 Try Again
-              </button>
-              <button
-                onClick={handleBackToScenarios}
-                className="px-6 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition"
-              >
+              </Button>
+              <Button variant="outline" onClick={handleBackToScenarios}>
                 Back to Scenarios
-              </button>
+              </Button>
             </div>
-          </div>
+          </Card>
         </div>
       )
     }
@@ -305,7 +294,7 @@ export default function WritingPracticePage() {
     return (
       <div className="min-h-screen bg-gray-50 py-12 px-4">
         <div className="max-w-4xl mx-auto">
-          <div className="bg-white p-8 rounded-lg shadow mb-6">
+          <Card className="p-8 mb-6">
             <div className="text-center mb-8">
               <div className="text-4xl font-bold text-emerald-600">{feedback.overall_score}/6</div>
               <div className="text-lg font-semibold text-emerald-700 mt-2">
@@ -358,21 +347,15 @@ export default function WritingPracticePage() {
                 <p className="text-gray-700 whitespace-pre-line text-sm leading-relaxed">{feedback.corrected_version}</p>
               </div>
             )}
-          </div>
+          </Card>
 
           <div className="flex gap-4">
-            <button
-              onClick={handleBackToScenarios}
-              className="flex-1 px-6 py-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 transition"
-            >
+            <Button className="flex-1" onClick={handleBackToScenarios}>
               Try Another Scenario
-            </button>
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="flex-1 px-6 py-3 border border-[#0F2356] text-[#0F2356] rounded-lg font-semibold hover:bg-[#0F2356]/5 transition"
-            >
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => router.push('/dashboard')}>
               Go to Dashboard
-            </button>
+            </Button>
           </div>
         </div>
       </div>

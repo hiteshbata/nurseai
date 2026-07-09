@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.supabase import get_supabase, get_auth_client
-from app.schemas.user import UserCreate, UserLogin, UserResponse
+from app.schemas.user import UserCreate, UserLogin
 from app.services.plan_gating import get_plan_from_profile, get_effective_subscription_status
 from pydantic import BaseModel
 from typing import Optional

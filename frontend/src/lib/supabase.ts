@@ -71,6 +71,28 @@ export async function signIn(email: string, password: string) {
   return data
 }
 
+// Supabase/GoTrue error messages are written for developers, not nurses about
+// to sign in. Translate the common ones into plain, reassuring copy.
+export function humanizeAuthError(message: string | undefined): string {
+  const msg = (message || '').toLowerCase()
+  if (msg.includes('invalid login credentials')) {
+    return "That email and password don't match. Try again or reset your password."
+  }
+  if (msg.includes('email not confirmed')) {
+    return 'Please confirm your email before signing in — check your inbox for the confirmation link.'
+  }
+  if (msg.includes('missing email or phone') || msg.includes('missing password')) {
+    return 'Enter your email and password to continue.'
+  }
+  if (msg.includes('too many requests') || msg.includes('rate limit')) {
+    return 'Too many attempts. Please wait a minute and try again.'
+  }
+  if (msg.includes('network') || msg.includes('failed to fetch')) {
+    return "Can't reach the server. Check your connection and try again."
+  }
+  return message || 'Something went wrong. Please try again.'
+}
+
 export async function signUp(email: string, password: string, name: string) {
   const client = getClient()
   if (!client) throw new Error('Supabase is not configured.')

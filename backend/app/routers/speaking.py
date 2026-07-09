@@ -3,8 +3,6 @@ import io
 import json
 import logging
 import re
-import time
-from collections import deque
 from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -28,6 +26,8 @@ from app.services.plan_gating import (
     PREMIUM_PLANS,
 )
 from app.services import tts_service
+from app.services.cost_tracking import increment_session_cost
+from app.services.realtime.pricing import estimate_tts_cost
 from app.routers.sessions import check_and_increment_session, validate_session, is_first_ever_session
 import websockets.exceptions as ws_exc
 
@@ -64,31 +64,24 @@ MAX_TTS_TEXT_LENGTH = 1000
 
 TTS_RATE_LIMIT_MAX_CALLS = 40
 TTS_RATE_LIMIT_WINDOW_SECONDS = 600
-
-# In-memory sliding-window limiter, keyed by user_id. The prod entrypoint runs
-# a single uvicorn worker (no --workers flag), so a per-process dict is a
-# correct and sufficient backstop against request-flooding without adding new
-# infra. It resets on restart and isn't shared across workers if that ever
-# changes — this is abuse prevention, not the billing-accurate quota (that's
-# sessions_used_this_month, enforced separately via session_id below).
-_tts_call_log: dict[str, deque] = {}
-
-
-def _tts_rate_limited(user_id: str) -> bool:
-    now = time.monotonic()
-    window_start = now - TTS_RATE_LIMIT_WINDOW_SECONDS
-    calls = _tts_call_log.setdefault(user_id, deque())
-    while calls and calls[0] < window_start:
-        calls.popleft()
-    if len(calls) >= TTS_RATE_LIMIT_MAX_CALLS:
-        return True
-    calls.append(now)
-    return False
-
+_tts_rate_limiter = SlidingWindowRateLimiter(TTS_RATE_LIMIT_MAX_CALLS, TTS_RATE_LIMIT_WINDOW_SECONDS)
 
 SCORE_RATE_LIMIT_MAX_CALLS = 20
 SCORE_RATE_LIMIT_WINDOW_SECONDS = 600
 _score_rate_limiter = SlidingWindowRateLimiter(SCORE_RATE_LIMIT_MAX_CALLS, SCORE_RATE_LIMIT_WINDOW_SECONDS)
+
+TRANSCRIBE_RATE_LIMIT_MAX_CALLS = 40
+TRANSCRIBE_RATE_LIMIT_WINDOW_SECONDS = 600
+_transcribe_rate_limiter = SlidingWindowRateLimiter(TRANSCRIBE_RATE_LIMIT_MAX_CALLS, TRANSCRIBE_RATE_LIMIT_WINDOW_SECONDS)
+MAX_TRANSCRIBE_AUDIO_BYTES = 10 * 1024 * 1024
+
+PRONUNCIATION_RATE_LIMIT_MAX_CALLS = 20
+PRONUNCIATION_RATE_LIMIT_WINDOW_SECONDS = 600
+_pronunciation_rate_limiter = SlidingWindowRateLimiter(PRONUNCIATION_RATE_LIMIT_MAX_CALLS, PRONUNCIATION_RATE_LIMIT_WINDOW_SECONDS)
+MAX_PRONUNCIATION_AUDIO_BYTES = 25 * 1024 * 1024
+
+MAX_CHAT_HISTORY_MESSAGES = 60
+MAX_CHAT_MESSAGE_LENGTH = 2000
 
 
 @router.post("/tts")
@@ -113,7 +106,7 @@ async def text_to_speech(
             detail="Missing or invalid session — start a speaking session before requesting audio.",
         )
 
-    if _tts_rate_limited(current_user.id):
+    if _tts_rate_limiter.is_rate_limited(current_user.id):
         raise HTTPException(status_code=429, detail="Too many audio requests — please slow down.")
 
     supabase = get_supabase()
@@ -146,6 +139,10 @@ async def text_to_speech(
             language_code=language_code,
             plan=plan,
         )
+        await increment_session_cost(
+            session_id,
+            tts_cost_usd=estimate_tts_cost(len(text), is_premium_voice(voice_name)),
+        )
         return StreamingResponse(io.BytesIO(audio_bytes), media_type="audio/mpeg")
     except Exception as e:
         err_str = str(e)
@@ -158,6 +155,8 @@ async def text_to_speech(
 
 
 STT_AUTH_TIMEOUT_SECONDS = 10
+# Safely under Deepgram's ~10-12s no-data connection timeout.
+DEEPGRAM_KEEPALIVE_INTERVAL_SECONDS = 5
 
 
 @router.websocket("/stt/stream")
@@ -206,8 +205,12 @@ async def stt_deepgram_stream(websocket: WebSocket):
 
     deepgram_url = (
         f"wss://api.deepgram.com/v1/listen"
-        f"?model=nova-3"
-        f"&language=en-US"
+        # nova-3 is English-only and defaults to a US-accent acoustic model;
+        # nova-2 has a dedicated en-IN locale, which is what our nursing
+        # students actually speak -- switching both together, since en-IN
+        # isn't a supported language option under nova-3.
+        f"?model=nova-2"
+        f"&language=en-IN"
         f"&interim_results=true"
         f"&endpointing=1500"
         f"&utterance_end_ms=1500"
@@ -272,7 +275,7 @@ async def stt_deepgram_stream(websocket: WebSocket):
                 dg_ws.close_code, dg_ws.close_reason, dg_ws.state,
             )
 
-        async with dg_ws:
+        try:
             _done = asyncio.Event()
 
             async def forward_audio():
@@ -382,7 +385,36 @@ async def stt_deepgram_stream(websocket: WebSocket):
                         type(e).__name__, str(e)[:500],
                     )
 
-            await asyncio.gather(forward_audio(), forward_transcripts())
+            async def keepalive():
+                # Deepgram closes the socket if it goes ~10-12s without
+                # receiving any message (audio or otherwise) -- MediaRecorder
+                # chunks cover that while the mic is actively capturing, but
+                # nothing sends anything during a long LLM/TTS think-time
+                # between turns. A periodic KeepAlive message is Deepgram's
+                # documented way to hold the connection open through that gap
+                # without it being mistaken for an abandoned session.
+                try:
+                    while not _done.is_set():
+                        try:
+                            await asyncio.wait_for(_done.wait(), timeout=DEEPGRAM_KEEPALIVE_INTERVAL_SECONDS)
+                        except asyncio.TimeoutError:
+                            pass
+                        if _done.is_set():
+                            break
+                        try:
+                            await dg_ws.send(json.dumps({"type": "KeepAlive"}))
+                        except ws_exc.ConnectionClosed:
+                            _done.set()
+                            return
+                except Exception as e:
+                    logger.warning("Deepgram keepalive error: %s", str(e)[:200])
+
+            await asyncio.gather(forward_audio(), forward_transcripts(), keepalive())
+        finally:
+            try:
+                await dg_ws.close()
+            except Exception:
+                pass
 
     except ws_exc.InvalidStatus as e:
         resp = e.response
@@ -468,7 +500,13 @@ async def transcribe_audio(
     audio: UploadFile = File(...),
     current_user: UserInfo = Depends(get_current_user),
 ):
+    if _transcribe_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many transcription requests — please slow down.")
+
     audio_data = await audio.read()
+    if len(audio_data) > MAX_TRANSCRIBE_AUDIO_BYTES:
+        raise HTTPException(status_code=400, detail="Audio file too large")
+
     result = await speech_to_text.transcribe_audio(audio_data, audio.filename or "audio.wav")
     return result
 
@@ -515,9 +553,13 @@ def list_scenarios(current_user: UserInfo = Depends(get_current_user)):
     return data.data
 
 
-@router.get("/scenarios/recommend")
-def recommend_scenario(current_user: UserInfo = Depends(get_current_user)):
-    """Recommend a scenario — alternates between unattempted and lowest-scored."""
+def _recommend_scenarios(current_user: UserInfo, limit: int) -> list:
+    """Shared ranking used by both /scenarios/recommend (single) and
+    /scenarios/recommendations (row): unattempted scenarios first (shuffled,
+    so repeat visits don't always see the same one), then the user's
+    lowest-scored attempted scenarios, weakest first."""
+    import random
+
     supabase = get_supabase()
 
     all_scenarios = supabase.table("scenarios").select(
@@ -532,53 +574,75 @@ def recommend_scenario(current_user: UserInfo = Depends(get_current_user)):
     attempted_set = {s["scenario_id"] for s in attempted_ids.data if s.get("scenario_id")}
 
     unattempted = [s for s in all_scenarios.data if s["id"] not in attempted_set]
+    random.shuffle(unattempted)
 
-    if unattempted:
-        import random
-        pick = random.choice(unattempted)
-        return {
-            "scenario_id": pick["id"],
-            "title": pick["title"],
-            "setting": pick["setting"],
-            "difficulty": pick["difficulty"],
-            "reason": "New - you haven't tried this scenario yet",
-        }
-
-    # All attempted \u2014 find lowest-scored
     feedback_data = supabase.table("submissions").select(
         "scenario_id, score"
     ).eq("user_id", current_user.id).eq("module", "speaking").execute()
-
     avg_scores = {}
     for s in feedback_data.data:
         qid = s.get("scenario_id")
         if qid:
             avg_scores.setdefault(qid, []).append(s.get("score", 0))
+    weakest_first = sorted(avg_scores.items(), key=lambda kv: sum(kv[1]) / len(kv[1]))
+    scenarios_by_id = {s["id"]: s for s in all_scenarios.data}
 
-    lowest_qid = None
-    lowest_avg = float("inf")
-    for qid, scores in avg_scores.items():
-        avg = sum(scores) / len(scores)
-        if avg < lowest_avg:
-            lowest_avg = avg
-            lowest_qid = qid
+    recs = []
+    seen_ids = set()
 
-    pick = None
-    for s in all_scenarios.data:
-        if s["id"] == lowest_qid:
-            pick = s
+    for s in unattempted:
+        if len(recs) >= limit:
             break
-    if not pick:
-        import random
-        pick = random.choice(all_scenarios.data)
+        recs.append({
+            "scenario_id": s["id"],
+            "title": s["title"],
+            "setting": s["setting"],
+            "difficulty": s["difficulty"],
+            "reason": "New - you haven't tried this scenario yet",
+        })
+        seen_ids.add(s["id"])
 
-    return {
-        "scenario_id": pick["id"],
-        "title": pick["title"],
-        "setting": pick["setting"],
-        "difficulty": pick["difficulty"],
-        "reason": f"Needs practice - your average score for this scenario is {lowest_avg:.1f}/6" if lowest_qid else "Try this scenario",
-    }
+    for qid, scores in weakest_first:
+        if len(recs) >= limit:
+            break
+        if qid in seen_ids:
+            continue
+        pick = scenarios_by_id.get(qid)
+        if not pick:
+            continue
+        avg = sum(scores) / len(scores)
+        recs.append({
+            "scenario_id": pick["id"],
+            "title": pick["title"],
+            "setting": pick["setting"],
+            "difficulty": pick["difficulty"],
+            "reason": f"Needs practice - your average score for this scenario is {avg:.1f}/6",
+        })
+        seen_ids.add(qid)
+
+    if not recs:
+        for s in random.sample(all_scenarios.data, min(limit, len(all_scenarios.data))):
+            recs.append({
+                "scenario_id": s["id"],
+                "title": s["title"],
+                "setting": s["setting"],
+                "difficulty": s["difficulty"],
+                "reason": "Try this scenario",
+            })
+
+    return recs
+
+
+@router.get("/scenarios/recommend")
+def recommend_scenario(current_user: UserInfo = Depends(get_current_user)):
+    """Recommend a single scenario \u2014 used by the dashboard's recommended-case card."""
+    return _recommend_scenarios(current_user, limit=1)[0]
+
+
+@router.get("/scenarios/recommendations")
+def recommend_scenarios(limit: int = 3, current_user: UserInfo = Depends(get_current_user)):
+    """Recommend up to `limit` scenarios \u2014 used by the picker's recommended row."""
+    return _recommend_scenarios(current_user, limit=limit)
 
 
 @router.get("/scenarios/{scenario_id}")
@@ -803,9 +867,10 @@ async def assess_pronunciation(
         }
 
     except Exception as e:
+        logger.error("[PRONUNCIATION_FAILURE] /speaking/pronunciation failed: %s", str(e))
         return {
             "success": False,
-            "error": str(e),
+            "error": "Pronunciation analysis is currently unavailable.",
             "pronunciation": {
                 "method": "error",
                 "pattern_analysis": [],

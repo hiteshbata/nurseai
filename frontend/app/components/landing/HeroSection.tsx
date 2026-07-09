@@ -1,8 +1,21 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { TrendingUp } from "lucide-react"
+import { getPlans } from "@/lib/api"
 
 export default function HeroSection() {
+  const [freeSessions, setFreeSessions] = useState(3)
+
+  useEffect(() => {
+    getPlans()
+      .then((plans) => {
+        const free = plans.find((p) => p.id === 'free')
+        if (free) setFreeSessions(free.sessions_limit)
+      })
+      .catch(() => {})
+  }, [])
+
   return (
     <section className="bg-[#F8FAFC] py-16 md:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -35,7 +48,7 @@ export default function HeroSection() {
                 href="/auth/register"
                 className="inline-flex items-center justify-center bg-[#10B981] text-white font-semibold px-6 py-3 rounded-lg hover:bg-[#0ea472] transition-colors"
               >
-                Start Free — 5 Sessions on Us
+                Start Free — {freeSessions} Sessions on Us
               </a>
               <a
                 href="#how-it-works"

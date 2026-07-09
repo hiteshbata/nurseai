@@ -16,8 +16,11 @@ interface RazorpayCheckoutProps {
   className?: string
   // 'subscription' creates a recurring Razorpay Subscription (auto-renews
   // monthly until cancelled) -- the default, since manual monthly repurchase
-  // is a real churn source. 'order' is the legacy one-off payment path.
+  // is a real churn source. 'order' is the legacy one-off payment path,
+  // also used for annual billing since there's no yearly-interval Razorpay
+  // Plan entity set up for auto-renewal yet.
   mode?: 'order' | 'subscription'
+  billingCycle?: 'monthly' | 'annual'
 }
 
 declare global {
@@ -59,6 +62,7 @@ export function RazorpayCheckout({
   buttonLabel = 'Pay Now',
   className = '',
   mode = 'subscription',
+  billingCycle = 'monthly',
 }: RazorpayCheckoutProps) {
   const [isLoading, setIsLoading] = useState(false)
 
@@ -142,7 +146,7 @@ export function RazorpayCheckout({
       } else {
         const orderRes = await api.post('/payments/create-order', {
           plan_id: planId,
-          amount_paise: amountPaise,
+          billing_cycle: billingCycle,
         })
 
         const { order_id, amount, currency } = orderRes.data
@@ -212,7 +216,7 @@ export function RazorpayCheckout({
     } finally {
       setIsLoading(false)
     }
-  }, [amountPaise, planId, planLabel, onSuccess, mode])
+  }, [amountPaise, planId, planLabel, onSuccess, mode, billingCycle])
 
   return (
     <button

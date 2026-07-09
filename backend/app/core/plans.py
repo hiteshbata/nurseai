@@ -57,7 +57,6 @@ PLANS = [
         "cta": "Subscribe Pro",
         "highlight": True,
         "disabled": False,
-        "badge": "Most Popular",
         "profile_plan": "pro",
         "sessions_limit": 40,
     },

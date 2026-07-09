@@ -5,13 +5,63 @@ import { useRouter } from 'next/navigation'
 import { supabase, useSupabaseSession } from '@/lib/supabase'
 import api from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
+import { Mic } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 
 type Step = 1 | 2 | 3 | 4 | 5
+
+const KNOWN_COUNTRIES = ['Australia', 'United Kingdom', 'New Zealand', 'Ireland']
+
+// Selected/unselected classes for the segmented toggle buttons (Yes/No,
+// days-per-week) — kept in the accent (emerald) family to match the flow's
+// primary CTA color rather than the old off-brand blue.
+function toggleClass(selected: boolean) {
+  return cn(
+    'flex-1 py-3 rounded-xl font-semibold border-2 transition',
+    selected
+      ? 'border-accent bg-accent/10 text-emerald-700'
+      : 'border-gray-200 text-gray-600 hover:border-gray-300',
+  )
+}
+
+interface OnboardingStatus {
+  onboarding_completed?: boolean
+  destination_country?: string | null
+  exam_date?: string | null
+  has_taken_oet?: boolean | null
+  previous_band?: string | null
+  target_band?: string | null
+  days_per_week?: number | null
+  baseline_score?: number | null
+  state?: string | null
+  qualification?: string | null
+  years_of_experience?: string | null
+  nursing_specialty?: string | null
+}
+
+// Onboarding only ever writes to the backend on final submit (or after the
+// diagnostic), so "resume" means: skip past whichever steps already have
+// persisted data, rather than replaying an autosaved wizard.
+function resumeStepFor(data: OnboardingStatus): Step {
+  const step2Done =
+    !!data.destination_country &&
+    data.has_taken_oet != null &&
+    (!data.has_taken_oet || !!data.previous_band)
+  if (!step2Done) return 2
+  const step3Done = !!data.target_band && data.days_per_week != null
+  if (!step3Done) return 3
+  if (data.baseline_score == null) return 4
+  return 5
+}
 
 export default function OnboardingPage() {
   const { status } = useSupabaseSession()
   const router = useRouter()
   const [step, setStep] = useState<Step>(1)
+  const [checkingStatus, setCheckingStatus] = useState(true)
   const [loading, setLoading] = useState(false)
   const [userName, setUserName] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -21,6 +71,45 @@ export default function OnboardingPage() {
       router.push('/auth/login')
       return
     }
+  }, [status, router])
+
+  // A completed user should never see the wizard restart from step 1 —
+  // bounce them to where they can actually edit their plan, and resume
+  // an incomplete run at whatever step still has missing data.
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    let cancelled = false
+    api.get('/onboarding/status').then((res) => {
+      if (cancelled) return
+      const data: OnboardingStatus = res.data || {}
+      if (data.onboarding_completed) {
+        router.replace('/profile#practice-plan')
+        return
+      }
+      if (data.destination_country) {
+        if (KNOWN_COUNTRIES.includes(data.destination_country)) {
+          setDestinationCountry(data.destination_country)
+        } else {
+          setDestinationCountry('Other')
+          setOtherCountry(data.destination_country)
+        }
+      }
+      if (data.exam_date) setExamDate(data.exam_date.slice(0, 10))
+      if (data.has_taken_oet != null) setHasTakenOet(data.has_taken_oet)
+      if (data.previous_band) setPreviousBand(data.previous_band)
+      if (data.target_band) setTargetBand(data.target_band)
+      if (data.days_per_week != null) setDaysPerWeek(data.days_per_week)
+      if (data.baseline_score != null) setBaselineScore(data.baseline_score)
+      if (data.state) setNurseState(data.state)
+      if (data.qualification) setQualification(data.qualification)
+      if (data.years_of_experience) setYearsOfExperience(data.years_of_experience)
+      if (data.nursing_specialty) setNurseSpecialty(data.nursing_specialty)
+      setStep(resumeStepFor(data))
+      setCheckingStatus(false)
+    }).catch(() => {
+      if (!cancelled) setCheckingStatus(false)
+    })
+    return () => { cancelled = true }
   }, [status, router])
 
   useEffect(() => {
@@ -65,6 +154,26 @@ export default function OnboardingPage() {
       case 4: return true
       case 5: return true
       default: return false
+    }
+  }
+
+  // Names the first unmet requirement so a disabled Continue never leaves the
+  // user guessing what to fill in.
+  const continueHint = (): string | null => {
+    switch (step) {
+      case 2:
+        if (!(destinationCountry !== '' && (destinationCountry !== 'Other' || otherCountry.trim() !== ''))) {
+          return 'Select a country to continue'
+        }
+        if (hasTakenOet === null) return "Answer whether you've taken OET before to continue"
+        if (hasTakenOet && !previousBand) return 'Select your previous band score to continue'
+        return null
+      case 3:
+        if (!targetBand) return 'Select a target band to continue'
+        if (daysPerWeek === null) return 'Select how many days per week you can practice to continue'
+        return null
+      default:
+        return null
     }
   }
 
@@ -161,7 +270,7 @@ export default function OnboardingPage() {
       </div>
       <div className="w-full bg-gray-200 rounded-full h-2">
         <div
-          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+          className="bg-accent h-2 rounded-full transition-all duration-300"
           style={{ width: `${(step / totalSteps) * 100}%` }}
         />
       </div>
@@ -169,32 +278,42 @@ export default function OnboardingPage() {
   )
 
   const renderNavButtons = (showSkip = false) => (
-    <div className="flex gap-3 mt-8">
-      {step > 1 && (
-        <button
-          onClick={prevStep}
-          className="flex-1 py-3 border border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition"
+    <div className="mt-8">
+      <div className="flex gap-3">
+        {step > 1 && (
+          <Button type="button" variant="outline" size="lg" className="flex-1" onClick={prevStep}>
+            ← Back
+          </Button>
+        )}
+        {showSkip && (
+          <Button type="button" variant="outline" size="lg" className="flex-1" onClick={skipDiagnostic}>
+            Skip for now
+          </Button>
+        )}
+        <Button
+          type="button"
+          variant="accent"
+          size="lg"
+          className="flex-1"
+          onClick={step === totalSteps ? completeOnboarding : nextStep}
+          disabled={!canAdvance() || loading}
         >
-          ← Back
-        </button>
+          {loading ? 'Saving...' : step === totalSteps ? 'Go to Dashboard →' : 'Continue →'}
+        </Button>
+      </div>
+      {!canAdvance() && !loading && continueHint() && (
+        <p className="mt-2 text-center text-sm text-gray-500">{continueHint()}</p>
       )}
-      {showSkip && (
-        <button
-          onClick={skipDiagnostic}
-          className="flex-1 py-3 border border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition"
-        >
-          Skip for now
-        </button>
-      )}
-      <button
-        onClick={step === totalSteps ? completeOnboarding : nextStep}
-        disabled={!canAdvance() || loading}
-        className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {loading ? 'Saving...' : step === totalSteps ? 'Go to Dashboard →' : 'Continue →'}
-      </button>
     </div>
   )
+
+  if (status !== 'authenticated' || checkingStatus) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
+      </div>
+    )
+  }
 
   // Diagnostic mode — inline VoiceChat replacement
   if (diagnosticMode && diagnosticScenario) {
@@ -233,12 +352,9 @@ export default function OnboardingPage() {
               <p className="text-lg text-gray-600 mb-8">
                 Let's set up your personalised OET prep plan. This takes 2 minutes.
               </p>
-              <button
-                onClick={nextStep}
-                className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition shadow-md text-lg"
-              >
+              <Button type="button" variant="accent" size="lg" className="w-full text-lg" onClick={nextStep}>
                 Get Started →
-              </button>
+              </Button>
             </div>
           )}
 
@@ -251,13 +367,12 @@ export default function OnboardingPage() {
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Which country are you planning to work in?
                   </label>
-                  <select
+                  <Select
                     value={destinationCountry}
                     onChange={(e) => {
                       setDestinationCountry(e.target.value)
                       if (e.target.value !== 'Other') setOtherCountry('')
                     }}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                   >
                     <option value="">Select a country...</option>
                     <option value="Australia">Australia</option>
@@ -265,15 +380,14 @@ export default function OnboardingPage() {
                     <option value="New Zealand">New Zealand</option>
                     <option value="Ireland">Ireland</option>
                     <option value="Other">Other</option>
-                  </select>
+                  </Select>
                   {destinationCountry === 'Other' && (
                     <div className="mt-3">
-                      <input
+                      <Input
                         type="text"
                         value={otherCountry}
                         onChange={(e) => setOtherCountry(e.target.value)}
                         placeholder="Please type your country name"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
                         required
                       />
                     </div>
@@ -284,11 +398,10 @@ export default function OnboardingPage() {
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     When is your OET exam date? <span className="text-gray-400 font-normal">(optional)</span>
                   </label>
-                  <input
+                  <Input
                     type="date"
                     value={examDate}
                     onChange={(e) => setExamDate(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
 
@@ -299,21 +412,13 @@ export default function OnboardingPage() {
                   <div className="flex gap-3">
                     <button
                       onClick={() => { setHasTakenOet(true); setPreviousBand('') }}
-                      className={`flex-1 py-3 rounded-xl font-semibold border-2 transition ${
-                        hasTakenOet === true
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                      }`}
+                      className={toggleClass(hasTakenOet === true)}
                     >
                       Yes
                     </button>
                     <button
                       onClick={() => setHasTakenOet(false)}
-                      className={`flex-1 py-3 rounded-xl font-semibold border-2 transition ${
-                        hasTakenOet === false
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                      }`}
+                      className={toggleClass(hasTakenOet === false)}
                     >
                       No
                     </button>
@@ -325,16 +430,15 @@ export default function OnboardingPage() {
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       What was your last overall band score?
                     </label>
-                    <select
+                    <Select
                       value={previousBand}
                       onChange={(e) => setPreviousBand(e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                     >
                       <option value="">Select band...</option>
                       {['A', 'B', 'C+', 'C', 'D', 'E'].map((b) => (
                         <option key={b} value={b}>{b}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 )}
               </div>
@@ -349,10 +453,9 @@ export default function OnboardingPage() {
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       Which Indian state are you based in?
                     </label>
-                    <select
+                    <Select
                       value={nurseState}
                       onChange={(e) => setNurseState(e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                     >
                       <option value="">Select state...</option>
                       {[
@@ -368,49 +471,46 @@ export default function OnboardingPage() {
                       ].sort().map((s) => (
                         <option key={s} value={s}>{s}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       What is your nursing qualification?
                     </label>
-                    <select
+                    <Select
                       value={qualification}
                       onChange={(e) => setQualification(e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                     >
                       <option value="">Select qualification...</option>
                       {['GNM', 'B.Sc Nursing', 'Post Basic B.Sc', 'M.Sc Nursing', 'Other'].map((q) => (
                         <option key={q} value={q}>{q}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       Years of nursing experience?
                     </label>
-                    <select
+                    <Select
                       value={yearsOfExperience}
                       onChange={(e) => setYearsOfExperience(e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                     >
                       <option value="">Select range...</option>
                       {['0-1', '1-3', '3-5', '5-10', '10+'].map((r) => (
                         <option key={r} value={r}>{r} years</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       Nursing specialty / department?
                     </label>
-                    <select
+                    <Select
                       value={nurseSpecialty}
                       onChange={(e) => setNurseSpecialty(e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                     >
                       <option value="">Select specialty...</option>
                       {[
@@ -420,7 +520,7 @@ export default function OnboardingPage() {
                       ].map((sp) => (
                         <option key={sp} value={sp}>{sp}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </div>
               </div>
@@ -437,16 +537,15 @@ export default function OnboardingPage() {
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     What band score are you aiming for?
                   </label>
-                  <select
+                  <Select
                     value={targetBand}
                     onChange={(e) => setTargetBand(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                   >
                     <option value="">Select target band...</option>
                     {['A', 'B', 'C+', 'C', 'D'].map((b) => (
                       <option key={b} value={b}>{b}</option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
@@ -458,11 +557,7 @@ export default function OnboardingPage() {
                       <button
                         key={d}
                         onClick={() => setDaysPerWeek(d)}
-                        className={`flex-1 py-3 rounded-xl font-semibold border-2 transition ${
-                          daysPerWeek === d
-                            ? 'border-blue-600 bg-blue-50 text-blue-700'
-                            : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                        }`}
+                        className={toggleClass(daysPerWeek === d)}
                       >
                         {d}
                       </button>
@@ -471,8 +566,8 @@ export default function OnboardingPage() {
                 </div>
 
                 {examDate && daysPerWeek && (
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                    <p className="text-sm text-blue-800">
+                  <div className="bg-accent/10 border border-accent/20 rounded-xl p-4">
+                    <p className="text-sm text-emerald-800">
                       At {daysPerWeek} day{daysPerWeek > 1 ? 's' : ''} per week you have approximately{' '}
                       <span className="font-bold">{getPracticeCount()}</span> practice sessions before your exam.
                     </p>
@@ -492,24 +587,23 @@ export default function OnboardingPage() {
               </p>
 
               {baselineScore !== null && (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-6 mb-6 text-center">
-                  <div className="text-4xl font-bold text-green-600 mb-1">{baselineScore.toFixed(1)}/6</div>
-                  <p className="text-green-700 font-semibold">Baseline Score Saved</p>
+                <div className="bg-accent/10 border border-accent/20 rounded-xl p-6 mb-6 text-center">
+                  <div className="text-4xl font-bold text-emerald-600 mb-1">{baselineScore.toFixed(1)}/6</div>
+                  <p className="text-emerald-700 font-semibold">Baseline Score Saved</p>
                 </div>
               )}
 
               <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                <h3 className="font-semibold text-gray-800 mb-2">🎤 Speaking Diagnostic</h3>
+                <h3 className="font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
+                  <Mic className="w-4 h-4" aria-hidden="true" /> Speaking Diagnostic
+                </h3>
                 <p className="text-sm text-gray-600 mb-4">
                   You'll have a short conversation with an AI patient, then receive a score.
                 </p>
                 {baselineScore === null && (
-                  <button
-                    onClick={startDiagnostic}
-                    className="w-full py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition shadow-md"
-                  >
+                  <Button type="button" variant="accent" size="lg" className="w-full" onClick={startDiagnostic}>
                     Start Diagnostic
-                  </button>
+                  </Button>
                 )}
               </div>
 
@@ -522,19 +616,19 @@ export default function OnboardingPage() {
             <div>
               <h2 className="text-2xl font-bold mb-6">Your Plan is Ready</h2>
 
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-100 mb-6 space-y-3">
+              <div className="bg-gradient-to-br from-emerald-50 to-white rounded-2xl p-6 border border-emerald-100 mb-6 space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Destination</span>
                   <span className="font-semibold">{destinationCountry || 'Not set'}</span>
                 </div>
-                <div className="border-t border-blue-100" />
+                <div className="border-t border-emerald-100" />
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Exam date</span>
                   <span className="font-semibold">
                     {examDate ? new Date(examDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Not set'}
                   </span>
                 </div>
-                <div className="border-t border-blue-100" />
+                <div className="border-t border-emerald-100" />
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Current level</span>
                   <span className="font-semibold">
@@ -543,19 +637,19 @@ export default function OnboardingPage() {
                     ) : 'Not assessed'}
                   </span>
                 </div>
-                <div className="border-t border-blue-100" />
+                <div className="border-t border-emerald-100" />
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Target band</span>
                   <span className="font-semibold">{targetBand}</span>
                 </div>
-                <div className="border-t border-blue-100" />
+                <div className="border-t border-emerald-100" />
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Practice days/week</span>
                   <span className="font-semibold">{daysPerWeek} days</span>
                 </div>
                 {nurseState && (
                   <>
-                    <div className="border-t border-blue-100" />
+                    <div className="border-t border-emerald-100" />
                     <div className="flex justify-between items-center">
                       <span className="text-gray-600">State</span>
                       <span className="font-semibold">{nurseState}</span>
@@ -564,7 +658,7 @@ export default function OnboardingPage() {
                 )}
                 {qualification && (
                   <>
-                    <div className="border-t border-blue-100" />
+                    <div className="border-t border-emerald-100" />
                     <div className="flex justify-between items-center">
                       <span className="text-gray-600">Qualification</span>
                       <span className="font-semibold">{qualification}</span>
@@ -573,7 +667,7 @@ export default function OnboardingPage() {
                 )}
                 {yearsOfExperience && (
                   <>
-                    <div className="border-t border-blue-100" />
+                    <div className="border-t border-emerald-100" />
                     <div className="flex justify-between items-center">
                       <span className="text-gray-600">Experience</span>
                       <span className="font-semibold">{yearsOfExperience} years</span>
@@ -582,7 +676,7 @@ export default function OnboardingPage() {
                 )}
                 {nurseSpecialty && (
                   <>
-                    <div className="border-t border-blue-100" />
+                    <div className="border-t border-emerald-100" />
                     <div className="flex justify-between items-center">
                       <span className="text-gray-600">Specialty</span>
                       <span className="font-semibold">{nurseSpecialty}</span>
@@ -676,7 +770,7 @@ function VoiceChatInline({
         {history.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'nurse' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[75%] rounded-xl px-4 py-2 ${
-              msg.role === 'nurse' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'
+              msg.role === 'nurse' ? 'bg-primary text-white' : 'bg-gray-200 text-gray-800'
             }`}>
               <p className="text-xs font-semibold opacity-60 mb-0.5">
                 {msg.role === 'nurse' ? 'You (Nurse)' : 'Patient'}
@@ -688,32 +782,42 @@ function VoiceChatInline({
       </div>
 
       <div className="flex gap-2">
-        <input
+        <Input
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
           placeholder="Type your message..."
-          className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          data-lpignore="true"
+          data-1p-ignore
+          className="flex-1"
           disabled={isProcessing}
         />
-        <button
+        <Button
+          type="button"
+          variant="default"
           onClick={sendMessage}
           disabled={!inputText.trim() || isProcessing}
-          className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50"
         >
           Send
-        </button>
+        </Button>
       </div>
 
       {history.length > 2 && (
-        <button
+        <Button
+          type="button"
+          variant="accent"
+          size="lg"
+          className="mt-4 w-full"
           onClick={endSession}
           disabled={isProcessing}
-          className="mt-4 w-full py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition shadow-md"
         >
           {isProcessing ? 'Scoring...' : 'End Session & Get Score'}
-        </button>
+        </Button>
       )}
     </div>
   )
