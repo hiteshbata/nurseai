@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from app.core.supabase import get_supabase
 from app.routers.auth import get_current_user, UserInfo
 
@@ -27,7 +27,7 @@ def update_practice_plan(
     supabase = get_supabase()
 
     body = {}
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
 
     if payload.target_band is not None:
         body["target_band"] = payload.target_band

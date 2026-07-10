@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     REALTIME_SESSION_MAX_SECONDS: int = 300
     REALTIME_SESSION_WARNING_SECONDS: int = 270
 
+    # Hard cap on how long a text-chat session_id (check_and_increment_session)
+    # stays valid, enforced in app/routers/sessions.py validate_session. Without
+    # this, a free user's first ("premium trial") session -- which gets the
+    # paid-tier scoring model and TTS voice for as long as it's their first
+    # session -- could be held open indefinitely and re-hit /chat and /tts to
+    # run up premium-tier cost for free.
+    CHAT_SESSION_MAX_SECONDS: int = 1800
+
     # --- Realtime cost estimation (see app/services/realtime/pricing.py) ---
     # Blended $/minute-of-conversation estimates, NOT exact -- both
     # providers bill per audio token/second with input and output priced

@@ -1,7 +1,7 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import httpx
 from app.core.config import settings
 from app.core.supabase import get_supabase
 from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions
@@ -16,10 +16,40 @@ if settings.SENTRY_DSN:
         send_default_pii=False,
     )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    supabase = get_supabase()
+
+    # Ensure user_roles table exists
+    supabase.table("user_roles").select("user_id").limit(1).execute()
+
+    # Verify user_profiles table is accessible (may not exist yet)
+    try:
+        supabase.table("user_profiles").select("user_id").limit(1).execute()
+    except Exception:
+        print("[WARN] user_profiles table not found — run the migration SQL to create it")
+
+    try:
+        data = supabase.table("questions").select("id").limit(1).execute()
+        if not data.data:
+            print("Seeding database with OET questions...")
+            oet_service.seed_database(supabase)
+        data = supabase.table("scenarios").select("id").limit(1).execute()
+        if not data.data:
+            print("Seeding database with OET scenarios...")
+            seed_scenarios()
+    except Exception:
+        print("[WARN] startup seeding check failed — Supabase unreachable or tables missing, continuing to serve")
+
+    yield
+
+
 app = FastAPI(
     title="NurseAI API",
     description="AI-powered OET coaching platform for nurses",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 origins = settings.ALLOWED_ORIGINS.split(",")
@@ -69,18 +99,7 @@ async def health_check():
     except Exception:
         database_status = "error"
 
-    ai_api_status = "ok"
-    if settings.OPENROUTER_API_KEY or settings.GEMINI_API_KEY:
-        try:
-            headers = {"Authorization": f"Bearer {settings.OPENROUTER_API_KEY}"} if settings.OPENROUTER_API_KEY else {}
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get("https://openrouter.ai/api/v1/auth/key", headers=headers)
-                if resp.status_code >= 500:
-                    ai_api_status = "error"
-        except Exception:
-            ai_api_status = "error"
-    else:
-        ai_api_status = "not_configured"
+    ai_api_status = "ok" if (settings.OPENROUTER_API_KEY or settings.GEMINI_API_KEY) else "not_configured"
 
     overall = "ok" if database_status == "ok" and ai_api_status in ("ok", "not_configured") else "degraded"
 
@@ -90,28 +109,6 @@ async def health_check():
         "database": database_status,
         "ai_api": ai_api_status,
     }
-
-@app.on_event("startup")
-def startup_event():
-    supabase = get_supabase()
-
-    # Ensure user_roles table exists
-    supabase.table("user_roles").select("user_id").limit(1).execute()
-
-    # Verify user_profiles table is accessible (may not exist yet)
-    try:
-        supabase.table("user_profiles").select("user_id").limit(1).execute()
-    except Exception:
-        print("[WARN] user_profiles table not found — run the migration SQL to create it")
-
-    data = supabase.table("questions").select("id").limit(1).execute()
-    if not data.data:
-        print("Seeding database with OET questions...")
-        oet_service.seed_database(supabase)
-    data = supabase.table("scenarios").select("id").limit(1).execute()
-    if not data.data:
-        print("Seeding database with OET scenarios...")
-        seed_scenarios()
 
 if __name__ == "__main__":
     import uvicorn

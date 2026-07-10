@@ -32,20 +32,21 @@ export function useSupabaseSession() {
   useEffect(() => {
     let cancelled = false
 
+    // getSession() (local storage read) and onAuthStateChange's INITIAL_SESSION
+    // event both fire on mount with a *new* Session object even when the user
+    // hasn't changed. Keep the same object reference when the token is
+    // unchanged so consumers keying a useEffect off `session` don't double-fetch.
+    const applySession = (s: Session | null) => {
+      if (cancelled) return
+      setSession(prev => (prev?.access_token === s?.access_token ? prev : s))
+      setStatus(s ? 'authenticated' : 'unauthenticated')
+    }
+
     // Use getSession() which reads from local storage — no network round-trip.
     // This is sufficient for routine auth checks on page load.
-    getClient()?.auth.getSession().then(({ data: { session: s } }) => {
-      if (cancelled) return
-      setSession(s)
-      setStatus(s ? 'authenticated' : 'unauthenticated')
-    })
+    getClient()?.auth.getSession().then(({ data: { session: s } }) => applySession(s))
 
-    const { data: { subscription } } = getClient()?.auth.onAuthStateChange((_event, s) => {
-      if (!cancelled) {
-        setSession(s)
-        setStatus(s ? 'authenticated' : 'unauthenticated')
-      }
-    }) ?? { data: { subscription: { unsubscribe: () => {} } } }
+    const { data: { subscription } } = getClient()?.auth.onAuthStateChange((_event, s) => applySession(s)) ?? { data: { subscription: { unsubscribe: () => {} } } }
 
     return () => {
       cancelled = true

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.core.supabase import get_supabase
 from app.core.plans import GRACE_PERIOD_DAYS
 from app.routers.auth import get_current_user, UserInfo
@@ -99,7 +99,7 @@ def admin_update_scenario(
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    update_data["updated_at"] = datetime.utcnow().isoformat()
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     data = supabase.table("scenarios").update(update_data).eq("id", scenario_id).execute()
     return data.data[0]
 
@@ -140,7 +140,7 @@ def admin_update_setting(
     data = supabase.table("settings").upsert({
         "key": key,
         "value": setting.value,
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }).execute()
     return data.data[0]
 
@@ -221,9 +221,9 @@ def admin_get_logs(
     if filter == "unresolved":
         query = query.eq("resolved", False)
     elif filter == "today":
-        query = query.gte("timestamp", datetime.utcnow().isoformat()[:10])
+        query = query.gte("timestamp", datetime.now(timezone.utc).isoformat()[:10])
     elif filter == "week":
-        week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         query = query.gte("timestamp", week_ago)
 
     return query.limit(100).execute().data
@@ -248,6 +248,20 @@ def admin_unresolved_logs_count(current_user: UserInfo = Depends(require_admin))
     return {"count": count or 0}
 
 
+LOG_RETENTION_DAYS = 90
+
+
+@router.post("/logs/prune")
+def admin_prune_logs(current_user: UserInfo = Depends(require_admin)):
+    """Delete log entries older than LOG_RETENTION_DAYS. Wire an external cron
+    (same as /admin/subscriptions/sweep-expired) to hit this periodically --
+    the logs table has no other retention and grows unbounded otherwise."""
+    supabase = get_supabase()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=LOG_RETENTION_DAYS)).isoformat()
+    deleted = supabase.table("logs").delete().lt("timestamp", cutoff).execute()
+    return {"deleted": len(deleted.data or [])}
+
+
 # ── SUBSCRIPTION MANAGEMENT ─────────────────────────────────────────
 
 @router.post("/subscriptions/sweep-expired")
@@ -262,7 +276,7 @@ def admin_sweep_expired_subscriptions(current_user: UserInfo = Depends(require_a
     that reads user_profiles directly instead of through the gating helper.
     """
     supabase = get_supabase()
-    cutoff = (datetime.utcnow() - timedelta(days=GRACE_PERIOD_DAYS)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=GRACE_PERIOD_DAYS)).isoformat()
 
     expired = (
         supabase.table("user_profiles")

@@ -180,15 +180,8 @@ def get_razorpay_client():
     return razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
 
-RAZORPAY_PLAN_IDS = {
-    "basic": settings.RAZORPAY_PLAN_ID_BASIC,
-    "pro": settings.RAZORPAY_PLAN_ID_PRO,
-    "elite": settings.RAZORPAY_PLAN_ID_ELITE,
-}
-
-
 def get_razorpay_plan_id(plan_id: str) -> str:
-    razorpay_plan_id = RAZORPAY_PLAN_IDS.get(plan_id)
+    razorpay_plan_id = getattr(settings, f"RAZORPAY_PLAN_ID_{plan_id.upper()}", "")
     if not razorpay_plan_id:
         raise HTTPException(
             status_code=500,

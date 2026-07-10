@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.supabase import get_supabase
 from app.routers.auth import get_current_user, UserInfo
 from app.schemas.onboarding import OnboardingCreate, OnboardingResponse
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ def complete_onboarding(
     current_user: UserInfo = Depends(get_current_user),
 ):
     supabase = get_supabase()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
 
     body = {
         "user_id": current_user.id,
@@ -62,7 +62,7 @@ def save_baseline_score(
     current_user: UserInfo = Depends(get_current_user),
 ):
     supabase = get_supabase()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
 
     supabase.table("user_profiles").upsert({
         "user_id": current_user.id,
