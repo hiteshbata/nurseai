@@ -88,6 +88,18 @@ VOICE_MAPPERS = {
 }
 
 
+def _get_voice_provider() -> str:
+    """DB setting (admin panel) overrides the env default so switching
+    providers doesn't require a redeploy."""
+    try:
+        data = get_supabase().table("settings").select("value").eq("key", "voice_provider").execute()
+        if data.data and data.data[0]["value"]:
+            return data.data[0]["value"]
+    except Exception:
+        pass
+    return settings.VOICE_PROVIDER
+
+
 def _provider_credentials(provider: str) -> tuple[str, str]:
     if provider == "openai":
         return settings.OPENAI_API_KEY, settings.OPENAI_REALTIME_MODEL
@@ -244,7 +256,7 @@ async def realtime_stream(websocket: WebSocket):
 
     logger.info("Realtime stream authenticated | user_id=%s scenario_id=%s", user.id, scenario_id)
 
-    provider = settings.VOICE_PROVIDER
+    provider = _get_voice_provider()
     try:
         capabilities = capabilities_for(provider)
         adapter_class = get_adapter_class(provider)

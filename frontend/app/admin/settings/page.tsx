@@ -13,6 +13,7 @@ interface Setting {
 const SETTINGS_SCHEMA: Record<string, string> = {
   ai_model: 'AI model for scoring and patient chat',
   ai_patient_model: 'AI model for patient role-play',
+  voice_provider: 'Realtime voice-to-voice provider',
   speaking_price_monthly: 'Monthly subscription price in INR',
 }
 
@@ -94,6 +95,29 @@ export default function AdminSettingsPage() {
                   </select>
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="border-t pt-6">
+            <h2 className="text-xl font-bold mb-4 text-blue-700">Voice</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold mb-2">
+                  {SETTINGS_SCHEMA.voice_provider}
+                </label>
+                <select
+                  value={settings.voice_provider || ''}
+                  onChange={(e) => {
+                    setSettings({ ...settings, voice_provider: e.target.value })
+                    updateSetting('voice_provider', e.target.value)
+                  }}
+                  disabled={saving === 'voice_provider'}
+                  className="w-full px-4 py-2 border rounded-lg"
+                >
+                  <option value="openai">OpenAI Realtime</option>
+                  <option value="gemini">Gemini Live</option>
+                </select>
+              </div>
             </div>
           </div>
 
