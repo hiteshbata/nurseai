@@ -226,31 +226,31 @@ export function Navbar() {
               </div>
             </>
           ) : isLanding ? (
-            <>
+            <div className="hidden sm:flex items-center gap-3">
               <Link
                 href="/auth/register"
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition"
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition whitespace-nowrap"
                 style={{ backgroundColor: "#10B981" }}
               >
                 Get Started
               </Link>
               <Link
                 href="/auth/login"
-                className="text-sm font-semibold px-3 py-2 rounded transition"
+                className="text-sm font-semibold px-3 py-2 rounded transition whitespace-nowrap"
                 style={{ color: "#0F2356" }}
               >
                 Sign In
               </Link>
-            </>
+            </div>
           ) : (
-            <>
-              <Link href="/auth/login" className="text-sm text-blue-600 font-semibold hover:bg-blue-50 px-3 py-2 rounded transition">
+            <div className="hidden sm:flex items-center gap-3">
+              <Link href="/auth/login" className="text-sm text-blue-600 font-semibold hover:bg-blue-50 px-3 py-2 rounded transition whitespace-nowrap">
                 Sign In
               </Link>
-              <Link href="/auth/register" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
+              <Link href="/auth/register" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition whitespace-nowrap">
                 Sign Up
               </Link>
-            </>
+            </div>
           )}
 
           {/* Hamburger */}
