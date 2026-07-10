@@ -63,6 +63,12 @@ export function useAudioPlayback(): UseAudioPlaybackReturn {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel()
     }
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+      audioRef.current = null
+    }
+    setIsSpeaking(false)
   }, [])
 
   useEffect(() => {
