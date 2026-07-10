@@ -36,6 +36,7 @@ interface UseSpeakingSessionOptions {
 
 interface UseSpeakingSessionReturn {
   isListening: boolean
+  isConnecting: boolean
   isProcessing: boolean
   isSpeaking: boolean
   interimText: string
@@ -73,6 +74,7 @@ export function useSpeakingSession({
   autoListen,
 }: UseSpeakingSessionOptions): UseSpeakingSessionReturn {
   const [isListening, setIsListening] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [interimText, setInterimText] = useState('')
   const [sttError, setSttError] = useState<string | null>(null)
@@ -127,6 +129,7 @@ export function useSpeakingSession({
       silenceTimeoutRef.current = null
     }
     setIsListening(false)
+    setIsConnecting(false)
     setInterimText('')
     // Depend on sttMic.stop specifically, not the whole sttMic object --
     // useMicrophone returns a fresh object every render (isRecording/stream
@@ -300,6 +303,7 @@ export function useSpeakingSession({
     }
 
     stopListening()
+    setIsConnecting(true)
 
     const wsUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}`
       .replace(/^http:/, 'ws:')
@@ -314,6 +318,7 @@ export function useSpeakingSession({
         const session = await getCurrentSession()
         if (!session?.access_token) {
           setSttError('Your session has expired. Please sign in again.')
+          setIsConnecting(false)
           ws.close()
           return
         }
@@ -322,13 +327,16 @@ export function useSpeakingSession({
         const result = await sttMic.start()
         if (!result.ok) {
           setSttError('Please allow microphone access to record')
+          setIsConnecting(false)
           ws.close()
           return
         }
         setIsListening(true)
+        setIsConnecting(false)
       } catch (err) {
         console.error('Failed to start recording:', err)
         setSttError('Please allow microphone access to record')
+        setIsConnecting(false)
         ws.close()
       }
     }
@@ -341,6 +349,7 @@ export function useSpeakingSession({
           setUsingFallbackStt(true)
           setSttError('Using browser speech recognition as fallback')
           stopListening()
+          setIsConnecting(false)
           startFallbackListening()
           return
         }
@@ -376,11 +385,13 @@ export function useSpeakingSession({
       if (!deepgramEverConnectedRef.current) {
         setUsingFallbackStt(true)
         setSttError('Using browser speech recognition as fallback')
+        setIsConnecting(false)
         ws.close()
         startFallbackListening()
       } else {
         setSttError('Connection lost. Please try again.')
         setIsListening(false)
+        setIsConnecting(false)
       }
     }
 
@@ -389,6 +400,7 @@ export function useSpeakingSession({
         setSttError('Could not connect to speech service. Please try again.')
       }
       setIsListening(false)
+      setIsConnecting(false)
       setInterimText('')
     }
     // sttMic.start specifically (not the whole sttMic object) -- see the
@@ -410,6 +422,7 @@ export function useSpeakingSession({
 
   return {
     isListening,
+    isConnecting,
     isProcessing,
     isSpeaking: audioPlayback.isSpeaking,
     interimText,

@@ -17,15 +17,25 @@ import { useMicrophone } from '@/app/hooks/useMicrophone'
 import { useSpeakingSession } from '@/app/hooks/useSpeakingSession'
 import { useRealtimeSpeakingSession } from '@/app/hooks/useRealtimeSpeakingSession'
 
-// Toggle to switch the whole speaking flow onto the realtime voice pipeline
-// (backend: /speaking/realtime/stream, provider selected server-side via
+// Staged rollout onto the realtime voice pipeline (backend:
+// /speaking/realtime/stream, provider selected server-side via
 // VOICE_PROVIDER=openai|gemini) instead of the Deepgram STT + TTS
-// round-trip. Both hooks return the same shape so this is the only line
-// that needs to change to test/roll out the new pipeline. If the realtime
-// provider itself goes down mid-rollout, the component automatically
-// drops back to the legacy pipeline per-session (see useLegacyFallback
-// below) without needing this flag touched.
-const USE_REALTIME_API = false
+// round-trip. NEXT_PUBLIC_REALTIME_ROLLOUT_PCT (0-100) controls what
+// fraction of users get it, bucketed by a stable hash of their user id so
+// the same user doesn't flip between pipelines across sessions. Defaults
+// to 20 so day one isn't 100%; raise it as confidence grows. If the
+// realtime provider itself goes down mid-rollout, the component
+// automatically drops back to the legacy pipeline per-session (see
+// useLegacyFallback below) without needing this touched.
+const REALTIME_ROLLOUT_PCT = Number(process.env.NEXT_PUBLIC_REALTIME_ROLLOUT_PCT ?? 20)
+
+function inRealtimeRollout(userId: string | undefined) {
+  if (!userId || REALTIME_ROLLOUT_PCT <= 0) return false
+  if (REALTIME_ROLLOUT_PCT >= 100) return true
+  let hash = 0
+  for (let i = 0; i < userId.length; i++) hash = (hash * 31 + userId.charCodeAt(i)) | 0
+  return Math.abs(hash) % 100 < REALTIME_ROLLOUT_PCT
+}
 
 interface Scenario {
   id: number
@@ -135,7 +145,7 @@ function scoreToGrade(score: number): string {
 }
 
 export default function SpeakingPage() {
-  const { status } = useSupabaseSession()
+  const { session: authSession, status } = useSupabaseSession()
   const router = useRouter()
   const [phase, setPhase] = useState<Phase>('select')
   const [scenarios, setScenarios] = useState<Scenario[]>([])
@@ -482,7 +492,7 @@ export default function SpeakingPage() {
       setConversationError('Live voice mode is temporarily unavailable — switched to standard voice mode.')
     },
   })
-  const useRealtime = USE_REALTIME_API && !useLegacyFallback
+  const useRealtime = inRealtimeRollout(authSession?.user?.id) && !useLegacyFallback
   const session = useRealtime ? realtimeSession : legacySession
 
   // The instant the fallback flips on, pick up listening again on the
@@ -1251,6 +1261,7 @@ export default function SpeakingPage() {
 
           <VoiceOrb
             isListening={session.isListening}
+            isConnecting={session.isConnecting}
             isProcessing={isProcessing}
             isSpeaking={session.isSpeaking}
             isEnding={isEnding}

@@ -8,6 +8,14 @@ from app.routers import auth, questions, speaking, speaking_realtime, scoring, p
 from app.services.oet_questions import oet_service
 from app.services.seed_scenarios import seed_scenarios
 
+if settings.SENTRY_DSN:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.SENTRY_ENVIRONMENT,
+        send_default_pii=False,
+    )
+
 app = FastAPI(
     title="NurseAI API",
     description="AI-powered OET coaching platform for nurses",

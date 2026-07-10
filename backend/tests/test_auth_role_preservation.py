@@ -22,9 +22,28 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import jwt
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.routers import auth as auth_module  # noqa: E402
+from app.core.config import settings  # noqa: E402
+
+TEST_JWT_SECRET = "test-jwt-secret-at-least-32-bytes-long"
+
+
+def make_token(user_id, email="nurse@example.com"):
+    return jwt.encode(
+        {
+            "sub": user_id,
+            "email": email,
+            "aud": "authenticated",
+            "user_metadata": {"name": "Test Nurse"},
+            "exp": time.time() + 3600,
+        },
+        TEST_JWT_SECRET,
+        algorithm="HS256",
+    )
 
 
 class FakeResult:
@@ -66,39 +85,29 @@ class FakeTable:
 class FakeSupabase:
     def __init__(self, rows_by_id):
         self._rows = rows_by_id
-        self.auth = MagicMock()
 
     def table(self, name):
         assert name == "user_roles"
         return FakeTable(self._rows)
 
 
-class FakeAuthUser:
-    def __init__(self, user_id, email="nurse@example.com"):
-        self.id = user_id
-        self.email = email
-        self.user_metadata = {"name": "Test Nurse"}
-
-
 def run_get_current_user(fake_supabase, user_id):
     """Invoke the real get_current_user() logic against a fake Supabase client.
 
-    get_current_user() now verifies tokens via get_auth_client() (a separate
-    client, kept isolated from the service-role client used for table
-    writes -- see core/supabase.py). fake_supabase.auth doubles as that
-    auth client here since both just need a working .auth.get_user().
+    get_current_user() verifies the token locally (HS256, project JWT
+    secret) instead of calling Supabase Auth over the network, so the test
+    signs a real token with a test secret rather than mocking .auth.get_user().
     """
-    fake_supabase.auth.get_user.return_value = MagicMock(user=FakeAuthUser(user_id))
-    credentials = MagicMock(credentials="fake-token")
+    credentials = MagicMock(credentials=make_token(user_id))
     original_get_supabase = auth_module.get_supabase
-    original_get_auth_client = auth_module.get_auth_client
+    original_secret = settings.SUPABASE_JWT_SECRET
     auth_module.get_supabase = lambda: fake_supabase
-    auth_module.get_auth_client = lambda: fake_supabase
+    settings.SUPABASE_JWT_SECRET = TEST_JWT_SECRET
     try:
         return auth_module.get_current_user(credentials)
     finally:
         auth_module.get_supabase = original_get_supabase
-        auth_module.get_auth_client = original_get_auth_client
+        settings.SUPABASE_JWT_SECRET = original_secret
 
 
 class AdminSelfDemotionTests(unittest.TestCase):

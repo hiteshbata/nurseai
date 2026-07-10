@@ -3,15 +3,12 @@ import httpx
 import logging
 import re
 from app.core.config import settings
+from app.core.error_utils import redact_api_keys, classify_http_error
 from app.services.plan_gating import get_tts_voice
 
 logger = logging.getLogger(__name__)
 
 GOOGLE_TTS_URL = "https://texttospeech.googleapis.com/v1/text:synthesize"
-
-
-def _redact_api_keys(text: str) -> str:
-    return re.sub(r'(?i)(key|api[_-]?key|token|secret)(["\s:=]+)([A-Za-z0-9_-]{20,})', r'\1\2***REDACTED***', text)
 
 
 # The patient-persona LLM sometimes narrates non-verbal stage directions
@@ -26,20 +23,6 @@ _ACTION_TAG_RE = re.compile(r'\*[^*\n]{1,80}\*')
 def strip_action_tags(text: str) -> str:
     cleaned = _ACTION_TAG_RE.sub('', text)
     return re.sub(r'[ \t]{2,}', ' ', cleaned).strip()
-
-
-def _classify_tts_error(status_code: int) -> str:
-    if status_code in (401, 403):
-        return "auth"
-    elif status_code == 429:
-        return "quota"
-    elif status_code == 400:
-        return "bad_request"
-    elif status_code == 404:
-        return "bad_request"
-    elif status_code >= 500:
-        return "server_error"
-    return "unknown"
 
 
 async def synthesize_speech(
@@ -77,8 +60,8 @@ async def synthesize_speech(
 
     if response.status_code != 200:
         status = response.status_code
-        error_type = _classify_tts_error(status)
-        detail = _redact_api_keys(response.text[:500])
+        error_type = classify_http_error(status)
+        detail = redact_api_keys(response.text[:500])
         logger.error(
             "[EXTERNAL_API_FAILURE] service=GOOGLE_TTS type=%s status=%d detail=%s",
             error_type, status, detail,

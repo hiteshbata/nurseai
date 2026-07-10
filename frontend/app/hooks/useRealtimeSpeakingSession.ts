@@ -34,6 +34,7 @@ interface UseRealtimeSpeakingSessionOptions {
 
 interface UseRealtimeSpeakingSessionReturn {
   isListening: boolean
+  isConnecting: boolean
   isProcessing: boolean
   isSpeaking: boolean
   /** Always '' — Realtime only gives us the nurse's transcript once it's final, not word-by-word. */
@@ -58,6 +59,16 @@ const DEFAULT_SAMPLE_RATE = 24000
 // keeps latency low while cutting message count by ~8x.
 const SEND_BATCH_MS = 40
 
+// Reconnect on an unexpected drop (wifi blip) instead of dead-ending the
+// session -- capped attempts with exponential backoff so a genuinely dead
+// backend/network still gives up instead of retrying forever. The mic/
+// AudioContext/worklet are left running across attempts (only the socket is
+// replaced) so a successful reconnect resumes silently -- no permission
+// re-prompt, no restart from the student.
+const MAX_RECONNECT_ATTEMPTS = 5
+const RECONNECT_BASE_DELAY_MS = 1000
+const RECONNECTING_MESSAGE = 'Reconnecting…'
+
 export function useRealtimeSpeakingSession({
   scenario,
   convHistory,
@@ -68,6 +79,7 @@ export function useRealtimeSpeakingSession({
   onProviderUnavailable,
 }: UseRealtimeSpeakingSessionOptions): UseRealtimeSpeakingSessionReturn {
   const [isListening, setIsListening] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [sttError, setSttError] = useState<string | null>(null)
@@ -98,6 +110,23 @@ export function useRealtimeSpeakingSession({
   // Streaming patient transcript -- true while the current response's text
   // is still being appended to the last convHistory bubble.
   const patientTurnActiveRef = useRef(false)
+
+  // Reconnect bookkeeping -- see MAX_RECONNECT_ATTEMPTS above.
+  const reconnectAttemptsRef = useRef(0)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // connectSocket is defined after scheduleReconnect but scheduleReconnect
+  // needs to call it back on retry -- indirect through a ref to avoid a
+  // definition-order cycle between the two useCallbacks.
+  const connectSocketRef = useRef<(session: { access_token: string }) => Promise<void>>(
+    async () => {}
+  )
+
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
+  }, [])
 
   const flushPendingAudio = useCallback(() => {
     const chunks = pendingSamplesRef.current
@@ -160,6 +189,9 @@ export function useRealtimeSpeakingSession({
   }, [])
 
   const teardown = useCallback(() => {
+    clearReconnectTimer()
+    reconnectAttemptsRef.current = 0
+
     workletNodeRef.current?.port.close()
     workletNodeRef.current?.disconnect()
     workletNodeRef.current = null
@@ -194,11 +226,12 @@ export function useRealtimeSpeakingSession({
     interruptPlayback()
     patientTurnActiveRef.current = false
     suppressPlaybackRef.current = false
-  }, [interruptPlayback])
+  }, [interruptPlayback, clearReconnectTimer])
 
   const stopListening = useCallback(() => {
     teardown()
     setIsListening(false)
+    setIsConnecting(false)
     setIsProcessing(false)
   }, [teardown])
 
@@ -280,100 +313,158 @@ export function useRealtimeSpeakingSession({
     }
   }, [appendPatientDelta, setConvHistory, interruptPlayback, stopListening, onProviderUnavailable])
 
+  // Opens (or re-opens) the WebSocket and does the session.ready handshake.
+  // Used both for the initial connect and for every reconnect attempt --
+  // mic/AudioContext/worklet are set up once in startListening and are left
+  // untouched here, so a reconnect only swaps the socket underneath them.
+  const connectSocket = useCallback(async (session: { access_token: string }) => {
+    const wsUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}`
+      .replace(/^http:/, 'ws:')
+      .replace(/^https:/, 'wss:') + '/speaking/realtime/stream'
+
+    const ws = new WebSocket(wsUrl)
+    ws.binaryType = 'arraybuffer'
+    wsRef.current = ws
+
+    // Wait specifically for the backend's session.ready -- not just the
+    // socket opening -- because it carries the audio sample rates the
+    // active provider requires (OpenAI and Gemini Live differ), and the
+    // AudioWorklet (built once in startListening) needs the correct input
+    // rate from the start; it can't be changed after the fact.
+    await new Promise<void>((resolve, reject) => {
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          token: session.access_token,
+          scenario_id: scenario?.id,
+          session_id: sessionId,
+        }))
+      }
+      ws.onerror = () => reject(new Error('connection_failed'))
+      ws.onmessage = (event) => {
+        if (typeof event.data !== 'string') return
+        try {
+          const parsed = JSON.parse(event.data)
+          if (parsed.type === 'error') {
+            setSttError(parsed.error === 'session_limit_reached'
+              ? 'You have used all your sessions this month.'
+              : parsed.error === 'Unauthorized or missing scenario_id'
+                ? 'Your session has expired. Please sign in again.'
+                : (parsed.error || 'Voice session error'))
+            reject(new Error('handled'))
+            return
+          }
+          if (parsed.type === 'session.ready' && typeof parsed.session_id === 'number') {
+            setSessionId(parsed.session_id)
+            inputSampleRateRef.current = parsed.input_sample_rate || DEFAULT_SAMPLE_RATE
+            outputSampleRateRef.current = parsed.output_sample_rate || DEFAULT_SAMPLE_RATE
+            sendBatchSamplesRef.current = Math.round((inputSampleRateRef.current * SEND_BATCH_MS) / 1000)
+            resolve()
+          }
+        } catch {
+          // ignore non-JSON text frames
+        }
+      }
+    })
+
+    ws.onmessage = (event) => {
+      if (typeof event.data === 'string') {
+        try {
+          handleServerEvent(JSON.parse(event.data))
+        } catch {
+          // ignore non-JSON text frames
+        }
+      } else {
+        setIsProcessing(true)
+        playPcm16Chunk(event.data as ArrayBuffer)
+      }
+    }
+
+    // A real connection failure always fires a close event right after, so
+    // onclose (not onerror) is what decides whether to retry.
+    ws.onerror = () => {}
+    ws.onclose = () => {
+      // eslint-disable-next-line @typescript-eslint/no-use-before-define
+      scheduleReconnect()
+    }
+
+    reconnectAttemptsRef.current = 0
+    clearReconnectTimer()
+    setSttError((prev) => (prev === RECONNECTING_MESSAGE ? null : prev))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenario, sessionId, setSessionId, handleServerEvent, playPcm16Chunk, clearReconnectTimer])
+
+  // Retries the socket after an unexpected close (wifi blip, server hiccup)
+  // with exponential backoff, giving up after MAX_RECONNECT_ATTEMPTS. Mic
+  // capture and playback stay wired up throughout -- only the socket changes.
+  const scheduleReconnect = useCallback(() => {
+    if (isEnding || !scenario) {
+      stopListening()
+      return
+    }
+    if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+      setSttError('Connection lost. Please try again.')
+      stopListening()
+      return
+    }
+
+    const attempt = reconnectAttemptsRef.current
+    reconnectAttemptsRef.current += 1
+    setSttError(RECONNECTING_MESSAGE)
+
+    reconnectTimerRef.current = setTimeout(async () => {
+      try {
+        const session = await getCurrentSession()
+        if (!session?.access_token) throw new Error('no_session')
+        await connectSocketRef.current(session)
+      } catch {
+        scheduleReconnect()
+      }
+    }, RECONNECT_BASE_DELAY_MS * 2 ** attempt)
+  }, [isEnding, scenario, stopListening])
+
+  useEffect(() => {
+    connectSocketRef.current = connectSocket
+  }, [connectSocket])
+
   const startListening = useCallback(async () => {
     if (isListening || isProcessing || isEnding || !scenario) return
     setSttError(null)
+    reconnectAttemptsRef.current = 0
 
     if (!navigator.mediaDevices?.getUserMedia || typeof AudioWorkletNode === 'undefined') {
       setSttError('Live voice mode is not supported in this browser.')
       return
     }
 
+    setIsConnecting(true)
     try {
       const session = await getCurrentSession()
       if (!session?.access_token) {
         setSttError('Your session has expired. Please sign in again.')
+        setIsConnecting(false)
         return
       }
 
-      const wsUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}`
-        .replace(/^http:/, 'ws:')
-        .replace(/^https:/, 'wss:') + '/speaking/realtime/stream'
-
-      const ws = new WebSocket(wsUrl)
-      ws.binaryType = 'arraybuffer'
-      wsRef.current = ws
-
-      // Wait specifically for the backend's session.ready -- not just the
-      // socket opening -- because it carries the audio sample rates the
-      // active provider requires (OpenAI and Gemini Live differ), and the
-      // AudioWorklet below must be constructed with the correct input rate
-      // from the start; it can't be changed after the fact.
-      await new Promise<void>((resolve, reject) => {
-        ws.onopen = () => {
-          ws.send(JSON.stringify({
-            token: session.access_token,
-            scenario_id: scenario.id,
-            session_id: sessionId,
-          }))
-        }
-        ws.onerror = () => reject(new Error('connection_failed'))
-        ws.onmessage = (event) => {
-          if (typeof event.data !== 'string') return
-          try {
-            const parsed = JSON.parse(event.data)
-            if (parsed.type === 'error') {
-              setSttError(parsed.error === 'session_limit_reached'
-                ? 'You have used all your sessions this month.'
-                : parsed.error === 'Unauthorized or missing scenario_id'
-                  ? 'Your session has expired. Please sign in again.'
-                  : (parsed.error || 'Voice session error'))
-              reject(new Error('handled'))
-              return
-            }
-            if (parsed.type === 'session.ready' && typeof parsed.session_id === 'number') {
-              setSessionId(parsed.session_id)
-              inputSampleRateRef.current = parsed.input_sample_rate || DEFAULT_SAMPLE_RATE
-              outputSampleRateRef.current = parsed.output_sample_rate || DEFAULT_SAMPLE_RATE
-              sendBatchSamplesRef.current = Math.round((inputSampleRateRef.current * SEND_BATCH_MS) / 1000)
-              resolve()
-            }
-          } catch {
-            // ignore non-JSON text frames
-          }
-        }
+      // Ask for mic permission in parallel with the WS handshake instead of
+      // after it -- the constraints below don't depend on session.ready, so
+      // there's no reason to make the student wait for the permission
+      // prompt behind a network round trip.
+      const micStreamPromise = navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
+      // Handshake failure short-circuits before this promise is awaited below --
+      // mark it observed so a denied/failed permission prompt in that window
+      // doesn't surface as an unhandled rejection.
+      micStreamPromise.catch(() => {})
 
-      ws.onmessage = (event) => {
-        if (typeof event.data === 'string') {
-          try {
-            handleServerEvent(JSON.parse(event.data))
-          } catch {
-            // ignore non-JSON text frames
-          }
-        } else {
-          setIsProcessing(true)
-          playPcm16Chunk(event.data as ArrayBuffer)
-        }
-      }
-
-      ws.onerror = () => {
-        setSttError('Connection lost. Please try again.')
-        stopListening()
-      }
-
-      ws.onclose = () => {
-        setIsListening(false)
-      }
+      await connectSocket(session)
 
       const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext
       const audioContext = new AudioContextCtor({ sampleRate: inputSampleRateRef.current })
       audioContextRef.current = audioContext
       nextPlaybackTimeRef.current = audioContext.currentTime
 
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      })
+      const micStream = await micStreamPromise
       micStreamRef.current = micStream
 
       await audioContext.audioWorklet.addModule('/worklets/pcm-processor.js')
@@ -407,17 +498,19 @@ export function useRealtimeSpeakingSession({
       silentGain.connect(audioContext.destination)
 
       setIsListening(true)
+      setIsConnecting(false)
     } catch (err) {
       console.error('Failed to start realtime session:', err)
       if (!(err instanceof Error) || err.message !== 'handled') {
         setSttError('Please allow microphone access to start the live conversation.')
       }
+      setIsConnecting(false)
       teardown()
     }
-    // stopListening/teardown/handleServerEvent/playPcm16Chunk/flushPendingAudio
-    // are all useCallback-stable given their own deps, so this list only
-    // reflects the values that actually change what startListening does.
-  }, [isListening, isProcessing, isEnding, scenario, sessionId, setSessionId, handleServerEvent, playPcm16Chunk, flushPendingAudio, stopListening, teardown])
+    // stopListening/teardown/handleServerEvent/playPcm16Chunk/flushPendingAudio/
+    // connectSocket are all useCallback-stable given their own deps, so this
+    // list only reflects the values that actually change what startListening does.
+  }, [isListening, isProcessing, isEnding, scenario, connectSocket, flushPendingAudio, teardown])
 
   const sendTypedMessage = useCallback(async (text: string) => {
     const trimmed = text.trim()
@@ -439,6 +532,7 @@ export function useRealtimeSpeakingSession({
 
   return {
     isListening,
+    isConnecting,
     isProcessing,
     isSpeaking,
     interimText: '',

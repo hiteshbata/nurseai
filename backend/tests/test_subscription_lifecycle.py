@@ -318,6 +318,19 @@ def test_previous_plan_is_captured_before_process_payment_call_in_verify_payment
     assert src.index("get_current_plan(") < src.index("process_payment_rpc(")
 
 
+def test_verify_payment_checks_order_notes_user_id():
+    # verify-payment must reject an order whose notes.user_id doesn't match
+    # the caller -- otherwise any authenticated user could pay for their own
+    # order but hand the order_id to someone else's account, or vice versa,
+    # and grant a plan to a user who never paid.
+    import inspect
+    import app.routers.payments as payments_mod
+
+    src = inspect.getsource(payments_mod.verify_payment)
+    assert "notes_user_id" in src
+    assert src.index("notes_user_id") < src.index("process_payment_rpc(")
+
+
 def test_previous_plan_is_captured_before_process_payment_call_in_webhook():
     # Both the payment.captured and subscription.charged branches of
     # _process_webhook_body share their finalization logic via

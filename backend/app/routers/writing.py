@@ -14,13 +14,15 @@ router = APIRouter(prefix="/writing", tags=["writing"])
 
 SUBMIT_RATE_LIMIT_MAX_CALLS = 20
 SUBMIT_RATE_LIMIT_WINDOW_SECONDS = 600
-_submit_rate_limiter = SlidingWindowRateLimiter(SUBMIT_RATE_LIMIT_MAX_CALLS, SUBMIT_RATE_LIMIT_WINDOW_SECONDS)
+_submit_rate_limiter = SlidingWindowRateLimiter(SUBMIT_RATE_LIMIT_MAX_CALLS, SUBMIT_RATE_LIMIT_WINDOW_SECONDS, name="writing:submit")
 
 SUBMIT_IMAGE_RATE_LIMIT_MAX_CALLS = 10
 SUBMIT_IMAGE_RATE_LIMIT_WINDOW_SECONDS = 600
-_submit_image_rate_limiter = SlidingWindowRateLimiter(SUBMIT_IMAGE_RATE_LIMIT_MAX_CALLS, SUBMIT_IMAGE_RATE_LIMIT_WINDOW_SECONDS)
+_submit_image_rate_limiter = SlidingWindowRateLimiter(SUBMIT_IMAGE_RATE_LIMIT_MAX_CALLS, SUBMIT_IMAGE_RATE_LIMIT_WINDOW_SECONDS, name="writing:submit_image")
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+# base64 inflates size ~4/3; reject oversized payloads before spending CPU on decode.
+MAX_IMAGE_BASE64_CHARS = MAX_IMAGE_BYTES * 4 // 3 + 4
 
 
 class WritingSubmitRequest(BaseModel):
@@ -139,6 +141,9 @@ async def submit_writing_image(
 
     if _submit_image_rate_limiter.is_rate_limited(current_user.id):
         raise HTTPException(status_code=429, detail="Too many submissions — please slow down.")
+
+    if len(request.image_base64) > MAX_IMAGE_BASE64_CHARS:
+        raise HTTPException(status_code=400, detail="Image must be under 5MB")
 
     try:
         decoded_image = base64.b64decode(request.image_base64, validate=True)

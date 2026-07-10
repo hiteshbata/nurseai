@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 
 interface VoiceOrbProps {
   isListening: boolean
+  isConnecting?: boolean
   isProcessing: boolean
   isSpeaking?: boolean
   isEnding: boolean
@@ -13,7 +14,7 @@ interface VoiceOrbProps {
   onEndSession: () => void
 }
 
-export default function VoiceOrb({ isListening, isProcessing, isSpeaking = false, isEnding, canEndSession = true, statusOverride, onToggle, onEndSession }: VoiceOrbProps) {
+export default function VoiceOrb({ isListening, isConnecting = false, isProcessing, isSpeaking = false, isEnding, canEndSession = true, statusOverride, onToggle, onEndSession }: VoiceOrbProps) {
   const [orbScale, setOrbScale] = useState(1)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -89,17 +90,19 @@ export default function VoiceOrb({ isListening, isProcessing, isSpeaking = false
     }
   }, [])
 
-  const orbColor = isEnding ? '#6B7280' : isProcessing ? '#F59E0B' : isSpeaking ? '#3B82F6' : isListening ? '#10B981' : '#0F2356'
-  const orbDisabled = isProcessing || isSpeaking || isEnding
+  const orbColor = isEnding ? '#6B7280' : isConnecting ? '#6366F1' : isProcessing ? '#F59E0B' : isSpeaking ? '#3B82F6' : isListening ? '#10B981' : '#0F2356'
+  const orbDisabled = isConnecting || isProcessing || isSpeaking || isEnding
 
   let statusText = 'Tap to speak'
   if (isEnding) statusText = statusOverride || 'Ending session...'
+  else if (isConnecting) statusText = 'Connecting...'
   else if (isProcessing) statusText = 'Processing...'
   else if (isSpeaking) statusText = 'Patient speaking...'
   else if (isListening) statusText = 'Listening...'
 
   let orbAnimation = ''
   if (isEnding) orbAnimation = 'none'
+  else if (isConnecting) orbAnimation = 'none'
   else if (isProcessing) orbAnimation = 'none'
   else if (isSpeaking) orbAnimation = 'orb-pulse 0.6s ease-in-out infinite'
   else if (isListening) orbAnimation = 'orb-pulse 1s ease-in-out infinite'
@@ -154,7 +157,7 @@ export default function VoiceOrb({ isListening, isProcessing, isSpeaking = false
             </div>
           )}
 
-          {isProcessing && (
+          {(isProcessing || isConnecting) && (
             <svg
               className="absolute"
               width="80"
@@ -165,7 +168,7 @@ export default function VoiceOrb({ isListening, isProcessing, isSpeaking = false
               <circle
                 cx="40" cy="40" r="36"
                 fill="none"
-                stroke="#F59E0B"
+                stroke={isConnecting ? '#6366F1' : '#F59E0B'}
                 strokeWidth="4"
                 strokeDasharray="50 150"
                 strokeLinecap="round"

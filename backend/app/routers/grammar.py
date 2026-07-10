@@ -10,7 +10,7 @@ router = APIRouter(prefix="/grammar", tags=["grammar"])
 
 TEACH_RATE_LIMIT_MAX_CALLS = 30
 TEACH_RATE_LIMIT_WINDOW_SECONDS = 600
-_teach_rate_limiter = SlidingWindowRateLimiter(TEACH_RATE_LIMIT_MAX_CALLS, TEACH_RATE_LIMIT_WINDOW_SECONDS)
+_teach_rate_limiter = SlidingWindowRateLimiter(TEACH_RATE_LIMIT_MAX_CALLS, TEACH_RATE_LIMIT_WINDOW_SECONDS, name="grammar:teach")
 
 
 class GrammarRequest(BaseModel):

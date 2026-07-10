@@ -1,20 +1,16 @@
 import logging
-import re
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from app.core.supabase import get_supabase
 from app.core.config import settings
+from app.core.error_utils import redact_api_keys
 from app.routers.admin import require_admin
 import httpx
 import base64
 import json
 
 logger = logging.getLogger(__name__)
-
-
-def _redact_api_keys(text: str) -> str:
-    return re.sub(r'(?i)(key|api[_-]?key|token|secret)(["\s:=]+)([A-Za-z0-9_-]{20,})', r'\1\2***REDACTED***', text)
 
 router = APIRouter(prefix="/admin/scenario", tags=["admin"])
 
@@ -67,7 +63,7 @@ async def _call_vision_api(image_base64: str, prompt: str, json_mode: bool = Tru
         except Exception as e:
             logger.error(
                 "[EXTERNAL_API_FAILURE] service=OPENROUTER type=unknown detail=%s",
-                _redact_api_keys(str(e)[:500]),
+                redact_api_keys(str(e)[:500]),
             )
             print(f"[OpenRouter vision] failed: {e}")
 

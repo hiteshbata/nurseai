@@ -311,6 +311,7 @@ def verify_payment(
         order = client.order.fetch(req.razorpay_order_id)
         notes = get_notes(order)
         plan_id = notes.get("plan_id", "")
+        notes_user_id = notes.get("user_id", "")
         # Orders created before the annual-billing feature have no
         # billing_cycle note -- default to monthly so old in-flight payments
         # still verify correctly.
@@ -323,6 +324,12 @@ def verify_payment(
                     "order_id": req.razorpay_order_id,
                 },
             )
+        if notes_user_id != str(current_user.id):
+            logger.error(
+                "verify-payment user mismatch | order_id=%s notes_user_id=%s caller_user_id=%s",
+                req.razorpay_order_id, notes_user_id, current_user.id,
+            )
+            raise HTTPException(status_code=403, detail="Order does not belong to this user")
         amount = order.get("amount")
     except HTTPException:
         raise

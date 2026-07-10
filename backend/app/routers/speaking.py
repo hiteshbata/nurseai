@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.supabase import get_supabase, get_auth_client
 from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
+from app.core.error_utils import redact_api_keys, classify_http_error
 from app.routers.auth import get_current_user, UserInfo
 from app.routers.admin import require_admin
 from app.services.speech_to_text import speech_to_text
@@ -43,41 +44,26 @@ async def get_user_profile(supabase, user_id: str) -> dict:
     return result.data[0] if result.data else {}
 
 
-def _redact_api_keys(text: str) -> str:
-    return re.sub(r'(?i)(key|api[_-]?key|token|secret)(["\s:=]+)([A-Za-z0-9_-]{20,})', r'\1\2***REDACTED***', text)
-
-
-def _classify_deepgram_error(status_code: int) -> str:
-    if status_code in (401, 403):
-        return "auth"
-    elif status_code == 429:
-        return "quota"
-    elif status_code == 400:
-        return "bad_request"
-    elif status_code >= 500:
-        return "server_error"
-    return "unknown"
-
 router = APIRouter(prefix="/speaking", tags=["speaking"])
 
 MAX_TTS_TEXT_LENGTH = 1000
 
 TTS_RATE_LIMIT_MAX_CALLS = 40
 TTS_RATE_LIMIT_WINDOW_SECONDS = 600
-_tts_rate_limiter = SlidingWindowRateLimiter(TTS_RATE_LIMIT_MAX_CALLS, TTS_RATE_LIMIT_WINDOW_SECONDS)
+_tts_rate_limiter = SlidingWindowRateLimiter(TTS_RATE_LIMIT_MAX_CALLS, TTS_RATE_LIMIT_WINDOW_SECONDS, name="speaking:tts")
 
 SCORE_RATE_LIMIT_MAX_CALLS = 20
 SCORE_RATE_LIMIT_WINDOW_SECONDS = 600
-_score_rate_limiter = SlidingWindowRateLimiter(SCORE_RATE_LIMIT_MAX_CALLS, SCORE_RATE_LIMIT_WINDOW_SECONDS)
+_score_rate_limiter = SlidingWindowRateLimiter(SCORE_RATE_LIMIT_MAX_CALLS, SCORE_RATE_LIMIT_WINDOW_SECONDS, name="speaking:score")
 
 TRANSCRIBE_RATE_LIMIT_MAX_CALLS = 40
 TRANSCRIBE_RATE_LIMIT_WINDOW_SECONDS = 600
-_transcribe_rate_limiter = SlidingWindowRateLimiter(TRANSCRIBE_RATE_LIMIT_MAX_CALLS, TRANSCRIBE_RATE_LIMIT_WINDOW_SECONDS)
+_transcribe_rate_limiter = SlidingWindowRateLimiter(TRANSCRIBE_RATE_LIMIT_MAX_CALLS, TRANSCRIBE_RATE_LIMIT_WINDOW_SECONDS, name="speaking:transcribe")
 MAX_TRANSCRIBE_AUDIO_BYTES = 10 * 1024 * 1024
 
 PRONUNCIATION_RATE_LIMIT_MAX_CALLS = 20
 PRONUNCIATION_RATE_LIMIT_WINDOW_SECONDS = 600
-_pronunciation_rate_limiter = SlidingWindowRateLimiter(PRONUNCIATION_RATE_LIMIT_MAX_CALLS, PRONUNCIATION_RATE_LIMIT_WINDOW_SECONDS)
+_pronunciation_rate_limiter = SlidingWindowRateLimiter(PRONUNCIATION_RATE_LIMIT_MAX_CALLS, PRONUNCIATION_RATE_LIMIT_WINDOW_SECONDS, name="speaking:pronunciation")
 MAX_PRONUNCIATION_AUDIO_BYTES = 25 * 1024 * 1024
 
 MAX_CHAT_HISTORY_MESSAGES = 60
@@ -149,7 +135,7 @@ async def text_to_speech(
         reason = "no_key" if "no_key" in err_str else "api_error"
         logger.error(
             "[EXTERNAL_API_FAILURE] service=GOOGLE_TTS type=%s detail=%s",
-            reason, _redact_api_keys(err_str[:500]),
+            reason, redact_api_keys(err_str[:500]),
         )
         return JSONResponse({"fallback": True, "reason": reason})
 
@@ -185,7 +171,7 @@ async def stt_deepgram_stream(websocket: WebSocket):
             auth_result = await run_sync(get_auth_client().auth.get_user, token)
             user = auth_result.user
         except Exception as e:
-            logger.warning("STT stream auth failed: %s", _redact_api_keys(str(e)[:200]))
+            logger.warning("STT stream auth failed: %s", redact_api_keys(str(e)[:200]))
             user = None
 
     if not user:
@@ -237,7 +223,7 @@ async def stt_deepgram_stream(websocket: WebSocket):
             body_text = resp.body.decode('utf-8', errors='replace')[:500] if resp.body else ""
             logger.error(
                 "[DEEPGRAM_CONNECT_FAIL] type=InvalidStatus status=%s body=%s",
-                status, _redact_api_keys(body_text),
+                status, redact_api_keys(body_text),
             )
             raise
         except ws_exc.InvalidStatusCode as e:
@@ -256,7 +242,7 @@ async def stt_deepgram_stream(websocket: WebSocket):
             else:
                 logger.error(
                     "[DEEPGRAM_CONNECT_FAIL] type=%s detail=%s",
-                    type(e).__name__, _redact_api_keys(str(e)[:500]),
+                    type(e).__name__, redact_api_keys(str(e)[:500]),
                 )
             raise
         except asyncio.TimeoutError:
@@ -265,7 +251,7 @@ async def stt_deepgram_stream(websocket: WebSocket):
         except Exception as e:
             logger.error(
                 "[DEEPGRAM_CONNECT_FAIL] type=%s detail=%s",
-                type(e).__name__, _redact_api_keys(str(e)[:500]),
+                type(e).__name__, redact_api_keys(str(e)[:500]),
             )
             raise
 
@@ -422,8 +408,8 @@ async def stt_deepgram_stream(websocket: WebSocket):
         body_text = ""
         if resp.body:
             body_text = resp.body.decode('utf-8', errors='replace')[:500]
-        error_type = _classify_deepgram_error(status)
-        detail = _redact_api_keys(f"HTTP {status}: {body_text}")
+        error_type = classify_http_error(status)
+        detail = redact_api_keys(f"HTTP {status}: {body_text}")
         logger.error(
             "[EXTERNAL_API_FAILURE] service=DEEPGRAM type=%s status=%d detail=%s",
             error_type, status, detail,
@@ -435,7 +421,7 @@ async def stt_deepgram_stream(websocket: WebSocket):
 
     except ws_exc.InvalidStatusCode as e:
         status = e.status_code
-        error_type = _classify_deepgram_error(status)
+        error_type = classify_http_error(status)
         dg_error = e.headers.get("dg-error", "no dg-error header present") if hasattr(e, 'headers') else "N/A"
         logger.error(
             "[EXTERNAL_API_FAILURE] service=DEEPGRAM type=%s status=%s dg_error=%s",
@@ -458,7 +444,7 @@ async def stt_deepgram_stream(websocket: WebSocket):
             error_type = "network"
             logger.error(
                 "[EXTERNAL_API_FAILURE] service=DEEPGRAM type=%s detail=%s",
-                error_type, _redact_api_keys(str(e)[:500]),
+                error_type, redact_api_keys(str(e)[:500]),
             )
         try:
             await websocket.send_json({"error": f"Deepgram connection error: {type(e).__name__}", "is_final": True})
@@ -475,11 +461,11 @@ async def stt_deepgram_stream(websocket: WebSocket):
             else:
                 body_text = str(body or '')[:500]
             status = getattr(resp, 'status_code', '?')
-            error_type = _classify_deepgram_error(status) if isinstance(status, int) else "unknown"
-            detail = _redact_api_keys(f"HTTP {status}: {body_text}")
+            error_type = classify_http_error(status) if isinstance(status, int) else "unknown"
+            detail = redact_api_keys(f"HTTP {status}: {body_text}")
         else:
             error_type = "unknown"
-            detail = _redact_api_keys(error_msg)
+            detail = redact_api_keys(error_msg)
         logger.error(
             "[EXTERNAL_API_FAILURE] service=DEEPGRAM type=%s detail=%s",
             error_type, detail,

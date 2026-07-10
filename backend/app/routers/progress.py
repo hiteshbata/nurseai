@@ -24,7 +24,7 @@ STUDY_PLAN_MIN_SESSIONS = 3
 
 COACH_SUMMARY_RATE_LIMIT_MAX_CALLS = 10
 COACH_SUMMARY_RATE_LIMIT_WINDOW_SECONDS = 600
-_coach_summary_rate_limiter = SlidingWindowRateLimiter(COACH_SUMMARY_RATE_LIMIT_MAX_CALLS, COACH_SUMMARY_RATE_LIMIT_WINDOW_SECONDS)
+_coach_summary_rate_limiter = SlidingWindowRateLimiter(COACH_SUMMARY_RATE_LIMIT_MAX_CALLS, COACH_SUMMARY_RATE_LIMIT_WINDOW_SECONDS, name="progress:coach_summary")
 
 @router.get("/stats")
 def get_user_stats(
@@ -206,7 +206,7 @@ async def get_study_plan(current_user: UserInfo = Depends(get_current_user)):
         return {"locked": True, "ready": False, "upgrade_required": True, "current_plan": plan}
 
     submissions_data = await run_sync(
-        supabase.table("submissions").select("question_id, feedback, score")
+        supabase.table("submissions").select("scenario_id, feedback, score")
         .eq("user_id", current_user.id).eq("module", "speaking")
         .order("created_at", desc=True).execute
     )
@@ -228,12 +228,12 @@ async def get_study_plan(current_user: UserInfo = Depends(get_current_user)):
     criteria_averages = compute_criteria_averages([s.get("feedback") for s in submissions])
     weak_criteria = identify_weak_criteria(criteria_averages, top_n=3)
 
-    attempted_ids = {s["question_id"] for s in submissions if s.get("question_id")}
+    attempted_ids = {s["scenario_id"] for s in submissions if s.get("scenario_id")}
     scored_by_scenario: Dict[int, List[float]] = {}
     for s in submissions:
-        qid = s.get("question_id")
-        if qid:
-            scored_by_scenario.setdefault(qid, []).append(s.get("score") or 0)
+        sid = s.get("scenario_id")
+        if sid:
+            scored_by_scenario.setdefault(sid, []).append(s.get("score") or 0)
 
     scenarios_data = await run_sync(
         supabase.table("scenarios").select("id, title, difficulty")
@@ -299,10 +299,40 @@ def submit_test(
 ):
     supabase = get_supabase()
     total_count = len(test_data.answers)
-    score = 0.0
+
+    question_ids = [a["questionId"] for a in test_data.answers if a.get("questionId")]
+    questions_data = (
+        supabase.table("questions").select("id, module, correct_answer")
+        .in_("id", question_ids).execute()
+        if question_ids else None
+    )
+    questions_by_id = {q["id"]: q for q in questions_data.data} if questions_data else {}
+
+    # Only MCQ questions (reading/listening) carry a correct_answer -- speaking/writing
+    # are open-ended and can't be auto-graded, so they're excluded from scoring.
+    module_results: Dict[str, List[bool]] = {}
+    graded_count = 0
+    correct_count = 0
+    for a in test_data.answers:
+        q = questions_by_id.get(a.get("questionId"))
+        if not q or q.get("correct_answer") is None:
+            continue
+        graded_count += 1
+        is_correct = a.get("selectedOption") == q["correct_answer"]
+        if is_correct:
+            correct_count += 1
+        module_results.setdefault(q["module"], []).append(is_correct)
+
+    score = round((correct_count / graded_count) * 6, 2) if graded_count else 0.0
+
+    module_scores = {}
+    for mod in ["speaking", "writing", "reading", "listening"]:
+        results = module_results.get(mod)
+        module_scores[mod] = round(sum(results) / len(results) * 6, 2) if results else 0
+
     supabase.table("submissions").insert({
         "user_id": current_user.id,
-        "question_id": test_data.answers[0]["questionId"] if test_data.answers else 0,
+        "scenario_id": test_data.answers[0]["questionId"] if test_data.answers else 0,
         "module": "test",
         "answer": "Full test submission",
         "score": score,
@@ -311,8 +341,8 @@ def submit_test(
 
     return {
         "score": score,
-        "correct": 0,
-        "incorrect": total_count,
+        "correct": correct_count,
+        "incorrect": graded_count - correct_count,
         "total": total_count,
-        "module_scores": {"speaking": 4.5, "writing": 4.7, "reading": 4.9, "listening": 4.8},
+        "module_scores": module_scores,
     }

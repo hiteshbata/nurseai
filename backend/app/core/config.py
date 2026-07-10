@@ -10,6 +10,17 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_ANON_KEY: str = ""
+    # Project Settings -> API -> JWT Secret in the Supabase dashboard. Used to
+    # verify access-token signatures locally (see app/routers/auth.py
+    # get_current_user) instead of round-tripping to Supabase Auth on every
+    # request.
+    SUPABASE_JWT_SECRET: str = ""
+    # Shared Redis instance for the rate limiter and role cache (see
+    # app/core/rate_limit.py, app/routers/auth.py). Required once the app
+    # runs as more than one instance/worker -- an unset value falls back to
+    # a per-process dict, which is fine for local dev but wrong for any
+    # deployment with >1 process, since limits/cache stop being shared.
+    REDIS_URL: str = ""
     OPENROUTER_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     OPENAI_REALTIME_MODEL: str = "gpt-realtime"
@@ -56,5 +67,9 @@ class Settings(BaseSettings):
     AZURE_SPEECH_REGION: str = "southeastasia"
     POSTHOG_API_KEY: str = ""
     POSTHOG_HOST: str = "https://us.i.posthog.com"
+    # Backend error tracking (app/main.py). Unset -> Sentry init is skipped
+    # entirely, no-op. Get a DSN from sentry.io -> Project Settings -> Client Keys.
+    SENTRY_DSN: str = ""
+    SENTRY_ENVIRONMENT: str = "production"
 
 settings = Settings()

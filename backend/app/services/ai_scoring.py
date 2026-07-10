@@ -6,15 +6,11 @@ import re
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from app.core.config import settings
+from app.core.error_utils import redact_api_keys
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
 
 logger = logging.getLogger(__name__)
-
-
-def _redact_api_keys(text: str) -> str:
-    """Redact likely API keys from error text to avoid leaking secrets in logs."""
-    return re.sub(r'(?i)(key|api[_-]?key|token|secret)(["\s:=]+)([A-Za-z0-9_-]{20,})', r'\1\2***REDACTED***', text)
 
 
 def _clamp_criterion_score(raw: Any, min_score: float = 0, max_score: float = 6) -> float:
@@ -123,7 +119,7 @@ async def _call_ai(
             err_msg = str(e)[:300]
             logger.error(
                 "[EXTERNAL_API_FAILURE] service=%s model=%s type=unknown detail=%s",
-                prov.upper(), mdl, _redact_api_keys(err_msg),
+                prov.upper(), mdl, redact_api_keys(err_msg),
             )
             print(f"[{prov}] {mdl} failed: {err_msg}")
             await run_sync(_log_ai_error, "_call_ai", f"{prov}_error", err_msg, user_id)
@@ -178,7 +174,7 @@ async def _call_gemini(
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(url, json=payload)
         if response.status_code != 200:
-            err = _redact_api_keys(response.text[:1000])
+            err = redact_api_keys(response.text[:1000])
             status = response.status_code
             if status in (401, 403):
                 error_type = "auth"

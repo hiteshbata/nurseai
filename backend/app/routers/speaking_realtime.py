@@ -50,7 +50,7 @@ from app.core.supabase import get_supabase, get_auth_client
 from app.core.threading import run_sync
 from app.routers.auth import UserInfo
 from app.routers.sessions import check_and_increment_session, validate_session
-from app.routers.speaking import _redact_api_keys
+from app.core.error_utils import redact_api_keys
 from app.services.realtime import (
     Interrupted,
     ProviderConnectError,
@@ -227,7 +227,7 @@ async def realtime_stream(websocket: WebSocket):
             auth_result = await run_sync(get_auth_client().auth.get_user, token)
             user = auth_result.user
         except Exception as e:
-            logger.warning("Realtime stream auth failed: %s", _redact_api_keys(str(e)[:200]))
+            logger.warning("Realtime stream auth failed: %s", redact_api_keys(str(e)[:200]))
             user = None
 
     scenario_id = None
