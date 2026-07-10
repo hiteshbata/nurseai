@@ -45,11 +45,16 @@ async def lifespan(app: FastAPI):
     yield
 
 
+_docs_enabled = settings.SENTRY_ENVIRONMENT != "production"
+
 app = FastAPI(
     title="NurseAI API",
     description="AI-powered OET coaching platform for nurses",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
 )
 
 origins = settings.ALLOWED_ORIGINS.split(",")

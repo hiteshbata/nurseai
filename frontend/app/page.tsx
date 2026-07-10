@@ -32,22 +32,6 @@ export default function Home() {
     }
   }, [status, onboardingChecked, router])
 
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0F2356]" />
-      </div>
-    )
-  }
-
-  if (status === 'authenticated') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0F2356]" />
-      </div>
-    )
-  }
-
   return (
     <>
       <HeroSection />

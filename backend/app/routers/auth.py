@@ -3,6 +3,7 @@ import time
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from gotrue.errors import AuthApiError
 from app.core.config import settings
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.redis_client import get_redis
@@ -15,6 +16,21 @@ from typing import Optional
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer()
 logger = logging.getLogger(__name__)
+
+# Supabase now signs access tokens asymmetrically (ES256/RS256) by default;
+# older projects may still use the shared HS256 JWT secret. Fetch/cache the
+# JWKS lazily so we verify against whichever key kind is actually in use.
+_jwks_client: Optional["jwt.PyJWKClient"] = None
+
+
+def _get_jwks_client() -> "jwt.PyJWKClient":
+    global _jwks_client
+    if _jwks_client is None:
+        _jwks_client = jwt.PyJWKClient(
+            f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json",
+            cache_keys=True,
+        )
+    return _jwks_client
 
 # ponytail: keyed by IP, not per-account -- stops single-source brute force
 # and mass fake-account creation without needing a Depends/decorator layer.
@@ -73,13 +89,20 @@ def get_current_user(
     supabase = get_supabase()
     try:
         # Verify the access token's signature/expiry locally instead of
-        # calling Supabase Auth over the network on every request. Supabase
-        # signs access tokens with the project JWT secret (HS256, "authenticated"
-        # audience) -- see Project Settings -> API -> JWT Secret.
+        # calling Supabase Auth over the network on every request.
+        token = credentials.credentials
+        header = jwt.get_unverified_header(token)
+        alg = header.get("alg", "")
+        if alg.startswith("HS"):
+            # Legacy Supabase projects: shared JWT secret (Project Settings -> API -> JWT Secret).
+            signing_key = settings.SUPABASE_JWT_SECRET
+        else:
+            # Current Supabase default: asymmetric signing (ES256/RS256) verified via JWKS.
+            signing_key = _get_jwks_client().get_signing_key_from_jwt(token).key
         payload = jwt.decode(
-            credentials.credentials,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
+            token,
+            signing_key,
+            algorithms=[alg],
             audience="authenticated",
         )
         user_id = payload.get("sub")
@@ -121,6 +144,20 @@ def register(user: UserCreate, request: Request):
             "password": user.password,
             "options": {"data": {"name": user.name}},
         })
+    except AuthApiError as e:
+        logger.warning("Registration failed for %s: %s", user.email, e.message)
+        msg = e.message.lower()
+        if "already registered" in msg or "already exists" in msg:
+            detail = "An account with this email already exists."
+        elif "password" in msg:
+            detail = "Password does not meet requirements (minimum 6 characters)."
+        elif "rate limit" in msg:
+            detail = "Too many signup attempts — please try again later."
+        elif "sending" in msg or "confirmation" in msg:
+            detail = "We couldn't send the confirmation email. Please try again shortly."
+        else:
+            detail = "Registration failed."
+        raise HTTPException(status_code=400, detail=detail)
     except Exception as e:
         logger.warning("Registration failed for %s: %s", user.email, e)
         raise HTTPException(status_code=400, detail="Registration failed")
