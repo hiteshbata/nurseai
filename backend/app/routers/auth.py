@@ -1,9 +1,10 @@
 ﻿import logging
 import time
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.config import settings
+from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.redis_client import get_redis
 from app.core.supabase import get_supabase, get_auth_client
 from app.schemas.user import UserCreate, UserLogin
@@ -14,6 +15,18 @@ from typing import Optional
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer()
 logger = logging.getLogger(__name__)
+
+# ponytail: keyed by IP, not per-account -- stops single-source brute force
+# and mass fake-account creation without needing a Depends/decorator layer.
+_login_rate_limiter = SlidingWindowRateLimiter(10, 300, name="auth:login")
+_register_rate_limiter = SlidingWindowRateLimiter(5, 3600, name="auth:register")
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 class LoginResponse(BaseModel):
     access_token: str
@@ -98,7 +111,9 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Authentication failed")
 
 @router.post("/register")
-def register(user: UserCreate):
+def register(user: UserCreate, request: Request):
+    if _register_rate_limiter.is_rate_limited(_client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many registration attempts — please try again later.")
     auth_client = get_auth_client()
     try:
         resp = auth_client.auth.sign_up({
@@ -118,7 +133,9 @@ def register(user: UserCreate):
     }
 
 @router.post("/login", response_model=LoginResponse)
-def login(user: UserLogin):
+def login(user: UserLogin, request: Request):
+    if _login_rate_limiter.is_rate_limited(_client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many login attempts — please try again later.")
     auth_client = get_auth_client()
     try:
         resp = auth_client.auth.sign_in_with_password({
