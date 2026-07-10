@@ -53,7 +53,7 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (formData.password !== formData.confirmPassword) { toast.error('Passwords do not match'); return }
-    if (formData.password.length < 6) { toast.error('Password must be at least 6 characters'); return }
+    if (formData.password.length < 8) { toast.error('Password must be at least 8 characters'); return }
     setIsLoading(true)
     setError('')
     try {
@@ -178,7 +178,7 @@ export default function RegisterPage() {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-                <p className="text-xs text-gray-400">Must be at least 6 characters</p>
+                <p className="text-xs text-gray-400">Must be at least 8 characters</p>
               </div>
 
               <div className="flex flex-col gap-1.5">

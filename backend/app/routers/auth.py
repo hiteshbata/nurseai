@@ -150,7 +150,7 @@ def register(user: UserCreate, request: Request):
         if "already registered" in msg or "already exists" in msg:
             detail = "An account with this email already exists."
         elif "password" in msg:
-            detail = "Password does not meet requirements (minimum 6 characters)."
+            detail = "Password does not meet requirements (minimum 8 characters)."
         elif "rate limit" in msg:
             detail = "Too many signup attempts — please try again later."
         elif "sending" in msg or "confirmation" in msg:
