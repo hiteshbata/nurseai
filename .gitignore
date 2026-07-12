@@ -53,3 +53,9 @@ NURSEAI_BUILD_PLAN.md
 
 # Internal ops notes — not for the public repo
 DEPLOYMENT_CHECKLIST.md
+
+# Ad-hoc manual/Playwright test output (screenshots, network captures) —
+# can contain live tokens/cookies, never belongs in the repo
+.playwright-mcp/
+network-login.txt
+/[0-9][0-9]-*.png
