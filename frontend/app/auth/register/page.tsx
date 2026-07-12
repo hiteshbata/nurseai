@@ -64,6 +64,8 @@ export default function RegisterPage() {
         setTimeout(() => router.push('/onboarding'), 2000)
       } else {
         toast.success('Registration successful! Check your email to confirm your account, then sign in.')
+        setFormData({ name: '', email: '', password: '', confirmPassword: '' })
+        setTimeout(() => router.push('/auth/login'), 2000)
       }
     } catch (error: any) {
       setError(error.message || 'Registration failed')
