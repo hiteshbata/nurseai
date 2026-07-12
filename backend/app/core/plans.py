@@ -71,7 +71,6 @@ PLANS = [
             "Full 9-criteria OET scoring with richer, more detailed feedback",
             "Phoneme-level pronunciation scoring",
             "Premium British patient voice",
-            "Mock test mode",
             "AI generated study plan",
             "Writing practice and scoring",
             "Unlimited attempt history",
