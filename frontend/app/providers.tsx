@@ -26,12 +26,13 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       initClarity()
     }
 
-    const id = requestIdleCallback
-      ? requestIdleCallback(runDeferred, { timeout: 2000 })
+    const hasIdleCallback = typeof window !== 'undefined' && 'requestIdleCallback' in window
+    const id = hasIdleCallback
+      ? window.requestIdleCallback(runDeferred, { timeout: 2000 })
       : setTimeout(runDeferred, 2000)
 
     return () => {
-      if (requestIdleCallback) cancelIdleCallback(id as number)
+      if (hasIdleCallback) window.cancelIdleCallback(id as number)
       else clearTimeout(id as number)
     }
   }, [])

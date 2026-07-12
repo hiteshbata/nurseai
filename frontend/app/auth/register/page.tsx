@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase, signUp } from '@/lib/supabase'
+import { supabase, signUp, signOut } from '@/lib/supabase'
 import { trackEvent } from '@/lib/analytics'
 import toast from 'react-hot-toast'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
@@ -63,6 +63,10 @@ export default function RegisterPage() {
         toast.success('Registration successful! Redirecting to setup...')
         setTimeout(() => router.push('/onboarding'), 2000)
       } else {
+        // Registering while already signed in as someone else leaves that old
+        // session in place — sign out so the login page's authenticated-user
+        // redirect doesn't bounce back into the old account's dashboard.
+        await signOut()
         toast.success('Registration successful! Check your email to confirm your account, then sign in.')
         setFormData({ name: '', email: '', password: '', confirmPassword: '' })
         setTimeout(() => router.push('/auth/login'), 2000)
