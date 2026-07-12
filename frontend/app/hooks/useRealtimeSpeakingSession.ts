@@ -383,7 +383,6 @@ export function useRealtimeSpeakingSession({
     // onclose (not onerror) is what decides whether to retry.
     ws.onerror = () => {}
     ws.onclose = () => {
-      // eslint-disable-next-line @typescript-eslint/no-use-before-define
       scheduleReconnect()
     }
 
