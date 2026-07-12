@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # Verify the current live-capable model name in Google AI Studio before
     # changing this -- the Gemini Live model catalog moves fast. See
     # app/services/realtime/gemini_adapter.py module docstring.
-    GEMINI_LIVE_MODEL: str = "models/gemini-2.0-flash-live-001"
+    GEMINI_LIVE_MODEL: str = "models/gemini-3.1-flash-live-preview"
     # Backend-enforced hard cap on a single realtime voice session, plus a
     # heads-up sent to the client before the cutoff. Enforced by the
     # router (app/routers/speaking_realtime.py), not by either provider.
