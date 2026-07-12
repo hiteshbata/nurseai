@@ -11,9 +11,6 @@ export const metadata: Metadata = {
   icons: {
     icon: '/favicon.svg',
   },
-  verification: {
-    google: process.env.GOOGLE_SITE_VERIFICATION || undefined,
-  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
