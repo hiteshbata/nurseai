@@ -30,6 +30,8 @@ const nextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
           { key: 'Permissions-Policy', value: 'camera=(), geolocation=(), payment=()' },
+          // ponytail: minimal CSP — full script-src allowlist would need 'unsafe-inline' for Next anyway; expand if a real XSS vector appears
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
         ],
       },
     ]

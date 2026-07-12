@@ -4,7 +4,7 @@ import { LearnCTA } from '@/components/learn/LearnCTA'
 import { TableOfContents } from '@/components/learn/TableOfContents'
 
 export const metadata: Metadata = {
-  title: 'Practice Speaking - SpeakOET Docs',
+  title: 'Practice Speaking - Docs',
   description: 'How the AI patient roleplay works, what the 9-criteria feedback means, and tips for getting the most out of a session.',
 }
 

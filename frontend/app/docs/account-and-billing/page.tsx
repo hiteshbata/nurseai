@@ -4,7 +4,7 @@ import { LearnCTA } from '@/components/learn/LearnCTA'
 import { TableOfContents } from '@/components/learn/TableOfContents'
 
 export const metadata: Metadata = {
-  title: 'Account & Billing - SpeakOET Docs',
+  title: 'Account & Billing - Docs',
   description: 'Manage your plan, sessions, subscription, and account settings.',
 }
 

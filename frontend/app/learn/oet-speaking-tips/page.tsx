@@ -5,7 +5,7 @@ import { ArticleMeta } from '@/components/learn/ArticleMeta'
 import { TableOfContents } from '@/components/learn/TableOfContents'
 
 export const metadata: Metadata = {
-  title: 'OET Speaking Tips for Nurses - SpeakOET',
+  title: 'OET Speaking Tips for Nurses',
   description:
     'Practical, criteria-based tips to raise your OET Speaking score — from structuring the consultation to managing nerves.',
 }

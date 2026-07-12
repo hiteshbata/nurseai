@@ -5,7 +5,7 @@ import { ArticleMeta } from '@/components/learn/ArticleMeta'
 import { TableOfContents } from '@/components/learn/TableOfContents'
 
 export const metadata: Metadata = {
-  title: 'OET Band Scores Explained - SpeakOET',
+  title: 'OET Band Scores Explained',
   description:
     'How OET grading works from A to E, what the numeric score means, and the score most regulators ask for.',
 }

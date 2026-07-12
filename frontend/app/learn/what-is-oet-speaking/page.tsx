@@ -5,7 +5,7 @@ import { ArticleMeta } from '@/components/learn/ArticleMeta'
 import { TableOfContents } from '@/components/learn/TableOfContents'
 
 export const metadata: Metadata = {
-  title: 'What is OET Speaking? - SpeakOET',
+  title: 'What is OET Speaking?',
   description:
     'A complete guide to the OET Speaking sub-test: the role-play format, timing, and exactly how examiners assess you.',
 }

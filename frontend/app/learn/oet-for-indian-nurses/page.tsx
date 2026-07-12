@@ -5,7 +5,7 @@ import { ArticleMeta } from '@/components/learn/ArticleMeta'
 import { TableOfContents } from '@/components/learn/TableOfContents'
 
 export const metadata: Metadata = {
-  title: 'OET for Indian Nurses - SpeakOET',
+  title: 'OET for Indian Nurses',
   description:
     'What Indian nurses need to know about OET: why it’s often preferred over IELTS, common challenges, and how to prepare.',
 }

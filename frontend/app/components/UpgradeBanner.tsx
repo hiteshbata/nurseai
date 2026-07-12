@@ -36,9 +36,11 @@ export function UpgradeBanner({ sessionsUsed, sessionsLimit, sessionsRemaining, 
       ? `Only ${sessionsRemaining} session${sessionsRemaining !== 1 ? 's' : ''} left this month`
       : `${sessionsUsed} of ${sessionsLimit} sessions used this month`
 
-  const subtitle = isNearLimit
-    ? 'Upgrade to Pro to keep practising without interruption.'
-    : `Get ${proLimit ?? 30} sessions per month with full OET scoring, pronunciation analysis, and progress tracking.`
+  const subtitle = isNewUser
+    ? `You have ${sessionsLimit} free sessions this month — full OET scoring, pronunciation analysis, and progress tracking included.`
+    : isNearLimit
+      ? 'Upgrade to Pro to keep practising without interruption.'
+      : `Get ${proLimit ?? 30} sessions per month with full OET scoring, pronunciation analysis, and progress tracking.`
 
   const ctaLabel = isNearLimit ? 'Upgrade to Pro' : 'See Plans & Pricing'
 

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { LearnCTA } from '@/components/learn/LearnCTA'
 
 export const metadata: Metadata = {
-  title: 'About Us - SpeakOET',
+  title: 'About Us',
   description:
     'SpeakOET is an intelligent, automated practice platform helping nurses, doctors, and allied health professionals prepare for the OET exam smarter, faster, and entirely on their own schedule.',
 }

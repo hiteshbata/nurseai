@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import { LearnCTA } from '@/components/learn/LearnCTA'
 
 export const metadata: Metadata = {
-  title: 'Mock Test - SpeakOET Docs',
+  title: 'Mock Test - Docs',
   description: 'Simulate the full OET Speaking sub-test under timed, exam-style conditions.',
 }
 

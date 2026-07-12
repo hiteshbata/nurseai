@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Speaking Practice - SpeakOET',
+  title: 'Speaking Practice',
   description: 'Practice OET Speaking roleplays with an AI patient and get a 9-criteria examiner report.',
 }
 

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Error Logs - Admin - SpeakOET',
+  title: 'Error Logs - Admin',
   robots: { index: false, follow: false },
 }
 

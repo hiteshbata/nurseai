@@ -6,7 +6,7 @@ import { getBlogPosts } from '@/lib/sanity'
 export const revalidate = 60
 
 export const metadata: Metadata = {
-  title: 'Blog - SpeakOET',
+  title: 'Blog',
   description:
     'Guides on OET Speaking: exam format, band scores, OET vs IELTS, speaking tips, and advice for Indian nurses.',
 }

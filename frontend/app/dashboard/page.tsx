@@ -148,6 +148,7 @@ export default function DashboardPage() {
 
   const userName =
     session?.user?.user_metadata?.full_name ||
+    session?.user?.user_metadata?.name ||
     session?.user?.email ||
     'there'
 

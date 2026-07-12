@@ -4,7 +4,7 @@ import { LearnCTA } from '@/components/learn/LearnCTA'
 import { TableOfContents } from '@/components/learn/TableOfContents'
 
 export const metadata: Metadata = {
-  title: 'Getting Started - SpeakOET Docs',
+  title: 'Getting Started - Docs',
   description: 'Create your account, run your first AI patient roleplay, and understand your dashboard.',
 }
 

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Terms & Conditions - SpeakOET',
+  title: 'Terms & Conditions',
   description: 'The terms governing your use of SpeakOET.',
 }
 

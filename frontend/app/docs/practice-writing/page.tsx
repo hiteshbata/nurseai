@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import { LearnCTA } from '@/components/learn/LearnCTA'
 
 export const metadata: Metadata = {
-  title: 'Practice Writing - SpeakOET Docs',
+  title: 'Practice Writing - Docs',
   description: 'How OET Writing practice works and which plans include it.',
 }
 

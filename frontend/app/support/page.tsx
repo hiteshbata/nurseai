@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 
 export const metadata: Metadata = {
-  title: 'Support - SpeakOET',
+  title: 'Support',
   description:
     'Get help with SpeakOET — contact us by email or WhatsApp, or check our FAQ on plans, sessions, and OET scoring.',
 }

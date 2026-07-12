@@ -5,7 +5,7 @@ import { ArticleMeta } from '@/components/learn/ArticleMeta'
 import { TableOfContents } from '@/components/learn/TableOfContents'
 
 export const metadata: Metadata = {
-  title: 'OET vs IELTS — Which Should Nurses Choose? - SpeakOET',
+  title: 'OET vs IELTS — Which Should Nurses Choose?',
   description:
     'How the two tests differ in format and content, and why most nurses find one more relevant to their job.',
 }

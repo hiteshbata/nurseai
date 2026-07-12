@@ -1,5 +1,5 @@
 export const metadata = {
-  title: 'Dashboard - SpeakOET',
+  title: 'Dashboard',
   description: 'Track your OET Speaking progress, scores, and streaks.',
 }
 

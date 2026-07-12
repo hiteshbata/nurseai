@@ -62,7 +62,7 @@ export function Navbar() {
     return parts[0].slice(0, 2).toUpperCase()
   }
 
-  const userName = session?.user?.user_metadata?.full_name || session?.user?.email || ''
+  const userName = session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || session?.user?.email || ''
   const userEmail = session?.user?.email || ''
 
   const [usage, setUsage] = useState<SessionUsage | null>(null)
