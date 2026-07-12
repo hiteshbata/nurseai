@@ -40,3 +40,7 @@ jobs:
       - run: npm run type-check
       - run: npm run lint
       - run: npm run build
+        env:
+          # public values — they ship in the client bundle anyway
+          NEXT_PUBLIC_SANITY_PROJECT_ID: ecreghoz
+          NEXT_PUBLIC_SANITY_DATASET: production
