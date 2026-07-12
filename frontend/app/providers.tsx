@@ -4,6 +4,8 @@ import { useEffect } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { useSupabaseSession } from '@/lib/supabase'
 import { initAnalytics, identifyUser } from '@/lib/analytics'
+import { initGA } from '@/lib/ga'
+import { initClarity } from '@/lib/clarity'
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const { session, status } = useSupabaseSession()
@@ -17,13 +19,16 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       ? () => import('@/lib/sentry-client').then(m => m.initSentry())
       : () => {}
 
-    const id = requestIdleCallback ? requestIdleCallback(() => {
+    const runDeferred = () => {
       initSentryDeferred()
       initAnalytics()
-    }, { timeout: 2000 }) : setTimeout(() => {
-      initSentryDeferred()
-      initAnalytics()
-    }, 2000)
+      initGA()
+      initClarity()
+    }
+
+    const id = requestIdleCallback
+      ? requestIdleCallback(runDeferred, { timeout: 2000 })
+      : setTimeout(runDeferred, 2000)
 
     return () => {
       if (requestIdleCallback) cancelIdleCallback(id as number)
