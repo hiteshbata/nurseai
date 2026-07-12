@@ -1,8 +1,7 @@
 import type { MetadataRoute } from 'next'
 import { learnArticles } from './learn/articles'
 import { docsGuides } from './docs/guides'
-
-const SITE_URL = 'https://nurseai-chi.vercel.app'
+import { SITE_URL } from '@/lib/site'
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes = ['', '/about', '/learn', '/blog', '/privacy', '/terms', '/support', '/docs'].map((path) => ({

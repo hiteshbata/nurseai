@@ -4,12 +4,27 @@ import { Footer } from '@/components/Footer'
 import Providers from './providers'
 import type { Metadata } from 'next'
 import ConditionalLayout from './conditional-layout'
+import { SITE_URL, SITE_NAME, SITE_DESCRIPTION } from '@/lib/site'
 
 export const metadata: Metadata = {
-  title: 'SpeakOET — OET Speaking Practice for Nurses',
-  description: 'AI-powered OET speaking preparation for nurses. Practice roleplays, get real-time AI feedback, and track your band score progress.',
-  icons: {
-    icon: '/favicon.svg',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: `${SITE_NAME} — OET Speaking Practice for Nurses`,
+    template: `%s — ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  keywords: ['OET speaking', 'OET practice', 'OET for nurses', 'OET AI coach', 'OET band score'],
+  openGraph: {
+    type: 'website',
+    url: SITE_URL,
+    siteName: SITE_NAME,
+    title: `${SITE_NAME} — OET Speaking Practice for Nurses`,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: `${SITE_NAME} — OET Speaking Practice for Nurses`,
+    description: SITE_DESCRIPTION,
   },
 }
 
