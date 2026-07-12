@@ -93,10 +93,6 @@ app.include_router(profile.router)
 app.include_router(plans.router)
 app.include_router(submissions.router)
 
-@app.get("/_sentry-verify")
-def _sentry_verify():
-    raise RuntimeError("Sentry DSN verification test — safe to ignore, route removed after check")
-
 @app.get("/")
 def read_root():
     return {
