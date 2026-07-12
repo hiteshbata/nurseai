@@ -10,6 +10,16 @@ const nextConfig = {
   images: {
     remotePatterns: [{ protocol: 'https', hostname: 'cdn.sanity.io' }],
   },
+  async redirects() {
+    return [
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'speakoet.com' }],
+        destination: 'https://www.speakoet.com/:path*',
+        permanent: true,
+      },
+    ]
+  },
   async headers() {
     return [
       {
