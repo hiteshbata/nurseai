@@ -13,7 +13,32 @@ const protectedPaths = [
 ]
 
 export async function middleware(request: NextRequest) {
-  const pathname = request.nextUrl.pathname
+  const hostname = request.nextUrl.hostname
+  const onAdminSubdomain = hostname === 'admin.speakoet.com'
+  const onDocsSubdomain = hostname === 'docs.speakoet.com'
+  const onBlogSubdomain = hostname === 'blog.speakoet.com'
+
+  // docs.speakoet.com serves the /docs routes of this same app at the
+  // subdomain root, so map "/" -> "/docs", "/mock-test" -> "/docs/mock-test".
+  // Public content, no auth needed, so this bypasses the protected-path check below.
+  if (onDocsSubdomain) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/docs' + request.nextUrl.pathname.replace(/^\/docs/, '')
+    return NextResponse.rewrite(url)
+  }
+
+  // blog.speakoet.com serves the /blog routes of this same app at the
+  // subdomain root, so map "/" -> "/blog", "/my-post" -> "/blog/my-post".
+  // Public content, no auth needed, so this bypasses the protected-path check below.
+  if (onBlogSubdomain) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/blog' + request.nextUrl.pathname.replace(/^\/blog/, '')
+    return NextResponse.rewrite(url)
+  }
+
+  const pathname = onAdminSubdomain
+    ? '/admin' + request.nextUrl.pathname.replace(/^\/admin/, '')
+    : request.nextUrl.pathname
   const isProtected = protectedPaths.some((p) => pathname === p || pathname.startsWith(p + '/'))
 
   if (!isProtected) {
@@ -50,7 +75,22 @@ export async function middleware(request: NextRequest) {
   // Call getResponse() AFTER the supabase call so that any auth cookies
   // refreshed by getUser() and written via the setAll handler are captured
   // on the returned NextResponse.
-  return getResponse()
+  const response = getResponse()
+
+  // admin.speakoet.com serves the /admin routes of this same app at the
+  // subdomain root, so map "/" -> "/admin", "/users" -> "/admin/users", etc.
+  if (onAdminSubdomain && !request.nextUrl.pathname.startsWith('/admin')) {
+    const url = request.nextUrl.clone()
+    url.pathname = pathname
+    const rewriteResponse = NextResponse.rewrite(url)
+    const setCookieHeader = response.headers.get('set-cookie')
+    if (setCookieHeader) {
+      rewriteResponse.headers.set('set-cookie', setCookieHeader)
+    }
+    return rewriteResponse
+  }
+
+  return response
 }
 
 export const config = {

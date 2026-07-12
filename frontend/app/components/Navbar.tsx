@@ -47,7 +47,10 @@ export function Navbar() {
   const pathname = usePathname()
   const isLanding = pathname === '/'
   const publicPaths = ['/', '/about', '/support', '/blog', '/privacy', '/terms']
-  const isPublicPage = publicPaths.includes(pathname || '') || (pathname?.startsWith('/learn') ?? false)
+  const isPublicPage =
+    publicPaths.includes(pathname || '') ||
+    (pathname?.startsWith('/learn') ?? false) ||
+    (pathname?.startsWith('/docs') ?? false)
   const navLinksToShow = !session && isPublicPage ? publicNavLinks : appNavLinks
   const isActiveLink = (href: string) => !href.startsWith('/#') && pathname === href
 
@@ -215,7 +218,7 @@ export function Navbar() {
                   </Link>
                   <div className="border-t border-gray-100 my-1" />
                   <button
-                    onClick={() => { setAvatarOpen(false); signOut(); router.push('/') }}
+                    onClick={async () => { setAvatarOpen(false); router.push('/'); await signOut() }}
                     className="flex items-center gap-2 px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 w-full text-left"
                   >
                     <LogOut className="h-4 w-4" />

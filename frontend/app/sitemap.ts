@@ -1,10 +1,11 @@
 import type { MetadataRoute } from 'next'
 import { learnArticles } from './learn/articles'
+import { docsGuides } from './docs/guides'
 
 const SITE_URL = 'https://nurseai-chi.vercel.app'
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const staticRoutes = ['', '/about', '/learn', '/blog', '/privacy', '/terms', '/support'].map((path) => ({
+  const staticRoutes = ['', '/about', '/learn', '/blog', '/privacy', '/terms', '/support', '/docs'].map((path) => ({
     url: `${SITE_URL}${path}`,
     lastModified: new Date(),
   }))
@@ -14,5 +15,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     lastModified: new Date(),
   }))
 
-  return [...staticRoutes, ...learnRoutes]
+  const docsRoutes = docsGuides.map((guide) => ({
+    url: `${SITE_URL}${guide.href}`,
+    lastModified: new Date(),
+  }))
+
+  return [...staticRoutes, ...learnRoutes, ...docsRoutes]
 }
