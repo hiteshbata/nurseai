@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { useSpeakingSession } from '@/app/hooks/useSpeakingSession'
+import VoiceOrb from '@/components/VoiceOrb'
 
 type Step = 1 | 2 | 3 | 4 | 5
 
@@ -143,6 +145,7 @@ export default function OnboardingPage() {
   const [diagnosticScenario, setDiagnosticScenario] = useState<any>(null)
   const [baselineScore, setBaselineScore] = useState<number | null>(null)
   const [skippedDiagnostic, setSkippedDiagnostic] = useState(false)
+  const [diagnosticLoadError, setDiagnosticLoadError] = useState(false)
 
   const totalSteps = 5
 
@@ -187,19 +190,23 @@ export default function OnboardingPage() {
   }
 
   const startDiagnostic = async () => {
+    setDiagnosticLoadError(false)
     try {
       const res = await api.get('/speaking/scenarios')
       const scenarios = res.data || []
       if (scenarios.length > 0) {
         setDiagnosticScenario(scenarios[0])
         setDiagnosticMode(true)
+      } else {
+        setDiagnosticLoadError(true)
       }
     } catch (e) {
       console.error('Failed to load scenarios for diagnostic:', e)
+      setDiagnosticLoadError(true)
     }
   }
 
-  const handleDiagnosticEnd = async (_history: any[], feedback: any) => {
+  const handleDiagnosticEnd = async (feedback: any) => {
     const band = feedback?.overall_band ?? null
     if (band) {
       try {
@@ -209,6 +216,11 @@ export default function OnboardingPage() {
         console.error('Failed to save baseline:', e)
       }
     }
+    setDiagnosticMode(false)
+    setDiagnosticScenario(null)
+  }
+
+  const handleDiagnosticCancel = () => {
     setDiagnosticMode(false)
     setDiagnosticScenario(null)
   }
@@ -326,10 +338,9 @@ export default function OnboardingPage() {
               Complete one roleplay with {diagnosticScenario.title}. This sets your baseline score.
             </p>
             <VoiceChatInline
-              scenarioId={diagnosticScenario.id}
-              nurseCard={diagnosticScenario.nurse_card}
-              scenarioTitle={diagnosticScenario.title}
+              scenario={diagnosticScenario}
               onSessionEnd={handleDiagnosticEnd}
+              onCancel={handleDiagnosticCancel}
             />
           </div>
         </div>
@@ -600,9 +611,14 @@ export default function OnboardingPage() {
                 <p className="text-sm text-gray-600 mb-4">
                   You'll have a short conversation with an AI patient, then receive a score.
                 </p>
+                {diagnosticLoadError && (
+                  <p className="text-sm text-red-600 mb-3" role="alert">
+                    Couldn't load the diagnostic — please try again.
+                  </p>
+                )}
                 {baselineScore === null && (
                   <Button type="button" variant="accent" size="lg" className="w-full" onClick={startDiagnostic}>
-                    Start Diagnostic
+                    {diagnosticLoadError ? 'Try Again' : 'Start Diagnostic'}
                   </Button>
                 )}
               </div>
@@ -709,65 +725,85 @@ export default function OnboardingPage() {
 }
 
 function VoiceChatInline({
-  scenarioId,
-  nurseCard,
-  scenarioTitle,
+  scenario,
   onSessionEnd,
+  onCancel,
 }: {
-  scenarioId: number
-  nurseCard: any
-  scenarioTitle: string
-  onSessionEnd: (history: any[], feedback: any) => void
+  scenario: any
+  onSessionEnd: (feedback: any) => void
+  onCancel: () => void
 }) {
-  const [isRecording, setIsRecording] = useState(false)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [history, setHistory] = useState<{ role: string; content: string }[]>([])
+  const [convHistory, setConvHistory] = useState<{ role: 'nurse' | 'patient'; content: string }[]>([])
+  const [sessionId, setSessionId] = useState<number | null>(null)
   const [inputText, setInputText] = useState('')
+  const [isEnding, setIsEnding] = useState(false)
+  const [scoreError, setScoreError] = useState<string | null>(null)
 
-  const sendMessage = async () => {
-    if (!inputText.trim() || isProcessing) return
-    setIsProcessing(true)
-    const userMsg = inputText.trim()
+  const session = useSpeakingSession({
+    scenario,
+    convHistory,
+    setConvHistory,
+    sessionId,
+    setSessionId,
+    isEnding,
+    autoListen: true,
+  })
+
+  const sendTyped = async () => {
+    const text = inputText.trim()
+    if (!text || session.isProcessing || isEnding) return
     setInputText('')
-    setHistory((prev) => [...prev, { role: 'nurse', content: userMsg }])
-    try {
-      const res = await api.post('/speaking/chat', {
-        scenario_id: scenarioId,
-        message: userMsg,
-        history: history.map((m) => ({ role: m.role, content: m.content })),
-      })
-      setHistory((prev) => [...prev, { role: 'patient', content: res.data.patient_reply }])
-    } catch (e) {
-      console.error('Chat failed:', e)
-    } finally {
-      setIsProcessing(false)
-    }
+    await session.sendTypedMessage(text)
   }
 
   const endSession = async () => {
-    setIsProcessing(true)
+    if (!convHistory.some((m) => m.role === 'nurse')) {
+      setScoreError('Speak or type at least one response before ending.')
+      return
+    }
+    setIsEnding(true)
+    session.stopListening()
+    session.stopSpeaking()
+    setScoreError(null)
     try {
       const res = await api.post('/speaking/score', {
-        scenario_id: scenarioId,
-        history: history.map((m) => ({ role: m.role, content: m.content })),
+        scenario_id: scenario.id,
+        history: convHistory.map((m) => ({ role: m.role, content: m.content })),
+        session_id: sessionId,
       })
-      onSessionEnd(history, res.data.feedback)
+      onSessionEnd(res.data.feedback)
     } catch (e) {
       console.error('Scoring failed:', e)
+      setScoreError("Couldn't score your session — please try again.")
     } finally {
-      setIsProcessing(false)
+      setIsEnding(false)
     }
   }
 
+  const nurseCard = scenario.nurse_card || {}
+
   return (
     <div>
+      {(nurseCard.role || nurseCard.tasks?.length > 0) && (
+        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4">
+          {nurseCard.role && <p className="text-sm text-gray-700 mb-2">{nurseCard.role}</p>}
+          {nurseCard.tasks?.length > 0 && (
+            <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
+              {nurseCard.tasks.map((task: string, i: number) => (
+                <li key={i}>{task}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <div className="bg-gray-50 rounded-xl p-4 mb-4 max-h-80 overflow-y-auto space-y-3">
-        {history.length === 0 && (
+        {convHistory.length === 0 && (
           <p className="text-gray-400 text-center py-8">
-            Type or record your first message to the patient.
+            Tap the mic or type your first message to the patient.
           </p>
         )}
-        {history.map((msg, i) => (
+        {convHistory.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'nurse' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[75%] rounded-xl px-4 py-2 ${
               msg.role === 'nurse' ? 'bg-primary text-white' : 'bg-gray-200 text-gray-800'
@@ -781,13 +817,30 @@ function VoiceChatInline({
         ))}
       </div>
 
-      <div className="flex gap-2">
+      <VoiceOrb
+        isListening={session.isListening}
+        isConnecting={session.isConnecting}
+        isProcessing={session.isProcessing}
+        isSpeaking={session.isSpeaking}
+        isEnding={isEnding}
+        canEndSession={convHistory.some((m) => m.role === 'nurse')}
+        onToggle={() => (session.isListening ? session.stopListening() : session.startListening())}
+        onEndSession={endSession}
+      />
+
+      {(session.sttError || scoreError) && (
+        <p className="text-xs text-red-500 text-center mt-1" role="alert">
+          {session.sttError || scoreError}
+        </p>
+      )}
+
+      <div className="flex gap-2 mt-3">
         <Input
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-          placeholder="Type your message..."
+          onKeyDown={(e) => e.key === 'Enter' && sendTyped()}
+          placeholder="Or type your message..."
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
@@ -795,30 +848,27 @@ function VoiceChatInline({
           data-lpignore="true"
           data-1p-ignore
           className="flex-1"
-          disabled={isProcessing}
+          disabled={session.isProcessing || isEnding}
         />
         <Button
           type="button"
           variant="default"
-          onClick={sendMessage}
-          disabled={!inputText.trim() || isProcessing}
+          onClick={sendTyped}
+          disabled={!inputText.trim() || session.isProcessing || isEnding}
         >
           Send
         </Button>
       </div>
 
-      {history.length > 2 && (
-        <Button
-          type="button"
-          variant="accent"
-          size="lg"
-          className="mt-4 w-full"
-          onClick={endSession}
-          disabled={isProcessing}
-        >
-          {isProcessing ? 'Scoring...' : 'End Session & Get Score'}
-        </Button>
-      )}
+      <Button
+        type="button"
+        variant="outline"
+        className="mt-3 w-full"
+        onClick={onCancel}
+        disabled={isEnding}
+      >
+        Cancel & Skip
+      </Button>
     </div>
   )
 }
