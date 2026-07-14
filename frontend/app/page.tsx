@@ -32,6 +32,10 @@ export default function Home() {
     }
   }, [status, onboardingChecked, router])
 
+  if (status === 'authenticated') {
+    return null
+  }
+
   return (
     <>
       <HeroSection />

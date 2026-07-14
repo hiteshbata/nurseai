@@ -94,7 +94,7 @@ export function RazorpayCheckout({
         options = {
           key: RAZORPAY_KEY_ID,
           subscription_id,
-          name: 'NurseAI',
+          name: 'Speak Oet',
           description: `${planLabel} (auto-renews monthly)`,
           prefill: {
             contact: '',
@@ -155,7 +155,7 @@ export function RazorpayCheckout({
           key: RAZORPAY_KEY_ID,
           amount,
           currency,
-          name: 'NurseAI',
+          name: 'Speak Oet',
           description: planLabel,
           order_id,
           prefill: {

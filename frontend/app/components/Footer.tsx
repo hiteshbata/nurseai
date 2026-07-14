@@ -28,7 +28,7 @@ export function Footer() {
             {/* Social icons */}
             <div className="flex items-center gap-4 mt-4">
               <a
-                href="https://instagram.com/speakoet"
+                href="https://www.instagram.com/speakoet"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-white/60 hover:text-[#10B981] transition-colors duration-200"
@@ -53,7 +53,7 @@ export function Footer() {
                 </svg>
               </a>
               <a
-                href="https://linkedin.com/company/speakoet"
+                href="https://www.linkedin.com/company/speak-oet/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-white/60 hover:text-[#10B981] transition-colors duration-200"

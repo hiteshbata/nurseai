@@ -113,6 +113,11 @@ export default function UpgradePage() {
                   </div>
                   <p className="text-sm text-gray-500 mb-4">{plan.description}</p>
                   <div className="mb-3">
+                    {isAnnual && (
+                      <span className="text-gray-400 text-sm line-through mr-2">
+                        {'\u20B9'}{plan.price * 12}
+                      </span>
+                    )}
                     <span className="text-3xl font-black text-[#0F2356]">
                       {plan.price === 0 ? 'Free' : `\u20B9${displayPrice}`}
                     </span>
