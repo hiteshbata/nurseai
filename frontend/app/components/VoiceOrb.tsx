@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 
 interface VoiceOrbProps {
   isListening: boolean
@@ -14,7 +14,7 @@ interface VoiceOrbProps {
   onEndSession: () => void
 }
 
-export default function VoiceOrb({ isListening, isConnecting = false, isProcessing, isSpeaking = false, isEnding, canEndSession = true, statusOverride, onToggle, onEndSession }: VoiceOrbProps) {
+function VoiceOrb({ isListening, isConnecting = false, isProcessing, isSpeaking = false, isEnding, canEndSession = true, statusOverride, onToggle, onEndSession }: VoiceOrbProps) {
   const [orbScale, setOrbScale] = useState(1)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -201,3 +201,5 @@ export default function VoiceOrb({ isListening, isConnecting = false, isProcessi
     </div>
   )
 }
+
+export default memo(VoiceOrb)
