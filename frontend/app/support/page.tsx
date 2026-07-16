@@ -9,6 +9,11 @@ export const metadata: Metadata = {
   alternates: { canonical: '/support' },
 }
 
+// WhatsApp Business number, wa.me format: country code first, digits only, no
+// + or spaces. This is public and gets scraped, so it must stay a Business
+// number rather than a personal one.
+const WHATSAPP_NUMBER = '919512499593'
+
 const FAQS: { question: string; answer: ReactNode }[] = [
   {
     question: 'What is SpeakOET?',
@@ -96,18 +101,19 @@ export default function SupportPage() {
           <p className="text-gray-500 text-sm mb-2">Best for detailed questions or account issues.</p>
           <p className="text-[#0F2356] font-semibold text-sm">support@speakoet.com</p>
         </a>
-        {/* TODO(founder): once a real WhatsApp Business number exists, point this
-            back at `https://wa.me/<number>` (digits only, country code first, no
-            + or spaces) with target="_blank" rel="noopener noreferrer". Until
-            then it routes to email so a paying Elite member never taps a dead
-            wa.me link to a fake number. */}
+        {/* Elite lists "WhatsApp priority support" as a paid feature, so this
+            link has to resolve to a real, WhatsApp-active number — an invalid
+            one shows "phone number shared via url is invalid" to a paying
+            member. Format: country code first, digits only, no + or spaces. */}
         <a
-          href="mailto:support@speakoet.com"
+          href={`https://wa.me/${WHATSAPP_NUMBER}`}
+          target="_blank"
+          rel="noopener noreferrer"
           className="rounded-2xl border border-gray-100 bg-white shadow-sm p-6 hover:shadow-md transition"
         >
           <p className="font-semibold text-[#0F2356] mb-1">💬 WhatsApp</p>
-          <p className="text-gray-500 text-sm mb-2">Best for quick questions during your prep — email us and we&apos;ll reply fast.</p>
-          <p className="text-[#0F2356] font-semibold text-sm">Message us</p>
+          <p className="text-gray-500 text-sm mb-2">Best for quick questions during your prep.</p>
+          <p className="text-[#0F2356] font-semibold text-sm">Chat with us</p>
         </a>
       </section>
 
