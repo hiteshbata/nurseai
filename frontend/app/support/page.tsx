@@ -9,10 +9,6 @@ export const metadata: Metadata = {
   alternates: { canonical: '/support' },
 }
 
-// TODO: replace with your real WhatsApp Business number (digits only, country
-// code first, no + or spaces) — e.g. 919812345678 for a +91 98123 45678 number.
-const WHATSAPP_NUMBER = '910000000000'
-
 const FAQS: { question: string; answer: ReactNode }[] = [
   {
     question: 'What is SpeakOET?',
@@ -100,15 +96,18 @@ export default function SupportPage() {
           <p className="text-gray-500 text-sm mb-2">Best for detailed questions or account issues.</p>
           <p className="text-[#0F2356] font-semibold text-sm">support@speakoet.com</p>
         </a>
+        {/* TODO(founder): once a real WhatsApp Business number exists, point this
+            back at `https://wa.me/<number>` (digits only, country code first, no
+            + or spaces) with target="_blank" rel="noopener noreferrer". Until
+            then it routes to email so a paying Elite member never taps a dead
+            wa.me link to a fake number. */}
         <a
-          href={`https://wa.me/${WHATSAPP_NUMBER}`}
-          target="_blank"
-          rel="noopener noreferrer"
+          href="mailto:support@speakoet.com"
           className="rounded-2xl border border-gray-100 bg-white shadow-sm p-6 hover:shadow-md transition"
         >
           <p className="font-semibold text-[#0F2356] mb-1">💬 WhatsApp</p>
-          <p className="text-gray-500 text-sm mb-2">Best for quick questions during your prep.</p>
-          <p className="text-[#0F2356] font-semibold text-sm">Chat with us</p>
+          <p className="text-gray-500 text-sm mb-2">Best for quick questions during your prep — email us and we&apos;ll reply fast.</p>
+          <p className="text-[#0F2356] font-semibold text-sm">Message us</p>
         </a>
       </section>
 
