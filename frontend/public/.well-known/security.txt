@@ -1,0 +1,4 @@
+Contact: mailto:support@speakoet.com
+Expires: 2027-07-16T00:00:00.000Z
+Canonical: https://www.speakoet.com/.well-known/security.txt
+Preferred-Languages: en

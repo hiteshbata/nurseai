@@ -5,6 +5,7 @@ import { LearnCTA } from '@/components/learn/LearnCTA'
 export const metadata: Metadata = {
   title: 'Practice Writing - Docs',
   description: 'How OET Writing practice works and which plans include it.',
+  alternates: { canonical: '/docs/practice-writing' },
 }
 
 export default function PracticeWritingDocsPage() {

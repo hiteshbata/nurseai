@@ -21,11 +21,6 @@ export const docsGuides: DocsGuide[] = [
     description: 'How OET Writing practice works and which plans include it.',
   },
   {
-    href: '/docs/mock-test',
-    title: 'Mock Test',
-    description: 'Simulate the full OET Speaking sub-test under timed, exam-style conditions.',
-  },
-  {
     href: '/docs/account-and-billing',
     title: 'Account & Billing',
     description: 'Manage your plan, sessions, subscription, and account settings.',

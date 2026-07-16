@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   title: 'Blog',
   description:
     'Guides on OET Speaking: exam format, band scores, OET vs IELTS, speaking tips, and advice for Indian nurses.',
+  alternates: { canonical: '/blog' },
 }
 
 export default async function BlogPage() {

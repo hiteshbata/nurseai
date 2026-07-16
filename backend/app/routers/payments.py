@@ -239,12 +239,12 @@ def create_order(
                 "billing_cycle": billing_cycle,
             },
         })
-    except Exception as e:
+    except Exception:
         logger.exception(
             "create-order failed | user_id=%s plan_id=%s amount_paise=%s",
             current_user.id, req.plan_id, amount_paise,
         )
-        raise HTTPException(status_code=500, detail=f"Razorpay order creation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Could not create payment order. Please try again.")
 
     return CreateOrderResponse(
         order_id=order["id"],
@@ -298,7 +298,7 @@ def verify_payment(
             "verify-payment unexpected error | order_id=%s payment_id=%s user_id=%s",
             req.razorpay_order_id, req.razorpay_payment_id, current_user.id,
         )
-        raise HTTPException(status_code=500, detail=f"Verification error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Payment verification failed. Please contact support.")
 
     try:
         order = client.order.fetch(req.razorpay_order_id)
@@ -326,8 +326,12 @@ def verify_payment(
         amount = order.get("amount")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch order details: {str(e)}")
+    except Exception:
+        logger.exception(
+            "verify-payment failed to fetch order | order_id=%s user_id=%s",
+            req.razorpay_order_id, current_user.id,
+        )
+        raise HTTPException(status_code=500, detail="Could not verify payment. Please contact support.")
 
     profile_plan = validate_plan_id(plan_id)
 
@@ -399,12 +403,12 @@ def create_subscription(
                 "plan_id": req.plan_id,
             },
         })
-    except Exception as e:
+    except Exception:
         logger.exception(
             "create-subscription failed | user_id=%s plan_id=%s",
             current_user.id, req.plan_id,
         )
-        raise HTTPException(status_code=500, detail=f"Razorpay subscription creation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Could not create subscription. Please try again.")
 
     return CreateSubscriptionResponse(
         subscription_id=subscription["id"],
@@ -444,8 +448,12 @@ def verify_subscription_payment(
     try:
         subscription = client.subscription.fetch(req.razorpay_subscription_id)
         payment = client.payment.fetch(req.razorpay_payment_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch subscription/payment details: {str(e)}")
+    except Exception:
+        logger.exception(
+            "verify-subscription-payment failed to fetch subscription/payment | subscription_id=%s payment_id=%s user_id=%s",
+            req.razorpay_subscription_id, req.razorpay_payment_id, current_user.id,
+        )
+        raise HTTPException(status_code=500, detail="Could not verify payment. Please contact support.")
 
     notes = get_notes(subscription)
     plan_id = notes.get("plan_id", "")
@@ -531,12 +539,12 @@ def cancel_subscription(
     client = get_razorpay_client()
     try:
         client.subscription.cancel(subscription_id, {"cancel_at_cycle_end": 1})
-    except Exception as e:
+    except Exception:
         logger.exception(
             "cancel-subscription failed | user_id=%s subscription_id=%s",
             current_user.id, subscription_id,
         )
-        raise HTTPException(status_code=500, detail=f"Failed to cancel subscription: {str(e)}")
+        raise HTTPException(status_code=500, detail="Could not cancel subscription. Please try again or contact support.")
 
     supabase.table("user_profiles").update({
         "auto_renew_enabled": False,

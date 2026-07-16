@@ -30,8 +30,25 @@ const nextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
           { key: 'Permissions-Policy', value: 'camera=(), geolocation=(), payment=()' },
-          // ponytail: minimal CSP — full script-src allowlist would need 'unsafe-inline' for Next anyway; expand if a real XSS vector appears
-          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
+          {
+            key: 'Content-Security-Policy',
+            value: [
+              "default-src 'self'",
+              "frame-ancestors 'none'",
+              "object-src 'none'",
+              "base-uri 'self'",
+              // ponytail: 'unsafe-inline' kept for Next.js's own hydration/RSC bootstrap
+              // scripts (no nonce plumbing yet) -- still blocks loading any script from a
+              // host outside this list, which is what stops an injected remote-script payload.
+              // Upgrade to a per-request nonce (middleware.ts) if that gap needs closing.
+              "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com https://www.googletagmanager.com https://www.clarity.ms",
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data: blob: https://cdn.sanity.io https://*.clarity.ms",
+              "font-src 'self' data:",
+              "connect-src 'self' https://api.speakoet.com wss://api.speakoet.com https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://www.google-analytics.com https://www.clarity.ms https://*.clarity.ms https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io",
+              "frame-src https://checkout.razorpay.com https://api.razorpay.com",
+            ].join('; '),
+          },
         ],
       },
     ]

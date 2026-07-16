@@ -39,9 +39,15 @@ _register_rate_limiter = SlidingWindowRateLimiter(5, 3600, name="auth:register")
 
 
 def _client_ip(request: Request) -> str:
+    # Render's proxy appends the real client IP as the LAST entry in
+    # X-Forwarded-For; every entry before that is attacker-suppliable
+    # (a client can send its own X-Forwarded-For header with fabricated
+    # IPs prepended). Trusting the first entry lets an attacker rotate
+    # a fake IP on every request and bypass the login/register rate
+    # limiters entirely -- always take the last entry instead.
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        return forwarded.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
 class LoginResponse(BaseModel):

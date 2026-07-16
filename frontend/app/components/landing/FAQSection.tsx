@@ -23,7 +23,7 @@ export default function FAQSection() {
     },
     {
       q: "How accurate is the AI scoring?",
-      a: "Our AI scores on all 9 official OET criteria using the public OET rubric as reference. Students who practice 5+ sessions per week consistently report band score improvements. It is a study tool — not a substitute for the real exam.",
+      a: "SpeakOET evaluates your responses using all 9 public OET Speaking assessment criteria. It is designed as a study tool and cannot guarantee any exam result — it is not a substitute for the real exam.",
     },
     {
       q: "Do I need to download an app?",
@@ -35,7 +35,7 @@ export default function FAQSection() {
     },
     {
       q: "How much does Pro cost?",
-      a: `Pro is ₹${pro ? pro.price : '999'} per month — about US$${pro ? Math.round(pro.price / 83) : '12'}. That is significantly less than one hour with a human OET tutor. You get unlimited sessions, all scenarios, progress tracking, and compare attempts.`,
+      a: `Pro is ₹${pro ? pro.price : '799'} per month — about US$${pro ? Math.round(pro.price / 83) : '10'}. That is significantly less than one hour with a human OET tutor. You get ${pro ? pro.sessions_limit : '40'} speaking scenarios per month, all scenarios, progress tracking, and compare attempts.`,
     },
     {
       q: "I am an Indian nurse going to Australia or UK — is this right for me?",
@@ -51,7 +51,7 @@ export default function FAQSection() {
     },
     {
       q: "What happens after my free sessions run out?",
-      a: `You can upgrade to Pro for ₹${pro ? pro.price : '999'}/month for unlimited practice. We'll remind you before your sessions run out — no surprise charges.`,
+      a: `You can upgrade to Pro for ₹${pro ? pro.price : '799'}/month for ${pro ? pro.sessions_limit : '40'} sessions a month. We'll remind you before your sessions run out — no surprise charges.`,
     },
   ]
 

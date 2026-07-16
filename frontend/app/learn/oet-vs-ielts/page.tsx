@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: 'OET vs IELTS — Which Should Nurses Choose?',
   description:
     'How the two tests differ in format and content, and why most nurses find one more relevant to their job.',
+  alternates: { canonical: '/learn/oet-vs-ielts' },
 }
 
 const toc = [

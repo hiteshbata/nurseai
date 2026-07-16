@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = {
   title: 'Privacy Policy',
   description: 'How SpeakOET collects, uses, and protects your data.',
+  alternates: { canonical: '/privacy' },
 }
 
 const SECTIONS: { heading: string; body: string }[] = [

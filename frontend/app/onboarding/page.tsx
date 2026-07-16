@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { useSpeakingSession } from '@/app/hooks/useSpeakingSession'
+import { scoreToGrade } from '@/app/practice/speaking/shared'
 import VoiceOrb from '@/components/VoiceOrb'
 
 type Step = 1 | 2 | 3 | 4 | 5
@@ -648,9 +649,7 @@ export default function OnboardingPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Current level</span>
                   <span className="font-semibold">
-                    {baselineScore !== null ? (
-                      baselineScore >= 5.5 ? 'A' : baselineScore >= 4.5 ? 'B' : baselineScore >= 3.5 ? 'C+' : baselineScore >= 2.5 ? 'C' : baselineScore >= 1.5 ? 'D' : 'E'
-                    ) : 'Not assessed'}
+                    {baselineScore !== null ? scoreToGrade(baselineScore) : 'Not assessed'}
                   </span>
                 </div>
                 <div className="border-t border-emerald-100" />

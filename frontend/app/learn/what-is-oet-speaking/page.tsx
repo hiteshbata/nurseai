@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: 'What is OET Speaking?',
   description:
     'A complete guide to the OET Speaking sub-test: the role-play format, timing, and exactly how examiners assess you.',
+  alternates: { canonical: '/learn/what-is-oet-speaking' },
 }
 
 const toc = [

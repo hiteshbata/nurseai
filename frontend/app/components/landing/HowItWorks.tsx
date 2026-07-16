@@ -1,10 +1,10 @@
-import { Search, Mic, BarChart2 } from "lucide-react"
+import { Search, Mic, BarChart2, RotateCcw } from "lucide-react"
 
 const steps = [
   {
     number: "01",
     icon: Search,
-    title: "Pick a Scenario",
+    title: "Choose a Scenario",
     text: "Browse nursing roleplays by difficulty, or let AI recommend the case that targets your two weakest OET criteria today.",
     color: "navy" as const,
   },
@@ -18,9 +18,16 @@ const steps = [
   {
     number: "03",
     icon: BarChart2,
-    title: "Get Your Full OET Score",
+    title: "Receive Instant Feedback",
     text: "All 9 criteria scored within 30 seconds. Specific feedback on what you said, what to improve, and which scenario to try next.",
     color: "navy" as const,
+  },
+  {
+    number: "04",
+    icon: RotateCcw,
+    title: "Practice Again",
+    text: "Retry the same case or move to the one the AI suggests next. Compare attempts side by side to see what actually changed.",
+    color: "emerald" as const,
   },
 ]
 
@@ -30,14 +37,15 @@ export default function HowItWorks() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14">
           <h2 className="text-3xl md:text-4xl font-bold text-[#0F2356] mb-3 text-balance">
-            One 5-Minute Roleplay, Three Layers of Feedback
+            One 5-Minute Roleplay, Scored End to End
           </h2>
-          <p className="text-gray-500 text-lg">The same loop every time — pick, practice, get scored</p>
+          <p className="text-gray-500 text-lg">The same loop every time — choose, practice, get scored, go again</p>
         </div>
 
         <div className="relative flex flex-col md:flex-row items-start gap-8 md:gap-0">
-          {/* Connecting line on desktop */}
-          <div className="hidden md:block absolute top-12 left-1/6 right-1/6 h-0.5 bg-gray-200 z-0" style={{ left: "16.67%", right: "16.67%" }} />
+          {/* Connecting line on desktop — inset by half a card so it starts and
+              ends at the centre of the first and last step circles. */}
+          <div className="hidden md:block absolute top-12 h-0.5 bg-gray-200 z-0" style={{ left: "12.5%", right: "12.5%" }} />
 
           {steps.map((step, i) => {
             const Icon = step.icon

@@ -67,12 +67,6 @@ export default function HeroSection() {
                 </span>
               ))}
             </div>
-
-            {/* Social proof */}
-            <p className="text-sm text-gray-500 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#10B981] inline-block animate-pulse" />
-              Join <span className="font-bold text-[#0F2356]">847</span> Indian nurses already practicing daily
-            </p>
           </div>
 
           {/* Right Side — Score Card */}

@@ -62,8 +62,16 @@ export function Navbar() {
     return parts[0].slice(0, 2).toUpperCase()
   }
 
-  const userName = session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || session?.user?.email || ''
   const userEmail = session?.user?.email || ''
+  // Fall back to the email's local part rather than the raw address --
+  // getInitials() on a full email (no space) collapses to its first two
+  // characters (e.g. "test@gmail.com" -> "TE"), which is what the avatar
+  // badge showed before this fix.
+  const emailLocalPart = userEmail.split('@')[0]
+  const userName =
+    session?.user?.user_metadata?.full_name ||
+    session?.user?.user_metadata?.name ||
+    (emailLocalPart ? emailLocalPart[0].toUpperCase() + emailLocalPart.slice(1) : '')
 
   const [usage, setUsage] = useState<SessionUsage | null>(null)
 

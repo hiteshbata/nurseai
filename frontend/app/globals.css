@@ -61,6 +61,14 @@
   0% { transform: scale(0.7); opacity: 0.55; }
   100% { transform: scale(2); opacity: 0; }
 }
+@keyframes message-in {
+  0% { transform: translateY(8px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes panel-slide-in {
+  0% { transform: translateY(14px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
 
 html:fullscreen #main-navbar {
   display: none !important;

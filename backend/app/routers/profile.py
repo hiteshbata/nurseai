@@ -1,9 +1,12 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from datetime import date, datetime, timezone
 from app.core.supabase import get_supabase
 from app.routers.auth import get_current_user, UserInfo
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -63,5 +66,6 @@ def delete_account(
 
     try:
         supabase.auth.admin.delete_user(current_user.id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete account: {str(e)}")
+    except Exception:
+        logger.exception("delete-account failed | user_id=%s", current_user.id)
+        raise HTTPException(status_code=500, detail="Could not delete account. Please try again or contact support.")

@@ -5,6 +5,7 @@ import { docsGuides } from './guides'
 export const metadata: Metadata = {
   title: 'Docs',
   description: 'Guides for using SpeakOET — practice speaking, practice writing, mock tests, and account settings.',
+  alternates: { canonical: '/docs' },
 }
 
 export default function DocsPage() {

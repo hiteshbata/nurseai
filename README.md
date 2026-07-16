@@ -1,89 +1,32 @@
-# NurseAI v1 - OET AI Coach for Indian Nurses
+# SpeakOET — AI OET Speaking Coach for Indian Nurses
 
-A comprehensive web application designed to help Indian nurses prepare for the Occupational English Test (OET) with AI-powered coaching, real-time feedback, and practice modules.
+Web app helping Indian nurses preparing for OET (to work in Australia, UK, or New Zealand) practice the Speaking sub-test with a live AI patient roleplay, scored against the official 9-criteria OET rubric.
+
+Live at [speakoet.com](https://www.speakoet.com).
 
 ## Features
 
-- **AI-Powered Scoring**: Uses OpenRouter's Gemini 2.0 Flash for detailed feedback on speaking, writing, listening, and reading
-- **Speaking Practice**: Web Audio API-based voice recording with transcription and AI feedback
-- **Writing Practice**: Submit written responses with AI evaluation
-- **Mock Tests**: Full practice tests simulating real OET exam conditions
-- **Progress Tracking**: Dashboard with detailed statistics and improvement tracking
-- **Secure Authentication**: JWT-based auth with NextAuth.js and bcrypt hashing
-- **Responsive Design**: Mobile-friendly UI with Tailwind CSS
+- **AI patient roleplay**: real-time voice conversation with an AI patient (OpenAI Realtime or Gemini Live, selectable per deployment) across 100+ clinically-written scenarios spanning beginner/intermediate/advanced difficulty
+- **9-criteria OET scoring**: Empathy, Patient's Perspective, Providing Structure, Information Gathering, Information Giving, Intelligibility, Fluency, Appropriateness of Language, Grammar & Expression — scored against the public OET rubric
+- **Writing practice** (Pro plan): submit written responses for AI evaluation
+- **Progress dashboard**: band-score trend, per-criterion skill breakdown, practice streaks, milestone badges, recent-session history
+- **AI coach summary**: personalized weekly strengths/focus-area writeup generated from a user's own score history
+- **Subscription billing**: Free / Basic / Pro / Elite tiers via Razorpay (one-off orders and auto-renewing subscriptions), webhook-driven with signature verification and idempotent grant logic
+- **Admin panel**: scenario management, user roles, logs, app-wide stats
+
+**Not yet built:** Reading and Listening modules, full timed Mock Test (placeholder page live — speaking scenarios currently substitute for it).
 
 ## Tech Stack
 
-- **Frontend**: Next.js 14 (App Router, TypeScript, Tailwind CSS)
-- **Backend**: FastAPI (Python with async support)
-- **Database**: SQLite with SQLAlchemy ORM
-- **AI**: OpenRouter API (Gemini 2.0 Flash model)
-- **Authentication**: NextAuth.js with JWT
-- **Containerization**: Docker Compose for local development
-
-## Prerequisites
-
-- Docker and Docker Compose
-- Node.js 18+ (for local frontend development)
-- Python 3.10+ (for local backend development)
-- OpenRouter API key (get from https://openrouter.ai)
-
-## Quick Start
-
-### Using Docker Compose (Recommended)
-
-```bash
-# 1. Clone the repository
-git clone <repo-url>
-cd nurseai
-
-# 2. Create .env file with your credentials
-cp .env.example .env
-# Edit .env and add your OPENROUTER_API_KEY
-
-# 3. Build and start services
-docker-compose up --build
-
-# 4. Access the application
-# Frontend: http://localhost:3000
-# Backend API: http://localhost:8000
-# API Docs: http://localhost:8000/docs
-```
-
-### Local Development Setup
-
-#### Frontend Setup
-
-```bash
-cd frontend
-npm install
-npm run dev
-# Access at http://localhost:3000
-```
-
-#### Backend Setup
-
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-# Access at http://localhost:8000
-```
-
-## Environment Variables
-
-Create a `.env` file in the root directory:
-
-```
-OPENROUTER_API_KEY=your_openrouter_api_key_here
-SECRET_KEY=your_secret_key_for_jwt
-NEXTAUTH_SECRET=your_nextauth_secret
-NEXTAUTH_URL=http://localhost:3000
-NEXT_PUBLIC_API_URL=http://localhost:8000
-DATABASE_URL=sqlite:///./test.db
-```
+- **Frontend**: Next.js 14 (App Router, TypeScript), Tailwind CSS, deployed on Vercel
+- **Backend**: FastAPI (Python, async), deployed separately (`api.speakoet.com`)
+- **Database/Auth**: Supabase (Postgres + Supabase Auth). Backend verifies access tokens locally (HS256 shared secret or JWKS, depending on project config) instead of round-tripping to Supabase Auth per request; RLS is defense-in-depth, actual authorization is enforced in the FastAPI layer since the backend uses the service-role key
+- **AI scoring**: configurable provider (Gemini / OpenRouter / OpenAI) — see `AI_PROVIDER` in `backend/app/core/config.py`
+- **Realtime voice**: OpenAI Realtime or Gemini Live, selected via `VOICE_PROVIDER`; Deepgram/Azure/Google available for non-realtime STT/TTS paths
+- **Payments**: Razorpay
+- **Rate limiting / caching**: Redis (sliding-window limiter; falls back to per-process memory if `REDIS_URL` unset — only correct for single-instance deployments)
+- **Observability**: Sentry (frontend + backend), PostHog (product analytics)
+- **CMS**: Sanity (blog)
 
 ## Project Structure
 
@@ -91,92 +34,70 @@ DATABASE_URL=sqlite:///./test.db
 nurseai/
 ├── frontend/
 │   ├── app/
-│   │   ├── layout.tsx
-│   │   ├── page.tsx
-│   │   ├── globals.css
-│   │   ├── auth/
-│   │   ├── dashboard/
-│   │   ├── practice/
-│   │   ├── mock-test/
-│   │   └── api/auth/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── lib/
-│   │   └── types/
-│   ├── package.json
-│   ├── next.config.js
-│   ├── tailwind.config.ts
-│   └── Dockerfile
+│   │   ├── page.tsx, layout.tsx, globals.css
+│   │   ├── auth/, dashboard/, practice/, onboarding/, upgrade/, profile/, admin/
+│   │   ├── about/, blog/, docs/, learn/, privacy/, terms/, support/  (marketing/content, indexable)
+│   │   ├── components/            # feature components (oet/, landing/, auth/, learn/, ui/)
+│   │   └── hooks/
+│   ├── src/lib/                   # api client, supabase client, site config, analytics
+│   ├── next.config.js             # security headers, CSP
+│   └── package.json
 ├── backend/
 │   ├── app/
-│   │   ├── main.py
-│   │   ├── database.py
-│   │   ├── models/
-│   │   ├── routers/
-│   │   ├── schemas/
-│   │   └── services/
-│   ├── requirements.txt
-│   ├── Dockerfile
-│   └── .env
-├── docker-compose.yml
-└── README.md
+│   │   ├── main.py                # FastAPI app, CORS, security headers, router registration
+│   │   ├── core/                  # config, Supabase client, rate limiter, Redis, plan definitions
+│   │   ├── routers/                # auth, speaking, speaking_realtime, writing, scoring, progress,
+│   │   │                           # payments, admin, onboarding, profile, plans, sessions, submissions, ...
+│   │   ├── services/               # AI scoring, coaching, realtime provider adapters, TTS/STT
+│   │   └── schemas/
+│   ├── tests/
+│   └── requirements.txt
+├── supabase-*.sql                 # schema + migration history (applied manually via Supabase SQL editor)
+└── docker-compose.yml             # local dev only — see note below
 ```
 
-## API Documentation
+## Local Development
 
-Once the backend is running, access interactive API docs at `http://localhost:8000/docs`
+### Prerequisites
 
-### Key Endpoints
+- Node.js 18+, Python 3.10+
+- A Supabase project (Postgres + Auth) — run the `supabase-*.sql` migrations against it in the order they were added
+- API keys for whichever providers you're testing: at least one of Gemini/OpenRouter/OpenAI for scoring, Razorpay test keys for payments
 
-- `POST /auth/register` - Register new user
-- `POST /auth/login` - Login user
-- `GET /auth/me` - Get current user info
-- `GET /questions?module=speaking` - Get questions by module
-- `POST /speaking/submit` - Submit speaking response
-- `POST /scoring/submit` - Submit for AI scoring
-- `GET /progress/stats` - Get user progress statistics
+### Frontend
 
-## OET Modules
+```bash
+cd frontend
+npm install
+cp ../.env.example .env.local   # fill in NEXT_PUBLIC_* vars
+npm run dev
+# http://localhost:3000
+```
 
-The application covers all 4 OET modules:
+### Backend
 
-1. **Speaking**: Real-time voice recording with transcription and feedback
-2. **Writing**: Medical writing samples with AI evaluation
-3. **Reading**: Comprehension questions with explanations
-4. **Listening**: Audio-based questions with transcripts
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp ../.env.example .env   # fill in SUPABASE_*, AI provider key(s), RAZORPAY_* etc.
+uvicorn app.main:app --reload
+# http://localhost:8000
+```
 
-## Scoring Criteria
+`GET /docs` (Swagger UI) is only enabled when `SENTRY_ENVIRONMENT != "production"` — it's disabled on the live deployment by design.
 
-The AI scores responses based on:
+> **Note on `docker-compose.yml`**: it predates the move to Supabase and still wires up a SQLite `DATABASE_URL` — it will not run the current backend as-is. Use the local dev commands above until it's updated.
 
-- **Fluency**: Speaking pace and naturalness
-- **Vocabulary**: Medical terminology and word choice
-- **Grammar**: Sentence structure and accuracy
-- **Pronunciation**: Clarity and accent neutrality
-- **Medical Communication**: Contextual appropriateness
+See `.env.example` for the full list of environment variables (Supabase, AI providers, Razorpay, Redis, Sentry, PostHog, Sanity).
 
-## Contributing
+## API Overview
 
-1. Create a feature branch: `git checkout -b feature/your-feature`
-2. Commit changes: `git commit -am 'Add feature'`
-3. Push to branch: `git push origin feature/your-feature`
-4. Submit a pull request
+Backend routers (see `backend/app/routers/`): `auth`, `speaking`, `speaking_realtime` (websocket), `writing`, `scoring`, `progress`, `onboarding`, `profile`, `plans`, `sessions`, `submissions`, `payments` (incl. Razorpay webhook), `admin` (scenario/user/log management, cron-triggered maintenance endpoints), `grammar`, `comparison`, `scenario_generator`, `questions`.
+
+Auth: Supabase-issued JWT as `Authorization: Bearer <token>`. Admin routes additionally require an `admin` role row in `user_roles`. Cron-only endpoints (`/admin/logs/prune`, `/admin/subscriptions/sweep-expired`) accept either an admin JWT or a shared `X-Cron-Secret` header for external schedulers.
 
 ## License
 
-MIT License - see LICENSE file for details
-
-## Support
-
-For issues or questions, please open an issue on the GitHub repository.
-
-## Roadmap
-
-- [ ] Speaking test with video recording
-- [ ] Listening module with audio playback
-- [ ] Reading comprehension module
-- [ ] Writing task with templates
-- [ ] Performance analytics dashboard
-- [ ] Mobile app (React Native)
-- [ ] Integration with real OET test format
-- [ ] Multi-language support
+Proprietary — no LICENSE file is currently present in this repository.

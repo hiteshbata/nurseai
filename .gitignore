@@ -60,3 +60,7 @@ DEPLOYMENT_CHECKLIST.md
 network-login.txt
 /[0-9][0-9]-*.png
 .vercel
+
+# Ad-hoc landing screenshots / diff dumps kept locally, not repo content
+diffstat.txt
+/landing-*.jpeg

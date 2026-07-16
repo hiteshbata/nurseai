@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: 'Support',
   description:
     'Get help with SpeakOET — contact us by email or WhatsApp, or check our FAQ on plans, sessions, and OET scoring.',
+  alternates: { canonical: '/support' },
 }
 
 // TODO: replace with your real WhatsApp Business number (digits only, country

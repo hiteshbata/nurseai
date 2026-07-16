@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosError } from 'axios'
+import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, AxiosResponse } from 'axios'
 import * as Sentry from '@sentry/nextjs'
 import { supabase } from '@/lib/supabase'
 
@@ -89,6 +89,29 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+// Several pages mount multiple components that each independently GET the
+// same endpoint (e.g. Navbar + PlanUsageBanner + dashboard page all fetch
+// /sessions/usage on mount) -- confirmed live to fire the same request up
+// to 4x on a single page load. Collapse concurrent identical GETs into one
+// network call instead of touching every call site. Deliberately in-flight
+// only (not a time-based cache): the map entry clears the moment the
+// request settles, so the next distinct call always hits the network --
+// this must never serve stale session/progress data.
+const inFlightGets = new Map<string, Promise<AxiosResponse>>()
+const originalGet = api.get.bind(api)
+
+api.get = ((url: string, config?: AxiosRequestConfig) => {
+  const key = `${url}?${JSON.stringify(config?.params ?? null)}`
+  const existing = inFlightGets.get(key)
+  if (existing) return existing
+
+  const request = originalGet(url, config).finally(() => {
+    inFlightGets.delete(key)
+  })
+  inFlightGets.set(key, request)
+  return request
+}) as typeof api.get
 
 export interface Plan {
   id: string

@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   title: 'About Us',
   description:
     'SpeakOET is an intelligent, automated practice platform helping nurses, doctors, and allied health professionals prepare for the OET exam smarter, faster, and entirely on their own schedule.',
+  alternates: { canonical: '/about' },
 }
 
 export default function AboutPage() {

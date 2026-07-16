@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: 'OET for Indian Nurses',
   description:
     'What Indian nurses need to know about OET: why it’s often preferred over IELTS, common challenges, and how to prepare.',
+  alternates: { canonical: '/learn/oet-for-indian-nurses' },
 }
 
 const toc = [

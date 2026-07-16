@@ -6,6 +6,7 @@ import { TableOfContents } from '@/components/learn/TableOfContents'
 export const metadata: Metadata = {
   title: 'Account & Billing - Docs',
   description: 'Manage your plan, sessions, subscription, and account settings.',
+  alternates: { canonical: '/docs/account-and-billing' },
 }
 
 const toc = [

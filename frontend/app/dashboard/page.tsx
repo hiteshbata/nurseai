@@ -6,6 +6,7 @@ import { useEffect, useState, Suspense } from 'react'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { OetDashboard } from '@/components/oet-dashboard'
+import { scoreToGrade } from '@/app/practice/speaking/shared'
 
 interface Stats {
   total_submissions: number
@@ -53,15 +54,6 @@ interface UserProfile {
   baseline_score: number | null
   destination_country: string | null
   days_per_week: number | null
-}
-
-const scoreToGrade = (score: number): string => {
-  if (score >= 4.5) return 'A'
-  if (score >= 4.0) return 'B'
-  if (score >= 3.5) return 'C+'
-  if (score >= 3.0) return 'C'
-  if (score >= 2.0) return 'D'
-  return 'E'
 }
 
 const gradeToPoints: Record<string, number> =
@@ -146,10 +138,14 @@ export default function DashboardPage() {
     }
   }
 
+  // Fall back to the email's local part (e.g. "Test" from test@gmail.com)
+  // rather than the raw address -- a full email in a page-1 greeting reads
+  // as unfinished and needlessly exposes it on-screen.
+  const emailLocalPart = session?.user?.email?.split('@')[0]
   const userName =
     session?.user?.user_metadata?.full_name ||
     session?.user?.user_metadata?.name ||
-    session?.user?.email ||
+    (emailLocalPart ? emailLocalPart[0].toUpperCase() + emailLocalPart.slice(1) : null) ||
     'there'
 
   const examDaysLeft = profile?.exam_date
@@ -159,8 +155,15 @@ export default function DashboardPage() {
       )
     : null
 
+  // "Current Level" must match the band shown on the latest Recent Sessions
+  // row -- using the lifetime average here (stats.average_score) let a good
+  // recent session score a higher band (e.g. D) than "Current Level" (e.g. E,
+  // dragged down by early attempts), which read as the two numbers
+  // contradicting each other. recent_submissions is sorted newest-first by
+  // the backend, so [0] is the same session the top table row shows.
+  const latestScore = stats?.recent_submissions?.[0]?.score
   const currentGrade = scoreToGrade(
-    stats?.average_score || 0)
+    latestScore ?? stats?.average_score ?? 0)
 
   const baselineGrade = scoreToGrade(
     profile?.baseline_score || 0)

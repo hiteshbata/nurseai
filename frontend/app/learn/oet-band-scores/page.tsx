@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: 'OET Band Scores Explained',
   description:
     'How OET grading works from A to E, what the numeric score means, and the score most regulators ask for.',
+  alternates: { canonical: '/learn/oet-band-scores' },
 }
 
 const toc = [

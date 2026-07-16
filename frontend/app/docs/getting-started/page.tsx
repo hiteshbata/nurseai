@@ -6,6 +6,7 @@ import { TableOfContents } from '@/components/learn/TableOfContents'
 export const metadata: Metadata = {
   title: 'Getting Started - Docs',
   description: 'Create your account, run your first AI patient roleplay, and understand your dashboard.',
+  alternates: { canonical: '/docs/getting-started' },
 }
 
 const toc = [
