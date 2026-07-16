@@ -13,7 +13,7 @@ const cards = [
     title: "Pronunciation Patterns Affecting Scores",
     problem:
       "Indian accents have specific patterns that affect OET Intelligibility scores — mixing V and W sounds, TH sounds, and word stress patterns that Australian and UK examiners notice.",
-    fix: "After each session we flag the specific words where your pronunciation affected clarity — not a generic score, but the exact words to practice.",
+    fix: "On the Elite plan, after each session we flag the specific words where your pronunciation affected clarity — not a generic score, but the exact words to practice.",
   },
   {
     icon: MessageSquare,
