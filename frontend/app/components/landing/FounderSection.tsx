@@ -1,17 +1,14 @@
-// TODO(founder): fill in FOUNDER before launch — every field here is a
-// placeholder.
-//
-// The heading "Built by a Nurse. Designed for Nurses." is itself a factual
-// claim about who built SpeakOET. If the founder is not a nurse, change the
-// heading (e.g. "Built for Nurses, With Nurses") rather than shipping it —
-// the point of this section is that nothing on this page is fabricated.
+// Every claim here must stay literally true — that is the point of this
+// section. It asserts: registered nurse, MSc Nursing completed, four years as
+// a professor in a nursing college, prepared for OET personally. Do not add
+// specifics (hospital names, exam scores, pass claims) that did not happen.
 const FOUNDER = {
   heading: 'Built by a Nurse. Designed for Nurses.',
-  name: 'Founder name',
-  role: 'Founder, SpeakOET',
-  initials: 'SO',
+  name: 'Hitesh Bata',
+  role: 'Registered Nurse, MSc Nursing · Founder, SpeakOET',
+  initials: 'HB',
   story:
-    'TODO: your story goes here. Why you built SpeakOET, what you saw nurses struggle with, and why OET Speaking specifically. Two or three sentences is enough — write it in your own voice.',
+    "I'm a registered nurse with an MSc in Nursing, and I spent four years teaching as a professor in a nursing college. When I decided to work abroad, I ran into OET — and found that every coaching class will teach you how to pass each module, but nobody gives you the one thing that actually gets you there: practice. I paid a tutor, hunted for partners on Discord, tried everything I could find. I built SpeakOET so any nurse preparing for OET can just practise, pass, and go build a career anywhere.",
 }
 
 export default function FounderSection() {
