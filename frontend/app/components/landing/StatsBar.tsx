@@ -4,7 +4,10 @@ import { useEffect, useState } from 'react'
 import { getPlans, type Plan } from '@/lib/api'
 
 export default function StatsBar() {
-  const [proPrice, setProPrice] = useState<string>('₹999')
+  // Fallback must match the real Pro price in backend core/plans.py (₹799) —
+  // it shows on first paint before getPlans() resolves, and stays if that call
+  // fails. A stale fallback silently advertises the wrong price.
+  const [proPrice, setProPrice] = useState<string>('₹799')
 
   useEffect(() => {
     getPlans().then((plans: Plan[]) => {
