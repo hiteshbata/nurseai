@@ -4,7 +4,7 @@ const features = [
   {
     icon: Bot,
     title: "AI Patient That Interrupts",
-    text: "When you use medical jargon, our AI patient stops you and asks for a plain English explanation — just like a real patient would.",
+    text: "Use a common medical term without explaining it and the AI patient stops to ask what it means — just like a real patient would.",
     accent: "emerald",
   },
   {
