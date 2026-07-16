@@ -79,12 +79,12 @@ export default function InstituteSection() {
 
               <a
                 href="mailto:support@speakoet.com"
-                className="block w-full text-center bg-[#10B981] text-white font-semibold px-6 py-3 rounded-lg hover:bg-[#0ea472] transition-colors mb-4"
+                className="block w-full text-center bg-[#047857] text-white font-semibold px-6 py-3 rounded-lg hover:bg-[#036546] transition-colors mb-4"
               >
                 Get Elite Pricing
               </a>
 
-              <p className="text-gray-400 text-xs text-center">
+              <p className="text-gray-500 text-xs text-center">
                 Currently available in Gujarat, Kerala, Punjab. Expanding pan-India in 2025.
               </p>
             </div>

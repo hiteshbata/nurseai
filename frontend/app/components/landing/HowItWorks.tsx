@@ -48,7 +48,7 @@ export default function HowItWorks() {
                 <div
                   className={`w-20 h-20 rounded-full flex items-center justify-center text-xl font-bold mb-5 shadow-lg ${
                     isEmerald
-                      ? "bg-[#10B981] text-white"
+                      ? "bg-[#047857] text-white"
                       : "bg-[#0F2356] text-white"
                   }`}
                 >

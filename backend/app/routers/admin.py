@@ -1,12 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
+import logging
+import secrets
+from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta, timezone
+from app.core.config import settings
 from app.core.supabase import get_supabase
 from app.core.plans import GRACE_PERIOD_DAYS
 from app.routers.auth import get_current_user, UserInfo
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+logger = logging.getLogger(__name__)
 
 
 def require_admin(current_user: UserInfo = Depends(get_current_user)):
@@ -16,6 +21,23 @@ def require_admin(current_user: UserInfo = Depends(get_current_user)):
     if not role_data.data or role_data.data[0]["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
+
+
+def require_admin_or_cron(
+    x_cron_secret: Optional[str] = Header(default=None),
+    authorization: Optional[str] = Header(default=None),
+):
+    """Allow either an admin JWT (manual/dashboard use) or the shared
+    CRON_SECRET (external scheduler use, no human session available).
+    Falls back to admin-JWT-only if CRON_SECRET is unset."""
+    if settings.CRON_SECRET and x_cron_secret and secrets.compare_digest(x_cron_secret, settings.CRON_SECRET):
+        return None
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = authorization.removeprefix("Bearer ").strip()
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    current_user = get_current_user(credentials=creds)
+    return require_admin(current_user)
 
 
 # ── SCENARIO MANAGEMENT ─────────────────────────────────────────────
@@ -252,20 +274,27 @@ LOG_RETENTION_DAYS = 90
 
 
 @router.post("/logs/prune")
-def admin_prune_logs(current_user: UserInfo = Depends(require_admin)):
-    """Delete log entries older than LOG_RETENTION_DAYS. Wire an external cron
-    (same as /admin/subscriptions/sweep-expired) to hit this periodically --
-    the logs table has no other retention and grows unbounded otherwise."""
+def admin_prune_logs(_=Depends(require_admin_or_cron)):
+    """Delete log entries older than LOG_RETENTION_DAYS. Wired to run weekly
+    via external cron (cron-job.org or Render Cron Job) -- the logs table has
+    no other retention and grows unbounded otherwise. Safe to re-run: deletes
+    by cutoff, so a repeat run just finds nothing older to delete."""
     supabase = get_supabase()
     cutoff = (datetime.now(timezone.utc) - timedelta(days=LOG_RETENTION_DAYS)).isoformat()
-    deleted = supabase.table("logs").delete().lt("timestamp", cutoff).execute()
-    return {"deleted": len(deleted.data or [])}
+    try:
+        deleted = supabase.table("logs").delete().lt("timestamp", cutoff).execute()
+    except Exception:
+        logger.exception("logs/prune failed")
+        raise HTTPException(status_code=502, detail="Log prune failed")
+    count = len(deleted.data or [])
+    logger.info("logs/prune deleted %d rows older than %s", count, cutoff)
+    return {"deleted": count}
 
 
 # ── SUBSCRIPTION MANAGEMENT ─────────────────────────────────────────
 
 @router.post("/subscriptions/sweep-expired")
-def admin_sweep_expired_subscriptions(current_user: UserInfo = Depends(require_admin)):
+def admin_sweep_expired_subscriptions(_=Depends(require_admin_or_cron)):
     """Batch-downgrade profiles past plan_expires_at + grace period.
 
     Gating itself never depends on this having run — get_plan_from_profile
@@ -274,25 +303,38 @@ def admin_sweep_expired_subscriptions(current_user: UserInfo = Depends(require_a
     This endpoint exists purely to keep the *stored* plan/subscription_status
     columns accurate for admin dashboards, analytics, or any other code
     that reads user_profiles directly instead of through the gating helper.
+
+    Wired to run daily via external cron -- expiry is date-based (grace
+    period is in days), so hourly buys nothing an expired row will still be
+    "active" for at most one extra day, and get_plan_from_profile already
+    hides paid access from it in the meantime. Safe to re-run: the query
+    only matches subscription_status="active", so already-downgraded rows
+    (now "expired") are never touched twice.
     """
     supabase = get_supabase()
     cutoff = (datetime.now(timezone.utc) - timedelta(days=GRACE_PERIOD_DAYS)).isoformat()
 
-    expired = (
-        supabase.table("user_profiles")
-        .select("user_id")
-        .eq("subscription_status", "active")
-        .lt("plan_expires_at", cutoff)
-        .execute()
-    )
+    try:
+        expired = (
+            supabase.table("user_profiles")
+            .select("user_id")
+            .eq("subscription_status", "active")
+            .lt("plan_expires_at", cutoff)
+            .execute()
+        )
 
-    if not expired.data:
-        return {"downgraded": 0}
+        if not expired.data:
+            logger.info("subscriptions/sweep-expired: nothing to downgrade")
+            return {"downgraded": 0}
 
-    user_ids = [row["user_id"] for row in expired.data]
-    supabase.table("user_profiles").update({
-        "plan": "free",
-        "subscription_status": "expired",
-    }).in_("user_id", user_ids).execute()
+        user_ids = [row["user_id"] for row in expired.data]
+        supabase.table("user_profiles").update({
+            "plan": "free",
+            "subscription_status": "expired",
+        }).in_("user_id", user_ids).execute()
+    except Exception:
+        logger.exception("subscriptions/sweep-expired failed")
+        raise HTTPException(status_code=502, detail="Subscription sweep failed")
 
+    logger.info("subscriptions/sweep-expired downgraded %d profiles", len(user_ids))
     return {"downgraded": len(user_ids)}

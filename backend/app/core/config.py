@@ -79,5 +79,10 @@ class Settings(BaseSettings):
     # entirely, no-op. Get a DSN from sentry.io -> Project Settings -> Client Keys.
     SENTRY_DSN: str = ""
     SENTRY_ENVIRONMENT: str = "production"
+    # Shared secret for external cron services (cron-job.org, Render Cron Job)
+    # to trigger /admin/logs/prune and /admin/subscriptions/sweep-expired
+    # without a human admin JWT. Sent as the X-Cron-Secret header. Unset ->
+    # those endpoints stay admin-JWT-only. See app/routers/admin.py.
+    CRON_SECRET: str = ""
 
 settings = Settings()

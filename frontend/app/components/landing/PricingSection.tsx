@@ -48,7 +48,7 @@ export default function PricingSection() {
               }`}
             >
               {plan!.highlight && (
-                <div className="bg-[#10B981] text-white text-center text-xs font-bold px-4 py-1.5 rounded-t-xl">
+                <div className="bg-[#047857] text-white text-center text-xs font-bold px-4 py-1.5 rounded-t-xl">
                   Most Popular
                 </div>
               )}
@@ -69,12 +69,12 @@ export default function PricingSection() {
 
                 <div className="mb-4">
                   <span className={`text-4xl font-bold ${
-                    plan!.id === 'free' ? 'text-gray-400' : 'text-[#0F2356]'
+                    plan!.id === 'free' ? 'text-gray-500' : 'text-[#0F2356]'
                   }`}>
                     {plan!.price === 0 ? '₹0' : `₹${plan!.price}`}
                   </span>
                   {plan!.price > 0 && (
-                    <span className="text-gray-400 text-sm ml-1">/{plan!.period}</span>
+                    <span className="text-gray-500 text-sm ml-1">/{plan!.period}</span>
                   )}
                 </div>
 
@@ -82,10 +82,10 @@ export default function PricingSection() {
                   {plan!.features.map((f: string) => (
                     <li key={f} className="flex items-start gap-3">
                       <span className="w-5 h-5 rounded-full bg-emerald-50 flex items-center justify-center shrink-0 mt-0.5">
-                        <span className="text-[#10B981] text-xs font-bold">✓</span>
+                        <span className="text-[#047857] text-xs font-bold">✓</span>
                       </span>
                       <span className={`text-sm ${
-                        plan!.id === 'free' ? 'text-gray-400' : 'text-gray-600'
+                        plan!.id === 'free' ? 'text-gray-500' : 'text-gray-600'
                       }`}>{f}</span>
                     </li>
                   ))}
@@ -94,7 +94,7 @@ export default function PricingSection() {
                 {plan!.disabled ? (
                   <button
                     disabled
-                    className="block w-full text-center bg-white text-gray-400 font-semibold px-6 py-3 rounded-lg border-2 border-gray-200 cursor-not-allowed"
+                    className="block w-full text-center bg-white text-gray-500 font-semibold px-6 py-3 rounded-lg border-2 border-gray-200 cursor-not-allowed"
                   >
                     {plan!.cta}
                   </button>
@@ -103,7 +103,7 @@ export default function PricingSection() {
                     href="/auth/register"
                     className={`block w-full text-center font-semibold px-6 py-3 rounded-lg transition-colors ${
                       plan!.highlight
-                        ? 'bg-[#10B981] text-white hover:bg-[#0ea472]'
+                        ? 'bg-[#047857] text-white hover:bg-[#036546]'
                         : 'bg-[#0F2356] text-white hover:bg-[#0F2356]/90'
                     }`}
                   >
@@ -115,7 +115,7 @@ export default function PricingSection() {
           ))}
         </div>
 
-        <p className="text-sm text-gray-400 text-center mt-6">
+        <p className="text-sm text-gray-500 text-center mt-6">
           No contracts. Cancel anytime. Upgrade or downgrade instantly.
         </p>
       </div>

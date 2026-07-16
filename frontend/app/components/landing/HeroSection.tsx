@@ -24,7 +24,7 @@ export default function HeroSection() {
           <div className="flex-1 lg:w-[55%] flex flex-col gap-6">
             {/* Badge */}
             <div className="inline-flex">
-              <span className="bg-[#10B981] text-white text-sm font-medium px-4 py-1.5 rounded-full">
+              <span className="bg-[#047857] text-white text-sm font-medium px-4 py-1.5 rounded-full">
                 🌏 Built for Indian Nurses
               </span>
             </div>
@@ -46,7 +46,7 @@ export default function HeroSection() {
             <div className="flex flex-col sm:flex-row gap-3">
               <a
                 href="/auth/register"
-                className="inline-flex items-center justify-center bg-[#10B981] text-white font-semibold px-6 py-3 rounded-lg hover:bg-[#0ea472] transition-colors"
+                className="inline-flex items-center justify-center bg-[#047857] text-white font-semibold px-6 py-3 rounded-lg hover:bg-[#036546] transition-colors"
               >
                 Start Free — {freeSessions} Sessions on Us
               </a>
@@ -62,7 +62,7 @@ export default function HeroSection() {
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-6 mt-2">
               {["No app download", "No credit card", "Web-based, practice anywhere"].map((badge) => (
                 <span key={badge} className="flex items-center gap-1.5 text-sm text-gray-500">
-                  <span className="text-[#10B981] font-bold">✓</span>
+                  <span className="text-[#047857] font-bold">✓</span>
                   {badge}
                 </span>
               ))}
