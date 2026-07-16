@@ -49,7 +49,7 @@ const faqJsonLd = {
     },
     {
       q: 'Do you have plans for coaching institutes and academies?',
-      a: 'Contact us at support@speakoet.com for academy and bulk pricing with dedicated admin dashboard and student progress tracking.',
+      a: 'Contact us at support@speakoet.com for academy and bulk pricing. Your students each get the full Elite plan — 80 scenarios a month, 9-criteria scoring, pronunciation feedback, and mock tests.',
     },
     {
       q: 'Is SpeakOET available in Hindi or Gujarati?',

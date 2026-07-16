@@ -15,21 +15,21 @@ export default function InstituteSection() {
   }, [])
 
   const bullets = [
-    "Students practice daily between classes",
-    "Teacher dashboard shows who practiced and their scores",
-    "Assign specific scenarios as homework",
-    "Cheaper than hiring extra speaking tutors",
-    "Available in Kerala, Punjab, Gujarat and across India",
+    "Students practice daily on any device, between classes",
+    "Full 9-criteria OET scoring on every session",
+    "80 speaking scenarios a month on the Elite plan",
+    "Phoneme-level pronunciation scoring and mock test mode",
+    "Bulk pricing for academies — get in touch",
   ]
 
   const eliteFeatures = [
-    `${elitePrice} per student per month`,
+    `${elitePrice} per month`,
     "80 speaking scenarios per month",
     "Phoneme-level pronunciation scoring",
     "Mock test mode",
     "AI generated study plan",
-    "Admin dashboard included",
-    "Bulk onboarding support",
+    "Writing practice and scoring",
+    "Advanced weak area detection",
   ]
 
   return (
@@ -44,8 +44,8 @@ export default function InstituteSection() {
               Running an OET Coaching Institute?
             </h2>
             <p className="text-white/70 text-lg leading-relaxed mb-8">
-              Give your students daily AI speaking practice as homework. Track every student&apos;s progress from one
-              dashboard. No extra workload for teachers.
+              Give your students unlimited daily AI speaking practice they can do on any device, between classes.
+              Bulk pricing available for academies preparing nurses for OET.
             </p>
             <ul className="flex flex-col gap-3 mb-8">
               {bullets.map((b) => (
