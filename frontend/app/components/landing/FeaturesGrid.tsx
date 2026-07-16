@@ -10,7 +10,7 @@ const features = [
   {
     icon: BarChart2,
     title: "Full 9-Criteria OET Scoring",
-    text: "Scored exactly like the real exam — 5 Clinical Communication + 4 Linguistic criteria, with band letter and detailed feedback.",
+    text: "Scored on all 9 OET Speaking criteria — 5 Clinical Communication + 4 Linguistic, with a band letter and detailed feedback.",
     accent: "navy",
   },
   {
