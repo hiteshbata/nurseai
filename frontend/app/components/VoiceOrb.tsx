@@ -20,7 +20,6 @@ function VoiceOrb({ isListening, isConnecting = false, isProcessing, isSpeaking 
   const analyserRef = useRef<AnalyserNode | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
   const animFrameRef = useRef<number | null>(null)
-  const orbRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!isListening) {
@@ -176,12 +175,13 @@ function VoiceOrb({ isListening, isConnecting = false, isProcessing, isSpeaking 
             </svg>
           )}
 
-          <div
-            ref={orbRef}
-            role="button"
+          <button
+            type="button"
+            aria-label="Microphone"
+            aria-pressed={isListening}
             aria-disabled={orbDisabled}
             title={orbDisabled ? "You can't respond while this is in progress" : undefined}
-            className="rounded-full relative z-10"
+            className="rounded-full relative z-10 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             style={{
               width: 64,
               height: 64,
