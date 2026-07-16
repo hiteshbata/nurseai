@@ -85,7 +85,7 @@ export default function InstituteSection() {
               </a>
 
               <p className="text-gray-500 text-xs text-center">
-                Currently available in Gujarat, Kerala, Punjab. Expanding pan-India in 2025.
+                Web-based, so your students can practise anywhere in India. Get in touch for bulk academy pricing.
               </p>
             </div>
           </div>
