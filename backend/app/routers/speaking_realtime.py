@@ -65,6 +65,7 @@ from app.services.realtime import (
 from app.services.realtime.gemini_adapter import map_gender_to_gemini_voice
 from app.services.realtime.pricing import estimate_realtime_cost
 from app.services.cost_tracking import increment_session_cost
+from app.services.ai_scoring import MEDICAL_JARGON
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,23 @@ def _provider_credentials(provider: str) -> tuple[str, str]:
 
 
 def _build_realtime_system_prompt(interlocutor_card: dict) -> str:
+    """Patient persona for the realtime voice path.
+
+    The JARGON RULE below is the realtime equivalent of the legacy pipeline's
+    detect_jargon() short-circuit (services/ai_scoring.py), and shares its term
+    list so the two paths stop on the same words. The mechanism differs by
+    necessity: legacy is text turn-based, so it can match the nurse's message
+    and return a canned interrupt before the model is ever called -- fully
+    deterministic. Here the provider hears the audio and starts answering
+    before we see TranscriptFinal, so a deterministic intercept would mean
+    cancelling a half-spoken response and re-injecting audio. Instructing the
+    persona is the native mechanism for a realtime model.
+
+    The trade-off: realtime jargon interrupts are model-compliance, not a
+    guarantee. Before making the rollout percentage large, spot-check that the
+    active provider actually stops on an unexplained term -- the landing page
+    sells this behaviour.
+    """
     card = interlocutor_card or {}
     emotional_triggers = card.get("emotional_triggers", [])
     questions_to_ask = card.get("questions_to_ask", card.get("concerns", []))
@@ -135,6 +153,12 @@ QUESTIONS YOU MUST ASK (spread these across the conversation naturally):
 
 INFORMATION TO WITHHOLD (only reveal if the nurse asks directly):
 {chr(10).join(f'- {i}' for i in info_to_withhold) if info_to_withhold else '- Do not volunteer extra information'}
+
+JARGON RULE (CRITICAL):
+- You are not a medical person and do not know medical words. If the nurse uses a medical term and does NOT immediately explain it in plain words, stop and ask what it means before responding to anything else — that is the single most useful thing you do for this nurse.
+- Ask the way a real patient would, e.g. "I'm sorry sister, I don't understand that word — what does that mean in simple terms?"
+- If the nurse does explain the term in plain words in the same breath ("an arrhythmia, that means an uneven heartbeat"), do NOT interrupt — just respond naturally.
+- Always stop for these terms when unexplained: {', '.join(MEDICAL_JARGON)}.
 
 VOICE & DELIVERY RULES (CRITICAL):
 - Never use text-based stage directions (no asterisks, no brackets, no "[sighs]", no "*wincing*"). Express all emotion — anxiety, pain, hesitation — natively through your vocal tone, pacing, breath, and pauses, never through written description.

@@ -462,3 +462,53 @@ def test_session_timeout_sends_warning_then_ends(monkeypatch):
     assert "session.warning" in _types(ws)
     assert {"type": "session.ended", "reason": "timeout"} in ws.sent_json
     assert state["metrics_rows"][0]["ended_reason"] == "timeout"
+
+
+# ── JARGON RULE PARITY ───────────────────────────────────────────────
+#
+# The realtime persona prompt and the legacy pipeline's detect_jargon()
+# short-circuit must stop the patient on the same terms. They drifted once
+# already: realtime shipped with no jargon handling at all while the landing
+# page sold "the AI patient stops you" as a headline feature, so every user in
+# the realtime rollout silently lost it. These tests fail if that gap reopens.
+
+
+def test_realtime_prompt_carries_the_jargon_rule():
+    prompt = srt._build_realtime_system_prompt(DEFAULT_SCENARIO.get("nurse_card") or {})
+
+    assert "JARGON RULE (CRITICAL)" in prompt
+    # The interrupt must survive rewording, but the patient has to actually ask.
+    assert "what does that mean" in prompt.lower()
+    # Explaining the term inline must NOT trigger an interrupt, matching
+    # detect_jargon()'s explanation-words skip.
+    assert "do NOT interrupt" in prompt
+
+
+def test_realtime_prompt_shares_the_legacy_jargon_term_list():
+    from app.services.ai_scoring import MEDICAL_JARGON
+
+    prompt = srt._build_realtime_system_prompt(DEFAULT_SCENARIO.get("nurse_card") or {})
+
+    missing = [term for term in MEDICAL_JARGON if term not in prompt]
+    assert not missing, f"realtime prompt is missing legacy jargon terms: {missing}"
+
+
+def test_realtime_prompt_still_renders_the_patient_card():
+    card = {
+        "patient_name": "Amit Patel",
+        "age": 35,
+        "condition": "Type 2 diabetes",
+        "instructions_for_ai": "Anxious about self-injection.",
+        "emotional_triggers": ["needles"],
+        "questions_to_ask": ["Will it hurt?"],
+        "information_to_withhold": ["father had complications"],
+    }
+
+    prompt = srt._build_realtime_system_prompt(card)
+
+    assert "Amit Patel" in prompt
+    assert "Anxious about self-injection." in prompt
+    assert "needles" in prompt
+    assert "Will it hurt?" in prompt
+    # Unrendered f-string braces would mean the card silently never reached the model.
+    assert "{" not in prompt and "}" not in prompt
