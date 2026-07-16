@@ -12,38 +12,49 @@ import {
 } from '@/app/practice/speaking/shared'
 
 // TODO(founder): replace DEMO_TRANSCRIPT + DEMO_SCORES with a transcript and
-// report captured from a real session before launch. "Chest Pain in Emergency
-// Department" is scenario id 4 and is live in the scenarios table, but the
-// turns and scores below are written by hand, not recorded — which is why every
-// surface here is labelled "Demo Session". Nothing on this page may claim a
-// real student said or scored this.
-const DEMO_SCENARIO = 'Chest Pain in Emergency Department'
+// report captured from a real session before launch.
+//
+// What is real here: "Diabetes Insulin Education" is scenario id 6, live in the
+// scenarios table, and the turns below stay inside its actual premise — Amit
+// Patel, 35, diagnosed a week ago, anxious about self-injection — and cover two
+// of its real nurse_card tasks (explain why insulin is needed; address needle
+// fear). The criteria, labels and band formula are imported from the product.
+//
+// What is not real: the turns and scores are a script written by the founder,
+// not a recording of a session. That is why every surface says "Demo Session".
+// Nothing here may claim a real student said or scored this. If this is ever
+// re-anchored to a different scenario, re-check it against that scenario's
+// setting and nurse_card first — an earlier draft depicted a UK taxi driver who
+// does not exist anywhere in the library.
+const DEMO_SCENARIO = 'Diabetes Insulin Education'
 
 const DEMO_TRANSCRIPT: ChatMessage[] = [
-  { role: 'patient', content: "Sister, the pain started yesterday evening. It's like something heavy sitting on my chest." },
-  { role: 'nurse', content: 'That sounds frightening. Can you show me exactly where you feel it?' },
-  { role: 'patient', content: 'Here, in the middle. And it goes into my left arm also.' },
-  { role: 'nurse', content: 'Thank you. Your ECG shows some changes we call an arrhythmia.' },
-  { role: 'patient', content: 'A what? Is my heart going to stop?' },
-  { role: 'nurse', content: "I'm sorry — let me explain that more simply. Your heart is beating in an uneven rhythm. It is not stopping, and we are watching it closely." },
+  { role: 'patient', content: 'One week ago I was fine. Now they tell me I must inject myself every day. I don’t understand how it came to this.' },
+  { role: 'nurse', content: 'That is a great deal to take in one week. Before we open the pen — how have you been feeling since they told you?' },
+  { role: 'patient', content: 'Frightened, mostly. My father was on insulin. He lost his foot.' },
+  { role: 'nurse', content: 'I am sorry. So when you look at that box, that is what you see. Can I tell you how I see it? What happened to your father came from years of high sugar — not from the insulin. The insulin was what they used to try to stop it. Starting now is what protects you from that.' },
+  { role: 'patient', content: 'Nobody explained it that way.' },
+  { role: 'nurse', content: 'The pen delivers it into the subcutaneous tissue, so you will need to rotate the sites each time —' },
+  { role: 'patient', content: 'The sub— sorry, Sister. I do not follow.' },
+  { role: 'nurse', content: 'That is my fault, not yours. I mean the fat just under the skin — your stomach is easiest. And the needle is four millimetres, finer than the one they use for blood tests.' },
 ]
 
 const DEMO_SCORES: Record<string, { score: number; feedback: string }> = {
-  empathy: { score: 5, feedback: "You named the fear directly — 'that sounds frightening' — instead of moving straight to the assessment." },
-  patient_perspective: { score: 4, feedback: 'You picked up the panic behind “is my heart going to stop?” and answered the worry, not just the question.' },
-  providing_structure: { score: 4, feedback: 'The assessment followed a clear order. Signposting the next step would lift this further.' },
-  information_gathering: { score: 5, feedback: 'Asking the patient to locate the pain drew out the radiation to the left arm.' },
-  information_giving: { score: 3, feedback: "You used 'arrhythmia' before explaining it. The patient had to interrupt to ask what it meant." },
+  empathy: { score: 5, feedback: "You stayed with the fear about his father instead of moving straight to the pen — 'so when you look at that box, that is what you see'." },
+  patient_perspective: { score: 5, feedback: 'You worked out what insulin already meant to him and answered that, rather than only the clinical question.' },
+  providing_structure: { score: 4, feedback: 'You checked how he was feeling before teaching. Signposting the steps of the demonstration would lift this further.' },
+  information_gathering: { score: 4, feedback: "'How have you been feeling since they told you?' opened up the fear about his father. His diet, monitoring and any previous injection experience went unexplored." },
+  information_giving: { score: 3, feedback: "'Subcutaneous tissue' stopped him — he had to interrupt to say he did not follow. The recovery was good; leading with 'the fat just under the skin' would have avoided it." },
   intelligibility: { score: 5, feedback: 'Clear throughout. Every turn was understood on the first attempt.' },
-  fluency: { score: 4, feedback: 'Natural pace with only brief hesitation before the ECG explanation.' },
-  appropriateness_of_language: { score: 3, feedback: 'Clinical register slipped in at the ECG explanation before you self-corrected.' },
-  grammar: { score: 4, feedback: 'Accurate structures. Range was slightly narrow when reassuring the patient.' },
+  fluency: { score: 4, feedback: 'Natural pace, with one hesitation mid-demonstration before the self-correction.' },
+  appropriateness_of_language: { score: 3, feedback: 'Clinical register slipped in during the demonstration before you self-corrected.' },
+  grammar: { score: 4, feedback: 'Accurate structures, with good range in the reassurance about his father.' },
 }
 
 const KEY_FEEDBACK = [
-  { positive: true, text: 'Clear empathy — you named the fear before assessing' },
-  { positive: true, text: 'Good questioning — locating the pain found the radiation' },
-  { positive: false, text: 'Explain medical terms more simply before using them' },
+  { positive: true, text: 'Clear empathy — you sat with his fear before teaching' },
+  { positive: true, text: 'Strong reframe — you separated the insulin from his father’s outcome' },
+  { positive: false, text: 'Explain medical terms before using them — “subcutaneous” stopped him' },
 ]
 
 const average = (keys: string[]) =>
