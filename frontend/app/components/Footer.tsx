@@ -135,7 +135,7 @@ export function Footer() {
           <p>&copy; {currentYear} SpeakOET. All rights reserved.</p>
           <p className="mt-2 md:mt-0">Made for nurses worldwide 🌏</p>
         </div>
-        <p className="mt-4 text-xs text-white/40 text-center md:text-left">
+        <p className="mt-4 text-xs text-white/70 text-center md:text-left">
           SpeakOET is an independent preparation platform. OET is a registered trademark of Cambridge Boxhill Language Assessment Pty Ltd. SpeakOET is not affiliated with or endorsed by the official exam board.
         </p>
       </div>

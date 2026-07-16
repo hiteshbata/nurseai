@@ -65,7 +65,7 @@ export default function TestimonialsSection() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-white/50 text-xs">{location}</span>
+                    <span className="text-white/75 text-xs">{location}</span>
                     <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                       {bandFrom} → {bandTo}
                     </span>
