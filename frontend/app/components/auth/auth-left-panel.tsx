@@ -31,7 +31,7 @@ export function AuthLeftPanel() {
       />
 
       <div className="relative z-10">
-        <SpeakOETLogo height={32} variant="full" theme="light" />
+        <SpeakOETLogo height={32} variant="full" theme="light" priority />
       </div>
 
       <div className="relative z-10 flex flex-col gap-10">

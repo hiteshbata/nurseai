@@ -35,7 +35,7 @@ export default function ForgotPasswordPage() {
       <div className="flex flex-1 items-center justify-center bg-white px-6 py-12 sm:px-10">
         <div className="w-full max-w-md">
           <div className="mb-8 flex items-center gap-2 lg:hidden">
-            <SpeakOETLogo height={28} variant="full" theme="dark" />
+            <SpeakOETLogo height={28} variant="full" theme="dark" priority />
           </div>
 
           <div className="flex w-full flex-col gap-6">
