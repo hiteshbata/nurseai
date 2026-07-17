@@ -27,8 +27,8 @@ const features = [
   },
   {
     icon: Zap,
-    title: "30-Second Score Delivery",
-    text: "No waiting. Full examiner-style feedback appears within 30 seconds of ending your session.",
+    title: "Instant Score Delivery",
+    text: "No waiting on a tutor — your full examiner-style feedback appears as soon as you end the session.",
     accent: "emerald",
   },
   {

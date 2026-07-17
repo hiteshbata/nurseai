@@ -19,7 +19,7 @@ const steps = [
     number: "03",
     icon: BarChart2,
     title: "Receive Instant Feedback",
-    text: "All 9 criteria scored within 30 seconds. Specific feedback on what you said, what to improve, and which scenario to try next.",
+    text: "All 9 criteria scored as soon as you finish — no waiting on a tutor. Specific feedback on what you said, what to improve, and which scenario to try next.",
     color: "navy" as const,
   },
   {

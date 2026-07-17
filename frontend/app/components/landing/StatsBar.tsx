@@ -19,7 +19,11 @@ export default function StatsBar() {
   const stats = [
     { value: "9", label: "OET Criteria Scored", sub: "Every session, every time" },
     { value: proPrice, label: "Per Month", sub: "Less than one tutor hour" },
-    { value: "30s", label: "Score Turnaround", sub: "Instant AI feedback" },
+    // Value is rendered in a text-4xl/5xl tile shared with "9", "₹799", "Web" —
+    // a 4-char token like these fits the 2-col mobile cell; a 7-char word like
+    // "Instant" overflows it and forces horizontal scroll at 320px. "Auto"
+    // keeps the no-duration benefit (feedback is automated, not timed).
+    { value: "Auto", label: "Score Turnaround", sub: "No waiting on a tutor" },
     { value: "Web", label: "No App Needed", sub: "Practice in any browser" },
   ]
 
