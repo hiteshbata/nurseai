@@ -41,7 +41,11 @@ const nextConfig = {
               // scripts (no nonce plumbing yet) -- still blocks loading any script from a
               // host outside this list, which is what stops an injected remote-script payload.
               // Upgrade to a per-request nonce (middleware.ts) if that gap needs closing.
-              "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com https://www.googletagmanager.com https://www.clarity.ms",
+              // 'unsafe-eval' only in dev: Next.js Fast Refresh evals updated modules at
+              // runtime, and without it every client component fails to hydrate (buttons
+              // across the app become dead clicks). Production bundles never eval, so prod
+              // stays without it.
+              `script-src 'self' 'unsafe-inline' ${process.env.NODE_ENV !== 'production' ? "'unsafe-eval' " : ''}https://checkout.razorpay.com https://www.googletagmanager.com https://www.clarity.ms`,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://cdn.sanity.io https://*.clarity.ms",
               "font-src 'self' data:",
