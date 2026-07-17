@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Play, RotateCcw, Check, Lightbulb } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Play, RotateCcw, Check, Lightbulb, Volume2, VolumeX } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   clinicalLabels,
@@ -67,34 +67,74 @@ const linguisticAverage = average(Object.keys(linguisticLabels))
 const overallBand = clinicalAverage * 0.6 + linguisticAverage * 0.4
 const oetGrade = scoreToGrade(overallBand)
 
-const MESSAGE_MS = 1600
+// Pre-generated voice clips, one per turn (public/demo-audio/turn-N.mp3),
+// synthesized from DEMO_TRANSCRIPT via the product's Google WaveNet TTS with
+// distinct patient (male) and nurse (female) voices. Regenerate with
+// frontend/scripts/gen_demo_audio.py if the transcript changes.
+const AUDIO_DIR = '/demo-audio'
+
+// Fallback pacing when a clip can't play (offline / autoplay blocked): rough
+// read time so the transcript still advances one turn at a time.
+const estimateMs = (text: string) =>
+  Math.max(1500, text.trim().split(/\s+/).length * 380 + 700)
 
 type Phase = 'idle' | 'playing' | 'scored' | 'feedback'
 
 export default function DemoSection() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [revealed, setRevealed] = useState(0)
+  const [muted, setMuted] = useState(false)
+  // Bumped on every play() so Replay restarts from turn 0 even if the demo is
+  // already on turn 0 (state alone wouldn't change, so the effect wouldn't re-run).
+  const [runId, setRunId] = useState(0)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  // Read live inside the play effect without restarting playback when it flips.
+  const mutedRef = useRef(muted)
+  mutedRef.current = muted
 
-  // Advance the transcript one turn at a time, then the score card, then the
-  // feedback panel. Anyone who asked the OS for reduced motion gets the whole
-  // report at once instead of a timed reveal.
+  // Play the demo turn by turn: reveal a line, voice it with its clip, and move
+  // to the next turn when the clip ends -- so text and speech stay in sync. The
+  // currently-playing turn is `revealed - 1`.
   useEffect(() => {
-    if (phase !== 'playing') return
+    if (phase !== 'playing' || revealed === 0) return
+    const i = revealed - 1
 
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setRevealed(DEMO_TRANSCRIPT.length)
-      setPhase('feedback')
-      return
+    let advanced = false
+    const advance = () => {
+      if (advanced) return
+      advanced = true
+      if (i + 1 < DEMO_TRANSCRIPT.length) setRevealed(i + 2)
+      else setPhase('scored')
     }
 
-    if (revealed < DEMO_TRANSCRIPT.length) {
-      const timer = setTimeout(() => setRevealed((n) => n + 1), MESSAGE_MS)
-      return () => clearTimeout(timer)
+    const audio = new Audio(`${AUDIO_DIR}/turn-${i}.mp3`)
+    audio.muted = mutedRef.current
+    audioRef.current = audio
+
+    let fallback: ReturnType<typeof setTimeout> | undefined
+    const failFallback = () => {
+      if (fallback) return
+      fallback = setTimeout(advance, estimateMs(DEMO_TRANSCRIPT[i].content))
     }
 
-    const toScored = setTimeout(() => setPhase('scored'), 500)
-    return () => clearTimeout(toScored)
-  }, [phase, revealed])
+    audio.onended = advance
+    audio.onerror = failFallback
+    audio.play().catch(failFallback)
+
+    return () => {
+      audio.onended = null
+      audio.onerror = null
+      audio.pause()
+      if (fallback) clearTimeout(fallback)
+      if (audioRef.current === audio) audioRef.current = null
+    }
+  }, [phase, revealed, runId])
+
+  // Mute/unmute the in-flight clip without restarting it, so toggling mid-line
+  // keeps the pacing intact.
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.muted = muted
+  }, [muted])
 
   useEffect(() => {
     if (phase !== 'scored') return
@@ -103,9 +143,13 @@ export default function DemoSection() {
   }, [phase])
 
   const play = () => {
-    setRevealed(0)
+    audioRef.current?.pause()
+    setRunId((n) => n + 1)
+    setRevealed(1)
     setPhase('playing')
   }
+
+  const toggleMuted = () => setMuted((m) => !m)
 
   const started = phase !== 'idle'
   const showScores = phase === 'scored' || phase === 'feedback'
@@ -153,6 +197,17 @@ export default function DemoSection() {
                 </>
               )}
             </button>
+            {started && (
+              <button
+                type="button"
+                onClick={toggleMuted}
+                aria-pressed={muted}
+                aria-label={muted ? 'Unmute demo voice' : 'Mute demo voice'}
+                className="inline-flex items-center justify-center w-11 h-11 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+              >
+                {muted ? <VolumeX className="w-4 h-4" aria-hidden="true" /> : <Volume2 className="w-4 h-4" aria-hidden="true" />}
+              </button>
+            )}
             <p id="demo-disclaimer" className="text-xs text-gray-500">
               A scripted demo session — not a recording of a real student.
             </p>
@@ -248,7 +303,7 @@ export default function DemoSection() {
               <div className="min-h-[20rem] flex flex-col items-center justify-center gap-2 text-center rounded-xl border border-dashed border-gray-200 bg-[#F8FAFC] py-12 px-6">
                 <p className="font-semibold text-gray-700">Your report appears here</p>
                 <p className="text-sm text-gray-400 max-w-xs">
-                  All 9 criteria are scored within 30 seconds of the role-play ending
+                  All 9 criteria are scored as soon as the role-play ends
                 </p>
               </div>
             ) : (
