@@ -24,15 +24,16 @@ export default function FounderSection() {
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col items-center text-center gap-6">
           {/* The source is a 2:3 portrait, so a plain square crop would centre on
-              the chest. Zoom from the top to frame the face instead — cheaper
-              than shipping a second, pre-cropped copy of the image. */}
+              the chest. object-position pulls the crop up to the face; the slight
+              zoom fills the circle with head-and-shoulders instead of a distant
+              bust — cheaper than shipping a second, pre-cropped copy. */}
           <div className="w-32 h-32 rounded-full overflow-hidden border border-white/20 bg-white/10 shrink-0">
             <Image
               src={FOUNDER.photo}
               alt={`${FOUNDER.name}, founder of SpeakOET`}
               width={256}
               height={384}
-              className="w-full h-full object-cover object-top scale-[1.5] origin-top"
+              className="w-full h-full object-cover object-[50%_22%] scale-[1.3] origin-[50%_22%]"
             />
           </div>
 
