@@ -101,9 +101,9 @@ export default function Home() {
       <HowItWorks />
       <FeaturesGrid />
       <PricingSection />
-      <InstituteSection />
       <DemoSection />
       <FounderSection />
+      <InstituteSection />
       <FAQSection />
       <CTASection />
     </>

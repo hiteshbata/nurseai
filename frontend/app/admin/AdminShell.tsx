@@ -7,9 +7,19 @@ import { useSupabaseSession } from '@/lib/supabase'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 
+// Matches backend/app/routers/admin.py's ROLE_RANK -- any staff tier
+// (support and up) gets past the front door; per-page/per-action floors
+// are still enforced server-side by each endpoint's own require_*() dep.
+const STAFF_ROLES = new Set(['support', 'analyst', 'admin', 'owner'])
+
 const NAV_ITEMS = [
   { href: '/admin', label: 'Dashboard' },
+  { href: '/admin/users', label: 'Users' },
   { href: '/admin/scenarios', label: 'Scenarios' },
+  { href: '/admin/audit-log', label: 'Action History' },
+  { href: '/admin/ai-costs', label: 'AI Cost & Margin' },
+  { href: '/admin/failed-payments', label: 'Failed Payments' },
+  { href: '/admin/expiring-soon', label: 'Expiring Soon' },
   { href: '/admin/scenario-generator', label: 'Generator' },
   { href: '/admin/logs', label: 'Error Logs' },
   { href: '/admin/settings', label: 'Settings' },
@@ -20,7 +30,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const pathname = usePathname()
   const router = useRouter()
   const [unresolvedCount, setUnresolvedCount] = useState(0)
-  const [roleStatus, setRoleStatus] = useState<'checking' | 'admin' | 'denied'>('checking')
+  const [roleStatus, setRoleStatus] = useState<'checking' | 'staff' | 'denied'>('checking')
 
   useEffect(() => {
     // Hide main site navbar on admin pages
@@ -42,18 +52,18 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     api.get('/auth/me')
       .then((res) => {
         if (cancelled) return
-        if (res.data?.role === 'admin') {
-          setRoleStatus('admin')
+        if (STAFF_ROLES.has(res.data?.role)) {
+          setRoleStatus('staff')
         } else {
           setRoleStatus('denied')
-          toast.error('Admin access required')
+          toast.error('Staff access required')
           router.push('/dashboard')
         }
       })
       .catch(() => {
         if (cancelled) return
         setRoleStatus('denied')
-        toast.error('Admin access required')
+        toast.error('Staff access required')
         router.push('/dashboard')
       })
 
@@ -63,7 +73,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   }, [status, session, router])
 
   useEffect(() => {
-    if (roleStatus !== 'admin') return
+    if (roleStatus !== 'staff') return
 
     const fetchCount = async () => {
       try {
@@ -87,7 +97,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     )
   }
 
-  if (!session?.user || roleStatus !== 'admin') return null
+  if (!session?.user || roleStatus !== 'staff') return null
 
   return (
     <div className="min-h-screen bg-gray-50">

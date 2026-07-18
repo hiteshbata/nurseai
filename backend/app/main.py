@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.supabase import get_supabase
-from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions
+from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads
 from app.services.oet_questions import oet_service
 from app.services.seed_scenarios import seed_scenarios
 
@@ -92,6 +92,7 @@ app.include_router(sessions.router)
 app.include_router(profile.router)
 app.include_router(plans.router)
 app.include_router(submissions.router)
+app.include_router(leads.router)
 
 @app.get("/")
 def read_root():
@@ -101,6 +102,27 @@ def read_root():
         "docs": "/docs",
         "redoc": "/redoc",
     }
+
+@app.get("/announcement")
+def get_announcement():
+    """Public, unauthenticated -- powers the site-wide banner every page
+    renders. Admin panel writes to the same `settings` table via the
+    existing generic PUT /admin/settings/{key}, no dedicated write endpoint
+    needed."""
+    try:
+        rows = (
+            get_supabase().table("settings").select("key, value")
+            .in_("key", ["announcement_banner_enabled", "announcement_banner_text"])
+            .execute().data
+        )
+        values = {r["key"]: r["value"] for r in rows}
+    except Exception:
+        return {"enabled": False, "text": ""}
+    return {
+        "enabled": values.get("announcement_banner_enabled") == "true",
+        "text": values.get("announcement_banner_text", ""),
+    }
+
 
 @app.get("/health")
 async def health_check():

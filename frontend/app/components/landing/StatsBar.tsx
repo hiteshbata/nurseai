@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getPlans, type Plan } from '@/lib/api'
+import { getPlans, FALLBACK_PLANS, type Plan } from '@/lib/api'
+
+const fallbackProPrice = `₹${FALLBACK_PLANS.find((p) => p.id === 'pro')!.price}`
 
 export default function StatsBar() {
-  // Fallback must match the real Pro price in backend core/plans.py (₹799) —
-  // it shows on first paint before getPlans() resolves, and stays if that call
-  // fails. A stale fallback silently advertises the wrong price.
-  const [proPrice, setProPrice] = useState<string>('₹799')
+  // Shows on first paint before getPlans() resolves, and stays if that call
+  // fails — sourced from FALLBACK_PLANS so it can't drift from the backend
+  // the way a hand-typed literal once did (shipped as ₹999 instead of ₹799).
+  const [proPrice, setProPrice] = useState<string>(fallbackProPrice)
 
   useEffect(() => {
     getPlans().then((plans: Plan[]) => {

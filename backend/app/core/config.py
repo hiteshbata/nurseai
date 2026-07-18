@@ -80,9 +80,16 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""
     SENTRY_ENVIRONMENT: str = "production"
     # Shared secret for external cron services (cron-job.org, Render Cron Job)
-    # to trigger /admin/logs/prune and /admin/subscriptions/sweep-expired
-    # without a human admin JWT. Sent as the X-Cron-Secret header. Unset ->
-    # those endpoints stay admin-JWT-only. See app/routers/admin.py.
+    # to trigger /admin/logs/prune, /admin/subscriptions/sweep-expired, and
+    # the reminder-email crons below without a human admin JWT. Sent as the
+    # X-Cron-Secret header. Unset -> those endpoints stay admin-JWT-only.
+    # See app/routers/admin.py.
     CRON_SECRET: str = ""
+    # Transactional email (expiry/failed-payment reminders -- see
+    # app/services/email.py). Unset -> send_email logs and no-ops, so the
+    # reminder crons stay safe to run before an account exists.
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = "SpeakOET <notifications@speakoet.com>"
+    FRONTEND_URL: str = "https://www.speakoet.com"
 
 settings = Settings()

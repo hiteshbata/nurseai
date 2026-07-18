@@ -64,8 +64,9 @@ from app.services.realtime import (
 )
 from app.services.realtime.gemini_adapter import map_gender_to_gemini_voice
 from app.services.realtime.pricing import estimate_realtime_cost
-from app.services.cost_tracking import increment_session_cost
+from app.services.cost_tracking import increment_session_cost, log_ai_usage
 from app.services.ai_scoring import MEDICAL_JARGON
+from app.core.feature_flags import close_if_disabled
 
 logger = logging.getLogger(__name__)
 
@@ -174,13 +175,14 @@ class _SessionMetrics:
     comparison view -- adapters never see or touch this."""
 
     __slots__ = (
-        "provider", "session_id", "started_at", "input_bytes", "output_bytes",
+        "provider", "session_id", "user_id", "started_at", "input_bytes", "output_bytes",
         "interrupted_count", "error_count", "ended_reason", "provider_ready_at",
     )
 
-    def __init__(self, provider: str, session_id: int):
+    def __init__(self, provider: str, session_id: int, user_id: str):
         self.provider = provider
         self.session_id = session_id
+        self.user_id = user_id
         self.started_at = time.monotonic()
         self.provider_ready_at: float | None = None
         self.input_bytes = 0
@@ -233,6 +235,12 @@ async def _persist_realtime_metrics(metrics: _SessionMetrics, capabilities) -> N
     # (much more common) case of a session that never reconnected.
     await increment_session_cost(metrics.session_id, provider=metrics.provider, realtime_cost_usd=cost.realtime_usd)
 
+    await log_ai_usage(
+        "realtime", metrics.provider, cost.realtime_usd,
+        user_id=metrics.user_id, session_id=metrics.session_id, is_estimate=True,
+        detail={"input_seconds": round(input_seconds, 2), "output_seconds": round(output_seconds, 2)},
+    )
+
 
 async def _send_json_safe(websocket: WebSocket, payload: dict) -> bool:
     try:
@@ -245,6 +253,9 @@ async def _send_json_safe(websocket: WebSocket, payload: dict) -> bool:
 @router.websocket("/realtime/stream")
 async def realtime_stream(websocket: WebSocket):
     await websocket.accept()
+
+    if await close_if_disabled(websocket, "voice_realtime"):
+        return
 
     init_message = None
     try:
@@ -344,7 +355,7 @@ async def realtime_stream(websocket: WebSocket):
         return
 
     adapter = adapter_class(system_prompt=system_prompt, voice=voice, api_key=api_key, model=model)
-    metrics = _SessionMetrics(provider=provider, session_id=session_id)
+    metrics = _SessionMetrics(provider=provider, session_id=session_id, user_id=user.id)
 
     try:
         await adapter.connect()

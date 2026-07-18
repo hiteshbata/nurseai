@@ -160,7 +160,10 @@ def _assess_pronunciation_azure_sync(
                 subscription=AZURE_SPEECH_KEY,
                 region=AZURE_SPEECH_REGION
             )
-            speech_config.speech_recognition_language = "en-US"
+            # en-IN, not en-US: matches the accent our nursing students
+            # actually speak (same reasoning as the Deepgram streaming STT
+            # locale choice in speaking.py's /stt/stream).
+            speech_config.speech_recognition_language = "en-IN"
 
             # Configure Pronunciation Assessment
             pronunciation_config = speechsdk.PronunciationAssessmentConfig(

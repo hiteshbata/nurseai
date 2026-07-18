@@ -1,24 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getPlans, type Plan } from '@/lib/api'
+import { getPlans, FALLBACK_PLANS, type Plan } from '@/lib/api'
 
 export default function PricingSection() {
-  const [plans, setPlans] = useState<Plan[] | null>(null)
+  // Seeded with the known-current fallback rather than null -- so a slow or
+  // failed /plans/ call shows real, correct pricing immediately instead of a
+  // "Loading pricing..." placeholder that used to hang forever on failure.
+  const [plans, setPlans] = useState<Plan[]>(FALLBACK_PLANS)
 
   useEffect(() => {
-    getPlans().then(setPlans).catch(() => setPlans([]))
+    getPlans().then(setPlans).catch(() => {})
   }, [])
-
-  if (!plans) {
-    return (
-      <section id="pricing" className="bg-[#F8FAFC] py-16 md:py-24">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-400">
-          Loading pricing...
-        </div>
-      </section>
-    )
-  }
 
   const free = plans.find((p) => p.id === 'free')
   const basic = plans.find((p) => p.id === 'basic')

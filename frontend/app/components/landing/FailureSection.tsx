@@ -44,7 +44,7 @@ export default function FailureSection() {
               <div className="p-6">
                 <div className="flex items-start gap-4 mb-4">
                   <div className="shrink-0 w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
-                    <Icon className="w-5 h-5 text-red-500" />
+                    <Icon className="w-5 h-5 text-red-500" aria-hidden="true" />
                   </div>
                   <span className="inline-flex items-center bg-red-100 text-red-700 text-xs font-semibold px-3 py-1 rounded-full mt-1">
                     Where Marks Are Lost
@@ -56,7 +56,7 @@ export default function FailureSection() {
 
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0" aria-hidden="true" />
                     <span className="text-sm font-bold text-[#0F2356]">SpeakOET Fix:</span>
                   </div>
                   <p className="text-sm text-gray-700 leading-relaxed">{fix}</p>

@@ -13,6 +13,7 @@ only skews the total by a fraction of a cent -- it must not be used for
 anything billing-authoritative.
 """
 import logging
+from typing import Any, Optional
 
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
@@ -53,3 +54,38 @@ async def increment_session_cost(session_id: int | None, provider: str | None = 
         await run_sync(_increment_session_cost_sync, session_id, provider, **deltas)
     except Exception as e:
         logger.warning("[COST_TRACKING_FAILED] session_id=%s detail=%s", session_id, str(e)[:300])
+
+
+def _log_ai_usage_sync(row: dict) -> None:
+    get_supabase().table("ai_usage_events").insert(row).execute()
+
+
+async def log_ai_usage(
+    call_type: str,
+    provider: str,
+    cost_usd: float,
+    *,
+    user_id: Optional[str] = None,
+    session_id: Optional[int] = None,
+    model: Optional[str] = None,
+    is_estimate: bool = False,
+    detail: Optional[dict[str, Any]] = None,
+) -> None:
+    """One row per STT/LLM/TTS/realtime call, independent of session_usage
+    (which only exists for speaking sessions) -- this is the durable log
+    that per-user/per-plan margin reporting reads from. Best-effort like
+    increment_session_cost above: never let a logging failure surface to
+    the caller or block the request it's attached to."""
+    try:
+        await run_sync(_log_ai_usage_sync, {
+            "user_id": user_id,
+            "session_id": session_id,
+            "call_type": call_type,
+            "provider": provider,
+            "model": model,
+            "cost_usd": cost_usd,
+            "is_estimate": is_estimate,
+            "detail": detail,
+        })
+    except Exception as e:
+        logger.warning("[AI_USAGE_LOG_FAILED] call_type=%s provider=%s detail=%s", call_type, provider, str(e)[:300])

@@ -4,9 +4,10 @@ from typing import List
 from app.core.supabase import get_supabase
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo
+from app.core.feature_flags import require_feature
 from app.services.ai_scoring import get_grammar_feedback
 
-router = APIRouter(prefix="/grammar", tags=["grammar"])
+router = APIRouter(prefix="/grammar", tags=["grammar"], dependencies=[Depends(require_feature("grammar_checker"))])
 
 TEACH_RATE_LIMIT_MAX_CALLS = 30
 TEACH_RATE_LIMIT_WINDOW_SECONDS = 600

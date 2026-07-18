@@ -1,5 +1,6 @@
 ﻿import logging
 import time
+from datetime import datetime, timezone
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -126,6 +127,19 @@ def get_current_user(
                 "user_id": user_id,
                 "role": "user",
             }, on_conflict="user_id", ignore_duplicates=True).execute()
+
+            # Keeps the admin panel's users mirror table (see
+            # backend/migrations/2026-07-18_users_mirror.sql) fresh without
+            # a Supabase Auth API call -- opposite of the upsert above, this
+            # one SHOULD overwrite on every hit: email/name can legitimately
+            # change, and last_seen_at is meant to move.
+            supabase.table("users").upsert({
+                "id": user_id,
+                "email": email,
+                "name": name,
+                "last_seen_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="id").execute()
+
             _mark_role_upserted(user_id)
 
         return UserInfo(

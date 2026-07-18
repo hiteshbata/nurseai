@@ -13,7 +13,7 @@ const FOUNDER = {
   heading: 'Built by a Nurse. Designed for Nurses.',
   name: 'Hitesh Bata',
   role: 'Registered Nurse (India), MSc Nursing · Founder, SpeakOET',
-  photo: '/founder.png',
+  photo: '/founder.jpg',
   story:
     "I'm a registered nurse with an MSc in Nursing, and I spent four years teaching as a professor in a nursing college. When I decided to work abroad, I ran into OET. Many coaching classes explain the exam format and strategies, but I found it difficult to get enough realistic speaking practice — I paid a tutor, hunted for partners on Discord, tried everything I could find. I built SpeakOET to help nurses practise OET Speaking consistently, with realistic AI patients and structured feedback.",
 }

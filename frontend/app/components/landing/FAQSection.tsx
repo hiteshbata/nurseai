@@ -2,19 +2,18 @@
 
 import { useEffect, useState } from "react"
 import { ChevronDown } from "lucide-react"
-import { getPlans, type Plan } from "@/lib/api"
+import { getPlans, FALLBACK_PLANS, type Plan } from "@/lib/api"
 
 export default function FAQSection() {
   const [openIndex, setOpenIndex] = useState<number | null>(null)
-  const [plans, setPlans] = useState<Plan[] | null>(null)
+  const [plans, setPlans] = useState<Plan[]>(FALLBACK_PLANS)
 
   useEffect(() => {
-    getPlans().then(setPlans).catch(() => setPlans([]))
+    getPlans().then(setPlans).catch(() => {})
   }, [])
 
-  const pro = plans?.find((p) => p.id === 'pro')
-  const elite = plans?.find((p) => p.id === 'elite')
-  const free = plans?.find((p) => p.id === 'free')
+  const pro = plans.find((p) => p.id === 'pro')!
+  const free = plans.find((p) => p.id === 'free')!
 
   const faqs = [
     {
@@ -31,11 +30,11 @@ export default function FAQSection() {
     },
     {
       q: "What is included in the free plan?",
-      a: `The free plan gives you ${free ? free.sessions_limit : '3'} speaking sessions per month with full 9-criteria feedback. No credit card required to start.`,
+      a: `The free plan gives you ${free.sessions_limit} speaking sessions per month with full 9-criteria feedback. No credit card required to start.`,
     },
     {
       q: "How much does Pro cost?",
-      a: `Pro is ₹${pro ? pro.price : '799'} per month — about US$${pro ? Math.round(pro.price / 83) : '10'}. That is significantly less than one hour with a human OET tutor. You get ${pro ? pro.sessions_limit : '40'} speaking scenarios per month, all scenarios, progress tracking, and compare attempts.`,
+      a: `Pro is ₹${pro.price} per month — about US$${Math.round(pro.price / 83)}. That is significantly less than one hour with a human OET tutor. You get ${pro.sessions_limit} speaking scenarios per month, all scenarios, progress tracking, and compare attempts.`,
     },
     {
       q: "I am an Indian nurse going to Australia or UK — is this right for me?",
@@ -51,7 +50,7 @@ export default function FAQSection() {
     },
     {
       q: "What happens after my free sessions run out?",
-      a: `You can upgrade to Pro for ₹${pro ? pro.price : '799'}/month for ${pro ? pro.sessions_limit : '40'} sessions a month. We'll remind you before your sessions run out — no surprise charges.`,
+      a: `You can upgrade to Pro for ₹${pro.price}/month for ${pro.sessions_limit} sessions a month. We'll remind you before your sessions run out — no surprise charges.`,
     },
   ]
 

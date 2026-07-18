@@ -49,7 +49,8 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://cdn.sanity.io https://*.clarity.ms",
               "font-src 'self' data:",
-              "connect-src 'self' https://api.speakoet.com wss://api.speakoet.com https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://www.google-analytics.com https://www.clarity.ms https://*.clarity.ms https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io",
+              // localhost:8000 only in dev, so a local backend can be called; prod stays locked to api.speakoet.com.
+              `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? 'http://localhost:8000 ws://localhost:8000 ' : ''}https://api.speakoet.com wss://api.speakoet.com https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://www.google-analytics.com https://www.clarity.ms https://*.clarity.ms https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io`,
               "frame-src https://checkout.razorpay.com https://api.razorpay.com",
             ].join('; '),
           },

@@ -725,7 +725,21 @@ def _process_webhook_body(body_str: str, signature: str) -> Response:
             or payment.get("error_reason")
             or "unknown"
         )
+        notes = get_notes(payment)
         logger.info("Payment failed — id: %s, reason: %s", payment_id, reason)
+        try:
+            get_supabase().table("failed_payments").insert({
+                "user_id": notes.get("user_id") or None,
+                "payment_id": payment_id,
+                "plan_id": notes.get("plan_id"),
+                "amount": payment.get("amount"),
+                "currency": payment.get("currency", "INR"),
+                "reason": reason,
+            }).execute()
+        except Exception:
+            # Founder-dashboard tracking only -- never let this affect the
+            # webhook's 200 response back to Razorpay.
+            logger.exception("failed_payments insert failed | payment_id=%s", payment_id)
         return Response(status_code=200)
 
     elif event_type == "subscription.charged":

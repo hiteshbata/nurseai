@@ -3,12 +3,21 @@ import logging
 from typing import Optional
 from app.core.config import settings
 from app.core.error_utils import redact_api_keys, classify_http_error
+from app.core.ai_pricing import estimate_deepgram_cost
+from app.services.cost_tracking import log_ai_usage
 
 logger = logging.getLogger(__name__)
 
+DEEPGRAM_REST_MODEL = "nova-3"
+
 
 class SpeechToText:
-    async def transcribe_audio(self, audio_data: bytes, filename: str = "audio.webm") -> dict:
+    async def transcribe_audio(
+        self,
+        audio_data: bytes,
+        filename: str = "audio.webm",
+        user_id: Optional[str] = None,
+    ) -> dict:
         if not settings.DEEPGRAM_API_KEY:
             return {"text": "", "provider": "none", "error": "DEEPGRAM_API_KEY not configured"}
 
@@ -25,7 +34,7 @@ class SpeechToText:
                         "Content-Type": content_type,
                     },
                     params={
-                        "model": "nova-3",
+                        "model": DEEPGRAM_REST_MODEL,
                         "language": "en",
                         "smart_format": "true",
                         "punctuate": "true",
@@ -40,6 +49,13 @@ class SpeechToText:
                         .get("alternatives", [{}])[0]
                         .get("transcript", "")
                     )
+                    duration = result.get("metadata", {}).get("duration")
+                    if duration is not None:
+                        await log_ai_usage(
+                            "stt", "deepgram", estimate_deepgram_cost(DEEPGRAM_REST_MODEL, duration),
+                            user_id=user_id, model=DEEPGRAM_REST_MODEL,
+                            detail={"audio_seconds": duration},
+                        )
                     return {"text": transcript, "provider": "deepgram"}
                 status = response.status_code
                 error_type = classify_http_error(status)

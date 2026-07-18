@@ -9,6 +9,8 @@ from app.core.config import settings
 from app.core.error_utils import redact_api_keys
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
+from app.core.ai_pricing import estimate_llm_cost
+from app.services.cost_tracking import log_ai_usage
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,7 @@ async def _call_ai(
     json_mode: bool = False,
     provider: str = "",
     user_id: str = "",
+    session_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Call AI via the configured or specified provider. Always falls back through all
     available providers: OpenRouter → OpenAI → Gemini (in that priority order)."""
@@ -94,6 +97,13 @@ async def _call_ai(
                 result = await _call_gemini(messages, key, mdl, max_tokens, json_mode)
             else:
                 result = await _call_openai_compatible(prov, messages, key, mdl, max_tokens, json_mode)
+            usage = result.pop("_usage", None)
+            if usage:
+                await log_ai_usage(
+                    "llm", prov, estimate_llm_cost(mdl, usage["input_tokens"], usage["output_tokens"]),
+                    user_id=user_id or None, session_id=session_id, model=mdl,
+                    detail={"input_tokens": usage["input_tokens"], "output_tokens": usage["output_tokens"]},
+                )
             if result.get("raw_feedback") or (json_mode and result):
                 return result
         except httpx.HTTPStatusError as e:
@@ -196,12 +206,17 @@ async def _call_gemini(
         if not candidates:
             raise Exception("No candidates in Gemini response")
         text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        usage_meta = data.get("usageMetadata", {})
+        usage = {
+            "input_tokens": usage_meta.get("promptTokenCount", 0),
+            "output_tokens": usage_meta.get("candidatesTokenCount", 0),
+        }
         if json_mode:
             try:
-                return json.loads(text)
+                return {**json.loads(text), "_usage": usage}
             except json.JSONDecodeError:
-                return {"raw_feedback": text}
-        return {"raw_feedback": text}
+                return {"raw_feedback": text, "_usage": usage}
+        return {"raw_feedback": text, "_usage": usage}
 
 
 _json_decoder = json.JSONDecoder()
@@ -286,12 +301,17 @@ async def _call_openai_compatible(
             raise Exception(f"{provider} API error {response.status_code}: {err}")
         result = response.json()
         content = result["choices"][0]["message"]["content"]
+        usage_obj = result.get("usage", {})
+        usage = {
+            "input_tokens": usage_obj.get("prompt_tokens", 0),
+            "output_tokens": usage_obj.get("completion_tokens", 0),
+        }
         if json_mode:
             parsed = _try_parse_json(model, content)
             if parsed is not None:
-                return parsed
-            return {"raw_feedback": content}
-        return {"raw_feedback": content}
+                return {**parsed, "_usage": usage}
+            return {"raw_feedback": content, "_usage": usage}
+        return {"raw_feedback": content, "_usage": usage}
 
 
 def _get_setting(supabase, key: str, default: str = "") -> str:
@@ -351,6 +371,7 @@ async def get_patient_response(
     nurse_message: str,
     supabase=None,
     user_id: str = "",
+    session_id: Optional[int] = None,
 ) -> str:
     """
     Get AI patient response based on interlocutor card.
@@ -410,7 +431,7 @@ STRICT RULES:
     messages.append({"role": "user", "content": nurse_message})
 
     result = await _call_ai(
-        messages, max_tokens=200, user_id=user_id,
+        messages, max_tokens=200, user_id=user_id, session_id=session_id,
         provider="openrouter", model=GEMINI_PERSONA_MODEL,
     )
     return result.get("raw_feedback", "I'm not sure what to say...")
@@ -424,6 +445,7 @@ async def score_speaking(
     scenario_title: str = "",
     supabase=None,
     user_id: str = "",
+    session_id: Optional[int] = None,
     model: str = GEMINI_SCORING_FREE_MODEL,
     criteria_count: int = 9,
     enhanced_feedback: bool = False,
@@ -568,6 +590,8 @@ RULES:
         json_mode=True,
         provider="openrouter",
         model=model,
+        user_id=user_id,
+        session_id=session_id,
     )
 
     # The longer enhanced-feedback output occasionally makes the model splice
@@ -584,6 +608,8 @@ RULES:
             json_mode=True,
             provider="openrouter",
             model=model,
+            user_id=user_id,
+            session_id=session_id,
         )
 
     logger.debug(

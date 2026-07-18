@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react"
 import { TrendingUp } from "lucide-react"
-import { getPlans } from "@/lib/api"
+import { getPlans, FALLBACK_PLANS } from "@/lib/api"
+
+const fallbackFreeSessions = FALLBACK_PLANS.find((p) => p.id === 'free')!.sessions_limit
 
 export default function HeroSection() {
-  const [freeSessions, setFreeSessions] = useState(3)
+  const [freeSessions, setFreeSessions] = useState(fallbackFreeSessions)
 
   useEffect(() => {
     getPlans()
@@ -74,7 +76,7 @@ export default function HeroSection() {
             <div className="bg-[#0F2356] rounded-2xl shadow-2xl p-7 text-white">
               {/* Top */}
               <div className="flex items-start justify-between mb-2">
-                <span className="text-white/60 text-xs font-medium uppercase tracking-widest">Your OET Band</span>
+                <span className="text-white/60 text-xs font-medium uppercase tracking-widest">Your OET Band · Illustrative</span>
                 <TrendingUp className="w-5 h-5 text-[#10B981]" />
               </div>
 

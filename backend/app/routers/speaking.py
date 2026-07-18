@@ -1,4 +1,5 @@
 import asyncio
+import time
 import io
 import json
 import logging
@@ -8,12 +9,15 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from app.core.config import settings
+from app.core.ai_pricing import estimate_deepgram_cost
 from app.core.supabase import get_supabase, get_auth_client
 from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.error_utils import redact_api_keys, classify_http_error
 from app.routers.auth import get_current_user, UserInfo
 from app.routers.admin import require_admin
+from app.core.feature_flags import require_feature, close_if_disabled
+from app.core.feature_flags import require_feature, close_if_disabled
 from app.services.speech_to_text import speech_to_text
 from app.services.ai_scoring import get_patient_response, score_speaking, _call_ai
 from app.services.pronunciation import get_pronunciation_feedback
@@ -27,7 +31,7 @@ from app.services.plan_gating import (
     PREMIUM_PLANS,
 )
 from app.services import tts_service
-from app.services.cost_tracking import increment_session_cost
+from app.services.cost_tracking import increment_session_cost, log_ai_usage
 from app.services.realtime.pricing import estimate_tts_cost
 from app.routers.sessions import check_and_increment_session, validate_session, is_first_ever_session
 import websockets.exceptions as ws_exc
@@ -70,7 +74,7 @@ MAX_CHAT_HISTORY_MESSAGES = 60
 MAX_CHAT_MESSAGE_LENGTH = 2000
 
 
-@router.post("/tts")
+@router.post("/tts", dependencies=[Depends(require_feature("speaking_practice"))])
 async def text_to_speech(
     payload: dict = Body(...),
     current_user: UserInfo = Depends(get_current_user),
@@ -125,9 +129,12 @@ async def text_to_speech(
             language_code=language_code,
             plan=plan,
         )
-        await increment_session_cost(
-            session_id,
-            tts_cost_usd=estimate_tts_cost(len(text), is_premium_voice(voice_name)),
+        tts_cost = estimate_tts_cost(len(text), is_premium_voice(voice_name))
+        await increment_session_cost(session_id, tts_cost_usd=tts_cost)
+        await log_ai_usage(
+            "tts", "google", tts_cost,
+            user_id=current_user.id, session_id=session_id, model=voice_name,
+            detail={"char_count": len(text), "is_premium_voice": is_premium_voice(voice_name)},
         )
         return StreamingResponse(io.BytesIO(audio_bytes), media_type="audio/mpeg")
     except Exception as e:
@@ -154,6 +161,9 @@ async def stt_deepgram_stream(websocket: WebSocket):
     Audio format: audio/webm (from browser MediaRecorder).
     """
     await websocket.accept()
+
+    if await close_if_disabled(websocket, "speaking_practice"):
+        return
 
     token = None
     try:
@@ -260,6 +270,8 @@ async def stt_deepgram_stream(websocket: WebSocket):
                 "[DEEPGRAM_CLOSED_IMMEDIATELY] code=%s reason=%s state=%s",
                 dg_ws.close_code, dg_ws.close_reason, dg_ws.state,
             )
+
+        stream_started_at = time.monotonic()
 
         try:
             _done = asyncio.Event()
@@ -401,6 +413,17 @@ async def stt_deepgram_stream(websocket: WebSocket):
                 await dg_ws.close()
             except Exception:
                 pass
+            # Wall-clock connection time as a proxy for audio seconds
+            # streamed -- same "estimate, not invoice" tradeoff the realtime
+            # pipeline's cost model already makes (app.services.realtime.pricing),
+            # since Deepgram's streaming API never reports a final duration
+            # the way its REST response does.
+            stream_seconds = time.monotonic() - stream_started_at
+            await log_ai_usage(
+                "stt", "deepgram", estimate_deepgram_cost("nova-2", stream_seconds),
+                user_id=user.id, model="nova-2", is_estimate=True,
+                detail={"audio_seconds": round(stream_seconds, 2)},
+            )
 
     except ws_exc.InvalidStatus as e:
         resp = e.response
@@ -481,7 +504,7 @@ async def stt_deepgram_stream(websocket: WebSocket):
             pass
 
 
-@router.post("/transcribe")
+@router.post("/transcribe", dependencies=[Depends(require_feature("speaking_practice"))])
 async def transcribe_audio(
     audio: UploadFile = File(...),
     current_user: UserInfo = Depends(get_current_user),
@@ -493,7 +516,7 @@ async def transcribe_audio(
     if len(audio_data) > MAX_TRANSCRIBE_AUDIO_BYTES:
         raise HTTPException(status_code=400, detail="Audio file too large")
 
-    result = await speech_to_text.transcribe_audio(audio_data, audio.filename or "audio.wav")
+    result = await speech_to_text.transcribe_audio(audio_data, audio.filename or "audio.wav", user_id=current_user.id)
     return result
 
 
@@ -649,7 +672,7 @@ def get_scenario(scenario_id: int, current_user: UserInfo = Depends(get_current_
     return scenario
 
 
-@router.post("/chat")
+@router.post("/chat", dependencies=[Depends(require_feature("speaking_practice"))])
 async def chat_with_patient(
     request: PatientChatRequest,
     current_user: UserInfo = Depends(get_current_user),
@@ -693,6 +716,8 @@ async def chat_with_patient(
         conversation_history=history,
         nurse_message=request.message,
         supabase=supabase,
+        user_id=current_user.id,
+        session_id=session_id,
     )
 
     # Update history
@@ -708,7 +733,7 @@ async def chat_with_patient(
     )
 
 
-@router.post("/score")
+@router.post("/score", dependencies=[Depends(require_feature("speaking_practice"))])
 async def score_speaking_session(
     request: SpeakingSubmitRequest,
     current_user: UserInfo = Depends(get_current_user),
@@ -758,6 +783,8 @@ async def score_speaking_session(
         conversation_history=history,
         scenario_title=scenario.get("title", ""),
         supabase=supabase,
+        user_id=current_user.id,
+        session_id=request.session_id,
         model=scoring_model,
         criteria_count=criteria_count,
         enhanced_feedback=effective_plan in PREMIUM_PLANS,
@@ -800,7 +827,7 @@ async def score_speaking_session(
     }
 
 
-@router.post("/pronunciation")
+@router.post("/pronunciation", dependencies=[Depends(require_feature("speaking_practice"))])
 async def assess_pronunciation(
     audio: UploadFile = File(...),
     nurse_transcript: str = Form(...),

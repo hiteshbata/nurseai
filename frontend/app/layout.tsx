@@ -1,6 +1,8 @@
 import './globals.css'
 import { Navbar } from '@/components/Navbar'
 import { Footer } from '@/components/Footer'
+import { ImpersonationBanner } from '@/components/ImpersonationBanner'
+import { AnnouncementBanner } from '@/components/AnnouncementBanner'
 import Providers from './providers'
 import type { Metadata } from 'next'
 import ConditionalLayout from './conditional-layout'
@@ -61,6 +63,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Skip to content
         </a>
+        <AnnouncementBanner />
+        <ImpersonationBanner />
         <Providers>
           <ConditionalLayout>{children}</ConditionalLayout>
         </Providers>

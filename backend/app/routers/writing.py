@@ -5,12 +5,13 @@ from app.core.supabase import get_supabase
 from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo
+from app.core.feature_flags import require_feature
 from app.services.ai_scoring import score_writing
 from app.services.plan_gating import has_writing_access, get_plan_from_profile
 import base64
 import json
 
-router = APIRouter(prefix="/writing", tags=["writing"])
+router = APIRouter(prefix="/writing", tags=["writing"], dependencies=[Depends(require_feature("writing_practice"))])
 
 SUBMIT_RATE_LIMIT_MAX_CALLS = 20
 SUBMIT_RATE_LIMIT_WINDOW_SECONDS = 600

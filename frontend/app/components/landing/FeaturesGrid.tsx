@@ -62,7 +62,7 @@ export default function FeaturesGrid() {
                     isEmerald ? "bg-emerald-50" : "bg-[#0F2356]/5"
                   }`}
                 >
-                  <Icon className={`w-5 h-5 ${isEmerald ? "text-[#10B981]" : "text-[#0F2356]"}`} />
+                  <Icon className={`w-5 h-5 ${isEmerald ? "text-[#10B981]" : "text-[#0F2356]"}`} aria-hidden="true" />
                 </div>
                 <h3 className="text-base font-bold text-[#0F2356] mb-2">{title}</h3>
                 <p className="text-gray-500 text-sm leading-relaxed">{text}</p>

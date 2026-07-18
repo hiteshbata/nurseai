@@ -1,10 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { getPlans } from "@/lib/api"
+import { getPlans, FALLBACK_PLANS } from "@/lib/api"
+
+const fallbackFreeSessions = FALLBACK_PLANS.find((p) => p.id === 'free')!.sessions_limit
 
 export default function CTASection() {
-  const [freeSessions, setFreeSessions] = useState(3)
+  const [freeSessions, setFreeSessions] = useState(fallbackFreeSessions)
 
   useEffect(() => {
     getPlans()

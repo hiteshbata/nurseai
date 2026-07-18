@@ -88,6 +88,11 @@ PLANS = [
 
 PLAN_LIMITS = {"free": 3, "basic": 20, "pro": 40, "elite": 80}
 
+# Monthly INR price per plan, keyed by profile_plan -- single source of
+# truth for anything that needs to turn a plan name into a rupee amount
+# (MRR/ARR/ARPU calculations in admin.py and founder_metrics.py).
+PLAN_PRICE_INR = {p["profile_plan"]: p["price"] for p in PLANS}
+
 # Subscription lifecycle: how long a paid period lasts, and how much
 # extra time past expiry still counts as active (covers renewal-payment
 # friction without silently granting a free extra period).
