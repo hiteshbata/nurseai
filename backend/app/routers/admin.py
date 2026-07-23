@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from app.core.config import settings
 from app.core.supabase import get_supabase, get_auth_client
 from app.core.plans import GRACE_PERIOD_DAYS, PLAN_PERIOD_DAYS, PLAN_PRICE_INR
-from app.routers.payments import get_current_plan, grant_subscription_period
+from app.routers.payments import get_current_plan, grant_subscription_period, get_razorpay_client
 from app.services.plan_gating import get_plan_from_profile
 from app.services.founder_metrics import get_founder_metrics
 from app.services.ai_cost_metrics import get_ai_cost_metrics
@@ -211,13 +211,144 @@ def admin_update_scenario(
 @router.delete("/scenarios/{scenario_id}")
 def admin_delete_scenario(
     scenario_id: int,
+    hard: bool = False,
     current_user: UserInfo = Depends(require_admin),
 ):
-    """Soft-delete a scenario (set is_active=False)."""
+    """Delete a scenario. Default is a soft delete (is_active=False), preserving
+    the historical default. With hard=true, remove the row entirely — but scenarios
+    with practice history are referenced by submissions/session_transcripts (FK with
+    no ON DELETE), so a hard delete there raises; fall back to deactivating so the
+    admin's intent (get it out of the active list) still succeeds without data loss."""
     supabase = get_supabase()
+    if hard:
+        try:
+            supabase.table("scenarios").delete().eq("id", scenario_id).execute()
+            _write_audit_log(supabase, current_user, "scenario_deleted", "scenario", target_id=scenario_id)
+            return {"success": True, "deleted": True, "message": f"Scenario {scenario_id} deleted"}
+        except Exception:
+            supabase.table("scenarios").update({"is_active": False}).eq("id", scenario_id).execute()
+            _write_audit_log(supabase, current_user, "scenario_deactivated", "scenario", target_id=scenario_id)
+            return {"success": True, "deleted": False, "message": "This scenario has practice history, so it was kept as inactive instead of deleted."}
+
     supabase.table("scenarios").update({"is_active": False}).eq("id", scenario_id).execute()
     _write_audit_log(supabase, current_user, "scenario_deactivated", "scenario", target_id=scenario_id)
-    return {"success": True, "message": f"Scenario {scenario_id} deactivated"}
+    return {"success": True, "deleted": False, "message": f"Scenario {scenario_id} deactivated"}
+
+
+# ── COUPON CODES ──────────────────────────────────────────────────────
+# Annual (order) checkout: discount_type/discount_value are applied by our
+# own backend -- see apply_coupon in app/routers/payments.py.
+# Monthly (subscription) checkout: Razorpay only discounts a subscription
+# via an Offer entity, and Offers can only be created from the Razorpay
+# Dashboard (no API for it) -- see the comment on coupon_codes in
+# backend/migrations/2026-07-18_coupon_codes.sql for the manual setup
+# steps. razorpay_offer_id links this coupon to that dashboard-created
+# Offer; leave it blank if the coupon is annual-only.
+
+class CouponCreate(BaseModel):
+    code: str
+    discount_type: str  # "percent" | "flat_paise"
+    discount_value: int
+    max_redemptions: Optional[int] = None
+    expires_at: Optional[str] = None
+    razorpay_offer_id: Optional[str] = None
+
+
+class CouponUpdate(BaseModel):
+    active: Optional[bool] = None
+    max_redemptions: Optional[int] = None
+    expires_at: Optional[str] = None
+    razorpay_offer_id: Optional[str] = None
+
+
+@router.get("/coupons")
+def admin_list_coupons(current_user: UserInfo = Depends(require_admin)):
+    supabase = get_supabase()
+    return supabase.table("coupon_codes").select("*").order("created_at", desc=True).execute().data
+
+
+@router.post("/coupons")
+def admin_create_coupon(
+    coupon: CouponCreate,
+    current_user: UserInfo = Depends(require_admin),
+):
+    if coupon.discount_type not in ("percent", "flat_paise"):
+        raise HTTPException(status_code=400, detail="discount_type must be 'percent' or 'flat_paise'")
+    if coupon.discount_value <= 0:
+        raise HTTPException(status_code=400, detail="discount_value must be positive")
+    if coupon.discount_type == "percent" and coupon.discount_value > 100:
+        raise HTTPException(status_code=400, detail="Percent discount can't exceed 100")
+
+    supabase = get_supabase()
+    try:
+        data = supabase.table("coupon_codes").insert({
+            "code": coupon.code.strip().upper(),
+            "discount_type": coupon.discount_type,
+            "discount_value": coupon.discount_value,
+            "max_redemptions": coupon.max_redemptions,
+            "expires_at": coupon.expires_at,
+            "razorpay_offer_id": coupon.razorpay_offer_id,
+            "created_by": current_user.id,
+        }).execute()
+    except Exception as e:
+        if "duplicate key" in str(e).lower():
+            raise HTTPException(status_code=400, detail="A coupon with this code already exists")
+        raise
+    created = data.data[0]
+    _write_audit_log(
+        supabase, current_user, "coupon_created", "coupon",
+        target_id=created["id"], target_label=created["code"],
+        detail={"discount_type": coupon.discount_type, "discount_value": coupon.discount_value},
+    )
+    return created
+
+
+@router.patch("/coupons/{coupon_id}")
+def admin_update_coupon(
+    coupon_id: str,
+    coupon: CouponUpdate,
+    current_user: UserInfo = Depends(require_admin),
+):
+    update_data: Dict[str, Any] = {}
+    if coupon.active is not None:
+        update_data["active"] = coupon.active
+    if coupon.max_redemptions is not None:
+        update_data["max_redemptions"] = coupon.max_redemptions
+    if coupon.expires_at is not None:
+        update_data["expires_at"] = coupon.expires_at
+    if coupon.razorpay_offer_id is not None:
+        update_data["razorpay_offer_id"] = coupon.razorpay_offer_id
+
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    supabase = get_supabase()
+    data = supabase.table("coupon_codes").update(update_data).eq("id", coupon_id).execute()
+    if not data.data:
+        raise HTTPException(status_code=404, detail="Coupon not found")
+    updated = data.data[0]
+    _write_audit_log(
+        supabase, current_user, "coupon_updated", "coupon",
+        target_id=coupon_id, target_label=updated.get("code"), detail=update_data,
+    )
+    return updated
+
+
+@router.delete("/coupons/{coupon_id}")
+def admin_delete_coupon(
+    coupon_id: str,
+    current_user: UserInfo = Depends(require_admin),
+):
+    supabase = get_supabase()
+    existing = supabase.table("coupon_codes").select("code").eq("id", coupon_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Coupon not found")
+    supabase.table("coupon_codes").delete().eq("id", coupon_id).execute()
+    _write_audit_log(
+        supabase, current_user, "coupon_deleted", "coupon",
+        target_id=coupon_id, target_label=existing.data[0]["code"],
+    )
+    return {"success": True, "message": "Coupon deleted"}
 
 
 # ── SETTINGS MANAGEMENT ─────────────────────────────────────────────
@@ -811,54 +942,37 @@ def admin_delete_user(
 @router.get("/audit-log")
 def admin_get_audit_log(
     limit: int = 100,
+    offset: int = 0,
     current_user: UserInfo = Depends(require_analyst),
 ):
-    """Unified action history: merges audit_log (role/plan/content/settings
-    changes) with moderation_log (suspend/ban/reinstate/delete) and
-    impersonation_log (log-in-as-user sessions) into one timeline, since
-    that's what an admin actually wants to see -- not three separate pages.
-    ponytail: pulls up to `limit` rows from each source and merges/sorts in
-    Python rather than a SQL UNION across three tables; fine at this volume,
-    revisit with a view/RPC if any one log gets big enough to make three
-    full fetches wasteful.
+    """Unified action history: audit_log (role/plan/content/settings
+    changes), moderation_log (suspend/ban/reinstate/delete), and
+    impersonation_log (log-in-as-user sessions) combined into one
+    chronological timeline -- since that's what an admin actually wants to
+    see, not three separate pages.
+
+    Reads admin_audit_timeline, a UNION ALL view over the three tables
+    (see backend/migrations/2026-07-18_audit_timeline_view.sql), so this
+    is one indexed, paginated query instead of three REST round-trips
+    merged/sorted in Python -- the old version had no offset support at
+    all, so the panel could only ever see the most recent page.
+
+    Fetches one extra row past `limit` to detect "is there a next page"
+    without a separate COUNT(*) over the union.
     """
     limit = max(1, min(limit, 200))
+    offset = max(0, offset)
     supabase = get_supabase()
 
-    entries: List[Dict[str, Any]] = []
-
-    for row in supabase.table("audit_log").select("*").order("created_at", desc=True).limit(limit).execute().data:
-        entries.append({
-            "created_at": row["created_at"],
-            "admin_email": row["admin_email"],
-            "action": row["action"],
-            "target_type": row["target_type"],
-            "target_label": row.get("target_label") or row.get("target_id"),
-            "detail": row.get("detail"),
-        })
-
-    for row in supabase.table("moderation_log").select("*").order("created_at", desc=True).limit(limit).execute().data:
-        entries.append({
-            "created_at": row["created_at"],
-            "admin_email": row["admin_email"],
-            "action": row["action"],
-            "target_type": "user",
-            "target_label": row["target_email"],
-            "detail": {"reason": row["reason"], "expires_at": row.get("expires_at")},
-        })
-
-    for row in supabase.table("impersonation_log").select("*").order("started_at", desc=True).limit(limit).execute().data:
-        entries.append({
-            "created_at": row["started_at"],
-            "admin_email": row["admin_email"],
-            "action": "impersonated",
-            "target_type": "user",
-            "target_label": row["target_email"],
-            "detail": {"ended_at": row.get("ended_at")},
-        })
-
-    entries.sort(key=lambda e: e["created_at"], reverse=True)
-    return entries[:limit]
+    rows = (
+        supabase.table("admin_audit_timeline")
+        .select("*")
+        .order("created_at", desc=True)
+        .range(offset, offset + limit)
+        .execute()
+        .data
+    )
+    return {"entries": rows[:limit], "has_more": len(rows) > limit}
 
 
 # ── ANALYTICS ───────────────────────────────────────────────────────
@@ -1076,6 +1190,27 @@ def admin_prune_logs(_=Depends(require_admin_or_cron)):
     return {"deleted": count}
 
 
+TRANSCRIPT_RETENTION_DAYS = 90
+
+
+@router.post("/transcripts/prune")
+def admin_prune_transcripts(_=Depends(require_admin_or_cron)):
+    """Delete session transcripts older than TRANSCRIPT_RETENTION_DAYS. Wired
+    to run weekly via external cron, same as logs/prune -- caps storage growth
+    and narrows privacy exposure per the retention disclosed in the privacy
+    policy. Safe to re-run: deletes by cutoff."""
+    supabase = get_supabase()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=TRANSCRIPT_RETENTION_DAYS)).isoformat()
+    try:
+        deleted = supabase.table("session_transcripts").delete().lt("created_at", cutoff).execute()
+    except Exception:
+        logger.exception("transcripts/prune failed")
+        raise HTTPException(status_code=502, detail="Transcript prune failed")
+    count = len(deleted.data or [])
+    logger.info("transcripts/prune deleted %d rows older than %s", count, cutoff)
+    return {"deleted": count}
+
+
 # ── SUBSCRIPTION MANAGEMENT ─────────────────────────────────────────
 
 @router.get("/subscriptions/expiring-soon")
@@ -1196,3 +1331,90 @@ def admin_sweep_expired_subscriptions(_=Depends(require_admin_or_cron)):
 
     logger.info("subscriptions/sweep-expired downgraded %d profiles", len(user_ids))
     return {"downgraded": len(user_ids)}
+
+
+@router.get("/users/{user_id}/payments")
+def admin_get_user_payments(
+    user_id: str,
+    current_user: UserInfo = Depends(require_support),
+):
+    """Billing history for one user -- so support can check what was
+    actually paid before touching a plan or issuing a refund, instead of
+    trusting user_profiles.plan alone. payments.user_id is already
+    indexed (see 2026-07-13_security_perf_hardening.sql), and one user's
+    history is small, so no pagination.
+    """
+    supabase = get_supabase()
+    rows = (
+        supabase.table("payments")
+        .select("id, order_id, payment_id, plan_id, amount, currency, status, created_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(50)
+        .execute()
+        .data
+    )
+    return {"payments": rows}
+
+
+@router.get("/users/{user_id}/transcripts")
+def admin_get_user_transcripts(
+    user_id: str,
+    current_user: UserInfo = Depends(require_admin),
+):
+    """Voice roleplay session transcripts for one user, for background-check
+    and account-safety review. Admin-only (not support) since transcripts are
+    the full conversation content, not just metadata -- see
+    2026-07-21_session_transcripts.sql. Retained 90 days (transcripts/prune)."""
+    rows = (
+        get_supabase().table("session_transcripts")
+        .select("id, session_usage_id, scenario_id, transcript, created_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(20)
+        .execute()
+        .data
+    )
+    return {"transcripts": rows}
+
+
+@router.post("/users/{user_id}/subscription/cancel")
+def admin_cancel_user_subscription(
+    user_id: str,
+    current_user: UserInfo = Depends(require_support),
+):
+    """Admin-side equivalent of payments.cancel_subscription -- for
+    support cases where the user calls or emails in asking to cancel
+    instead of clicking it themselves. Turns off auto-renew only; the
+    current plan stays active until plan_expires_at, same as self-serve.
+    """
+    supabase = get_supabase()
+    profile = (
+        supabase.table("user_profiles")
+        .select("razorpay_subscription_id, auto_renew_enabled")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if not profile.data or not profile.data[0].get("razorpay_subscription_id"):
+        raise HTTPException(status_code=400, detail="No auto-renewing subscription to cancel")
+
+    subscription_id = profile.data[0]["razorpay_subscription_id"]
+
+    client = get_razorpay_client()
+    try:
+        client.subscription.cancel(subscription_id, {"cancel_at_cycle_end": 1})
+    except Exception:
+        logger.exception(
+            "admin cancel-subscription failed | admin=%s target=%s subscription_id=%s",
+            current_user.id, user_id, subscription_id,
+        )
+        raise HTTPException(status_code=500, detail="Could not cancel subscription. Please try again.")
+
+    supabase.table("user_profiles").update({"auto_renew_enabled": False}).eq("user_id", user_id).execute()
+
+    _write_audit_log(
+        supabase, current_user, "subscription_cancelled", "user", target_id=user_id,
+        detail={"subscription_id": subscription_id},
+    )
+    logger.info("admin cancel-subscription | admin=%s target=%s", current_user.id, user_id)
+    return {"success": True, "message": "Auto-renew turned off. Plan stays active until it expires."}

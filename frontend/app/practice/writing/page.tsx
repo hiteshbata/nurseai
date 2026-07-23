@@ -30,24 +30,34 @@ interface Feedback {
   scores: Record<string, CriterionScore>
   overall_score: number | null
   estimated_oet_grade: string | null
+  raw_total?: number | null
   top_strengths: string[]
   top_improvements: string[]
   corrected_version: string
 }
 
-const CRITERIA_LABELS: Record<string, string> = {
-  purpose: 'Purpose',
-  content: 'Content',
-  conciseness: 'Conciseness & Clarity',
-  genre_style: 'Genre & Style',
-  organization: 'Organization',
-  language: 'Language',
+// Official OET Writing ranges: Purpose is scored /3, every other criterion /7.
+const CRITERIA: { key: string; label: string; max: number }[] = [
+  { key: 'purpose', label: 'Purpose', max: 3 },
+  { key: 'content', label: 'Content', max: 7 },
+  { key: 'conciseness', label: 'Conciseness & Clarity', max: 7 },
+  { key: 'genre_style', label: 'Genre & Style', max: 7 },
+  { key: 'organization', label: 'Organisation & Layout', max: 7 },
+  { key: 'language', label: 'Language', max: 7 },
+]
+
+const WORD_MIN = 120
+
+function countWords(text: string) {
+  const trimmed = text.trim()
+  return trimmed ? trimmed.split(/\s+/).length : 0
 }
 
-function scoreColor(score: number | null) {
+function scoreColor(score: number | null, max: number) {
   if (score === null) return 'text-gray-400'
-  if (score >= 4) return 'text-emerald-600'
-  if (score >= 3) return 'text-amber-500'
+  const ratio = score / max
+  if (ratio >= 0.66) return 'text-emerald-600'
+  if (ratio >= 0.5) return 'text-amber-500'
   return 'text-red-500'
 }
 
@@ -108,8 +118,8 @@ export default function WritingPracticePage() {
       return
     }
 
-    if (writingText.length < 100) {
-      toast.error('Please write at least 100 characters')
+    if (countWords(writingText) < WORD_MIN) {
+      toast.error(`Your letter is too short — aim for 180–200 words (at least ${WORD_MIN}).`)
       return
     }
 
@@ -213,59 +223,65 @@ export default function WritingPracticePage() {
   }
 
   if (phase === 'write' && selectedScenario) {
-    const tasks = selectedScenario.nurse_card?.tasks || []
+    const task = selectedScenario.nurse_card?.role || ''
+    const words = countWords(writingText)
+    const wordTone = words === 0 ? 'text-gray-400' : words < WORD_MIN ? 'text-amber-600' : words > 200 ? 'text-amber-600' : 'text-emerald-600'
     return (
-      <div className="min-h-screen bg-gray-50 py-12 px-4">
-        <div className="max-w-4xl mx-auto">
+      <div className="min-h-screen bg-gray-50 py-8 px-4">
+        <div className="max-w-6xl mx-auto">
           <button onClick={handleBackToScenarios} className="text-sm text-gray-500 hover:text-gray-700 mb-4">
             ← Back to scenarios
           </button>
 
-          <Card className="p-8 mb-6">
-            <span className="inline-block bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-semibold mb-4">
-              Writing Module
-            </span>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">{selectedScenario.title}</h2>
+          {/* Exam header — informational, mirrors the real paper (no live timer) */}
+          <div className="mb-6">
+            <p className="text-xs font-semibold tracking-widest text-primary uppercase">OET Writing sub-test · Nursing</p>
+            <h2 className="text-2xl font-bold text-gray-900">{selectedScenario.title}</h2>
+            <p className="text-sm text-gray-500 mt-1">Reading time 5 minutes · Writing time 40 minutes · Body approximately 180–200 words</p>
+          </div>
 
-            <div className="mb-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Case Notes</p>
-              <p className="text-gray-700 leading-relaxed whitespace-pre-line">{selectedScenario.setting}</p>
-            </div>
-
-            {tasks.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Your Task</p>
-                <ol className="space-y-2">
-                  {tasks.map((task, i) => (
-                    <li key={i} className="flex gap-3 text-gray-700 text-sm">
-                      <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center mt-0.5">
-                        {i + 1}
-                      </span>
-                      <span>{task}</span>
-                    </li>
-                  ))}
-                </ol>
+          <div className="grid lg:grid-cols-2 gap-6 items-start">
+            {/* Case notes — styled like the exam paper */}
+            <Card className="p-0 overflow-hidden lg:sticky lg:top-6">
+              <div className="bg-gray-900 text-white text-xs font-bold px-4 py-2 tracking-widest">NOTES</div>
+              <div className="p-6 max-h-[65vh] overflow-y-auto">
+                <p className="text-[15px] text-gray-800 leading-relaxed whitespace-pre-wrap">{selectedScenario.setting}</p>
               </div>
-            )}
-          </Card>
+            </Card>
 
-          <Card className="p-8">
-            <label htmlFor="writing" className="block text-sm font-semibold text-gray-700 mb-2">
-              Your Letter (minimum 100 characters)
-            </label>
-            <textarea
-              id="writing"
-              value={writingText}
-              onChange={(e) => setWritingText(e.target.value)}
-              className="w-full h-64 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-100 focus:border-emerald-500 outline-none resize-none"
-              placeholder="Write your letter here..."
-            />
-            <div className="text-sm text-gray-500 mt-2">{writingText.length} characters</div>
+            {/* Task + answer */}
+            <div className="space-y-6">
+              <Card className="p-6">
+                <p className="text-xs font-bold tracking-widest text-gray-500 uppercase mb-2">Writing Task</p>
+                <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">{task}</p>
+                <ul className="mt-4 space-y-1.5 text-sm text-gray-600">
+                  <li className="flex gap-2"><span className="text-primary">•</span> Expand the relevant notes into complete sentences</li>
+                  <li className="flex gap-2"><span className="text-primary">•</span> Do not use note form</li>
+                  <li className="flex gap-2"><span className="text-primary">•</span> Use letter format</li>
+                </ul>
+              </Card>
 
-            <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full mt-4">
-              {isSubmitting ? 'Scoring...' : 'Submit for Scoring'}
-            </Button>
-          </Card>
+              <Card className="p-6">
+                <label htmlFor="writing" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Your Letter
+                </label>
+                <textarea
+                  id="writing"
+                  value={writingText}
+                  onChange={(e) => setWritingText(e.target.value)}
+                  className="w-full h-80 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-100 focus:border-emerald-500 outline-none resize-y leading-relaxed"
+                  placeholder="Dear ...,&#10;&#10;Write your letter here."
+                />
+                <div className={`text-sm mt-2 ${wordTone}`}>
+                  {words} words {words === 0 ? '' : words < WORD_MIN ? '— aim for 180–200' : words > 200 ? '— a little long, aim for 180–200' : '✓'}
+                </div>
+
+                <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full mt-4">
+                  {isSubmitting ? 'Scoring...' : 'Submit for Scoring'}
+                </Button>
+              </Card>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -296,21 +312,22 @@ export default function WritingPracticePage() {
         <div className="max-w-4xl mx-auto">
           <Card className="p-8 mb-6">
             <div className="text-center mb-8">
-              <div className="text-4xl font-bold text-emerald-600">{feedback.overall_score}/6</div>
+              <div className="text-5xl font-bold text-emerald-600">Grade {feedback.estimated_oet_grade}</div>
               <div className="text-lg font-semibold text-emerald-700 mt-2">
-                Estimated Grade: {feedback.estimated_oet_grade}
+                Estimated OET score: {feedback.overall_score}/500
               </div>
+              <div className="text-xs text-gray-400 mt-1">Approximate — for practice guidance only</div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4 mb-8">
-              {Object.entries(CRITERIA_LABELS).map(([key, label]) => {
+              {CRITERIA.map(({ key, label, max }) => {
                 const c = feedback.scores[key] || { score: null, feedback: '' }
                 return (
                   <div key={key} className="rounded-xl bg-gray-50 p-4">
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <p className="text-sm font-semibold text-[#0F2356]">{label}</p>
-                      <span className={`text-sm font-bold shrink-0 ${scoreColor(c.score)}`}>
-                        {c.score ?? '—'}/6
+                      <span className={`text-sm font-bold shrink-0 ${scoreColor(c.score, max)}`}>
+                        {c.score ?? '—'}/{max}
                       </span>
                     </div>
                     {c.feedback && <p className="text-xs text-gray-600 leading-relaxed">{c.feedback}</p>}

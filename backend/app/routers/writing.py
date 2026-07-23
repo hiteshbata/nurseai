@@ -1,15 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
+from app.core.config import settings
 from app.routers.auth import get_current_user, UserInfo
+from app.routers.admin import require_admin
 from app.core.feature_flags import require_feature
-from app.services.ai_scoring import score_writing
+from app.services.ai_scoring import score_writing, _try_parse_json
 from app.services.plan_gating import has_writing_access, get_plan_from_profile
+from app.services.skill_graph import record_skill_observations
 import base64
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/writing", tags=["writing"], dependencies=[Depends(require_feature("writing_practice"))])
 
@@ -21,9 +27,13 @@ SUBMIT_IMAGE_RATE_LIMIT_MAX_CALLS = 10
 SUBMIT_IMAGE_RATE_LIMIT_WINDOW_SECONDS = 600
 _submit_image_rate_limiter = SlidingWindowRateLimiter(SUBMIT_IMAGE_RATE_LIMIT_MAX_CALLS, SUBMIT_IMAGE_RATE_LIMIT_WINDOW_SECONDS, name="writing:submit_image")
 
+_extract_rate_limiter = SlidingWindowRateLimiter(10, 600, name="writing:extract")
+
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 # base64 inflates size ~4/3; reject oversized payloads before spending CPU on decode.
 MAX_IMAGE_BASE64_CHARS = MAX_IMAGE_BYTES * 4 // 3 + 4
+
+MAX_PDF_BYTES = 10 * 1024 * 1024
 
 
 class WritingSubmitRequest(BaseModel):
@@ -53,19 +63,20 @@ async def _require_writing_scenario(supabase, user_id: str, scenario_id: int) ->
         )
 
     scenario_data = await run_sync(
-        supabase.table("scenarios").select("id, title, nurse_card").eq("id", scenario_id).execute
+        supabase.table("scenarios").select("id, title, setting, nurse_card").eq("id", scenario_id).execute
     )
     if not scenario_data.data:
         raise HTTPException(status_code=404, detail="Scenario not found")
     return scenario_data.data[0]
 
 
-async def _score_and_save(supabase, user_id: str, scenario_id: int, content: str, nurse_card: dict, scenario_title: str) -> dict:
+async def _score_and_save(supabase, user_id: str, scenario_id: int, content: str, nurse_card: dict, scenario_title: str, case_notes: str = "") -> dict:
     """Score writing content and persist the submission. Shared by /submit and /submit-image."""
     feedback = await score_writing(
         content=content,
         nurse_card=nurse_card,
         scenario_title=scenario_title,
+        case_notes=case_notes,
         supabase=supabase,
     )
 
@@ -85,6 +96,13 @@ async def _score_and_save(supabase, user_id: str, scenario_id: int, content: str
             "feedback": json.dumps(feedback),
         }).execute
     )
+
+    criterion_scores = {
+        f"writing:{criterion}": data["score"]
+        for criterion, data in feedback.get("scores", {}).items()
+        if isinstance(data, dict) and isinstance(data.get("score"), (int, float))
+    }
+    await record_skill_observations(user_id, criterion_scores)
 
     return feedback
 
@@ -126,6 +144,7 @@ async def submit_writing(
     feedback = await _score_and_save(
         supabase, current_user.id, request.scenario_id,
         request.content, scenario.get("nurse_card", {}), scenario.get("title", ""),
+        case_notes=scenario.get("setting", ""),
     )
 
     return {"success": True, "feedback": feedback}
@@ -201,6 +220,92 @@ async def submit_writing_image(
     feedback = await _score_and_save(
         supabase, current_user.id, request.scenario_id,
         extracted_text, nurse_card, scenario.get("title", ""),
+        case_notes=scenario.get("setting", ""),
     )
 
     return {"success": True, "extracted_text": extracted_text, "feedback": feedback}
+
+
+# ── ADMIN: PDF EXTRACTION ────────────────────────────────────────────
+# Turn a real OET Writing task PDF into an editable scenario draft. Mirrors the
+# reading module's extract->review->save pattern; nothing is saved here — the
+# admin reviews the draft and POSTs it to /admin/scenarios.
+
+WRITING_EXTRACT_PROMPT = """You are an OET Writing content specialist. The attached PDF is a real OET Writing sub-test task (case notes + a writing task). Extract exactly what is written — do NOT invent, paraphrase or expand content.
+
+Return ONLY this JSON:
+{
+  "title": "<short scenario title, e.g. 'Discharge Letter - Pneumonia to Community Nurse'>",
+  "difficulty": "<easy | medium | hard>",
+  "case_notes": "<the FULL case notes exactly as written, preserving every section label (Patient details, Past medical history, Social background, Medical progress, Nursing management, Discharge plan, etc.) and line structure. Keep the original note form and abbreviations — students read this as the source material. Use plain text with newlines between sections.>",
+  "task": "<the writing task instruction in full: the recipient (name, role, address) and what letter to write, ending with the word-count guidance, e.g. '...The body of the letter should be approximately 180-200 words.'>",
+  "key_points": ["<5 concise key points the letter must cover to continue care, derived from the case notes' management/discharge plan and task — used for scoring, not shown to the student>"]
+}
+
+If the PDF is not an OET Writing task, return {"error": "No OET writing task found in this PDF"}."""
+
+
+async def _extract_writing_from_pdf(pdf_base64: str) -> Dict[str, Any]:
+    """Send the PDF to OpenRouter (mistral-ocr file-parser reads it as rendered
+    pages — real OET PDFs are watermark-stamped and the raw text engine choked on
+    them) and get back a structured, editable scenario draft."""
+    import httpx
+
+    key = settings.OPENROUTER_API_KEY
+    if not key:
+        raise HTTPException(status_code=502, detail="AI provider not configured")
+
+    payload = {
+        "model": "google/gemini-2.5-flash",
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": WRITING_EXTRACT_PROMPT},
+            {"type": "file", "file": {
+                "filename": "writing.pdf",
+                "file_data": f"data:application/pdf;base64,{pdf_base64}",
+            }},
+        ]}],
+        "plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}],
+        "temperature": 0.2,
+        "max_tokens": 8000,
+        "response_format": {"type": "json_object"},
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+    except httpx.TimeoutException:
+        logger.error("[writing extract] OpenRouter request timed out")
+        raise HTTPException(status_code=504, detail="Extraction took too long. Try again.")
+    if resp.status_code != 200:
+        logger.error("[writing extract] OpenRouter HTTP %s: %s", resp.status_code, resp.text[:300])
+        raise HTTPException(status_code=502, detail="AI extraction failed. Try again.")
+
+    content = resp.json()["choices"][0]["message"]["content"]
+    parsed = _try_parse_json("writing-extract", content)
+    if parsed is None:
+        logger.warning("[writing extract] JSON parse failed, raw head=%s", content[:1000])
+        raise HTTPException(status_code=502, detail="Could not read that PDF. Try a clearer scan or a different file.")
+    if parsed.get("error"):
+        raise HTTPException(status_code=422, detail=parsed["error"])
+    return parsed
+
+
+@router.post("/admin/extract")
+async def extract_writing(file: UploadFile = File(...), _admin=Depends(require_admin)):
+    """Upload an OET Writing task PDF, return an editable scenario draft (title,
+    difficulty, case notes, task, key points). Admin reviews then POSTs /admin/scenarios."""
+    if _extract_rate_limiter.is_rate_limited("admin"):
+        raise HTTPException(status_code=429, detail="Too many extractions — please slow down.")
+    if file.content_type not in ("application/pdf", "application/x-pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    contents = await file.read()
+    if len(contents) > MAX_PDF_BYTES:
+        raise HTTPException(status_code=400, detail="PDF must be under 10MB")
+
+    pdf_base64 = base64.b64encode(contents).decode("utf-8")
+    return await _extract_writing_from_pdf(pdf_base64)
