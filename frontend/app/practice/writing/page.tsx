@@ -73,6 +73,22 @@ export default function WritingPracticePage() {
   const [writingText, setWritingText] = useState('')
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [inputMode, setInputMode] = useState<'type' | 'upload'>('type')
+  const [photos, setPhotos] = useState<{ file: File; url: string }[]>([])
+  const [ocrLoading, setOcrLoading] = useState(false)
+  const [ocrDone, setOcrDone] = useState(false)
+
+  const clearPhotos = () => {
+    photos.forEach((p) => URL.revokeObjectURL(p.url))
+    setPhotos([])
+    setOcrDone(false)
+  }
+
+  const resetInput = () => {
+    setWritingText('')
+    setInputMode('type')
+    clearPhotos()
+  }
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -99,16 +115,55 @@ export default function WritingPracticePage() {
 
   const handleSelectScenario = (scenario: Scenario) => {
     setSelectedScenario(scenario)
-    setWritingText('')
+    resetInput()
     setFeedback(null)
     setPhase('write')
   }
 
   const handleBackToScenarios = () => {
     setSelectedScenario(null)
-    setWritingText('')
+    resetInput()
     setFeedback(null)
     setPhase('select')
+  }
+
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '')
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+
+  const addPhotos = (files: FileList | null) => {
+    if (!files) return
+    const picked = Array.from(files).slice(0, 3 - photos.length)
+    setPhotos((prev) => [...prev, ...picked.map((file) => ({ file, url: URL.createObjectURL(file) }))])
+    setOcrDone(false)
+  }
+
+  const handleReadPhotos = async () => {
+    if (!photos.length) {
+      toast.error('Add a photo of your letter first')
+      return
+    }
+    setOcrLoading(true)
+    try {
+      const images = await Promise.all(photos.map((p) => fileToBase64(p.file)))
+      const res = await api.post('/writing/ocr', { images })
+      setWritingText(res.data.text || '')
+      setOcrDone(true)
+      toast.success('Read your handwriting — check it for mistakes below')
+    } catch (error: any) {
+      const errData = error.response?.data?.detail
+      if (error.response?.status === 403 && errData?.upgrade_required) {
+        toast.error('Uploading handwriting requires Pro or Elite — please upgrade.')
+      } else {
+        toast.error(typeof errData === 'string' ? errData : 'Could not read the photos — try clearer, well-lit images.')
+      }
+    } finally {
+      setOcrLoading(false)
+    }
   }
 
   const handleSubmit = async () => {
@@ -262,15 +317,81 @@ export default function WritingPracticePage() {
               </Card>
 
               <Card className="p-6">
+                {/* Input mode toggle */}
+                <div className="inline-flex rounded-lg border border-gray-200 p-1 mb-4">
+                  <button
+                    onClick={() => setInputMode('type')}
+                    className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${inputMode === 'type' ? 'bg-primary text-white' : 'text-gray-600 hover:text-gray-900'}`}
+                  >
+                    Type
+                  </button>
+                  <button
+                    onClick={() => setInputMode('upload')}
+                    className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${inputMode === 'upload' ? 'bg-primary text-white' : 'text-gray-600 hover:text-gray-900'}`}
+                  >
+                    Upload handwritten
+                  </button>
+                </div>
+
+                {/* Upload panel */}
+                {inputMode === 'upload' && (
+                  <div className="mb-4 rounded-xl border border-dashed border-gray-300 p-4">
+                    <div className="flex flex-wrap gap-3 mb-3">
+                      {photos.map((p, i) => (
+                        <div key={i} className="relative">
+                          <img src={p.url} alt={`Page ${i + 1}`} className="h-24 w-20 object-cover rounded-lg border" />
+                          <button
+                            onClick={() => setPhotos((prev) => { URL.revokeObjectURL(prev[i].url); return prev.filter((_, j) => j !== i) })}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center"
+                            aria-label={`Remove page ${i + 1}`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      {photos.length < 3 && (
+                        <label className="h-24 w-20 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 cursor-pointer hover:border-primary hover:text-primary text-xs text-center">
+                          + Photo
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => { addPhotos(e.target.files); e.target.value = '' }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400 mb-3">Photograph your handwritten letter — up to 3 pages, clear and well-lit.</p>
+                    <div className="flex gap-2">
+                      <Button onClick={handleReadPhotos} disabled={ocrLoading || photos.length === 0} className="flex-1">
+                        {ocrLoading ? 'Reading…' : `Read my handwriting${photos.length ? ` (${photos.length})` : ''}`}
+                      </Button>
+                      {photos.length > 0 && (
+                        <Button variant="outline" onClick={clearPhotos} disabled={ocrLoading}>
+                          Retake
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {ocrDone && inputMode === 'upload' && (
+                  <div className="mb-2 text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                    ✎ Read from your photos. Check it for mistakes and fix any misreads before submitting. If it looks wrong, tap <strong>Retake</strong> and photograph it again.
+                  </div>
+                )}
+
                 <label htmlFor="writing" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Your Letter
+                  {inputMode === 'upload' ? 'Your Letter (read from photos — edit as needed)' : 'Your Letter'}
                 </label>
                 <textarea
                   id="writing"
                   value={writingText}
                   onChange={(e) => setWritingText(e.target.value)}
                   className="w-full h-80 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-100 focus:border-emerald-500 outline-none resize-y leading-relaxed"
-                  placeholder="Dear ...,&#10;&#10;Write your letter here."
+                  placeholder={inputMode === 'upload' ? 'Your letter text will appear here after reading your photos.' : 'Dear ...,\n\nWrite your letter here.'}
                 />
                 <div className={`text-sm mt-2 ${wordTone}`}>
                   {words} words {words === 0 ? '' : words < WORD_MIN ? '— aim for 180–200' : words > 200 ? '— a little long, aim for 180–200' : '✓'}

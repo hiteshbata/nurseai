@@ -41,13 +41,16 @@ class WritingSubmitRequest(BaseModel):
     content: str
 
 
-class WritingImageSubmitRequest(BaseModel):
-    scenario_id: int
-    image_base64: str
+class WritingOcrRequest(BaseModel):
+    # One base64 JPEG/PNG per page — a handwritten letter can run onto a 2nd page.
+    images: List[str]
 
 
-async def _require_writing_scenario(supabase, user_id: str, scenario_id: int) -> dict:
-    """Plan-gate writing access and fetch the scenario. Shared by /submit and /submit-image."""
+MAX_OCR_PAGES = 3
+
+
+async def _require_writing_plan(supabase, user_id: str) -> str:
+    """Plan-gate writing access (Pro/Elite). Shared by scenario submit and OCR."""
     profile = await run_sync(
         supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", user_id).execute
     )
@@ -61,7 +64,12 @@ async def _require_writing_scenario(supabase, user_id: str, scenario_id: int) ->
                 "current_plan": plan,
             },
         )
+    return plan
 
+
+async def _require_writing_scenario(supabase, user_id: str, scenario_id: int) -> dict:
+    """Plan-gate writing access and fetch the scenario. Shared by the submit path."""
+    await _require_writing_plan(supabase, user_id)
     scenario_data = await run_sync(
         supabase.table("scenarios").select("id, title, setting, nurse_card").eq("id", scenario_id).execute
     )
@@ -71,7 +79,8 @@ async def _require_writing_scenario(supabase, user_id: str, scenario_id: int) ->
 
 
 async def _score_and_save(supabase, user_id: str, scenario_id: int, content: str, nurse_card: dict, scenario_title: str, case_notes: str = "") -> dict:
-    """Score writing content and persist the submission. Shared by /submit and /submit-image."""
+    """Score writing content and persist the submission. Used by /submit (typed, or
+    text confirmed after photo OCR)."""
     feedback = await score_writing(
         content=content,
         nurse_card=nurse_card,
@@ -150,80 +159,84 @@ async def submit_writing(
     return {"success": True, "feedback": feedback}
 
 
-@router.post("/submit-image")
-async def submit_writing_image(
-    request: WritingImageSubmitRequest,
-    current_user: UserInfo = Depends(get_current_user),
-):
-    """Submit a photo of handwritten letter - uses Gemini Vision."""
+async def _ocr_images(images: List[str]) -> str:
+    """OCR each page image (base64) with vision models and return the combined
+    text. OCR only — the student reviews/edits the result before it is scored,
+    so a misread never silently costs them Language/spelling marks."""
     import httpx
-    from app.core.config import settings
 
-    if _submit_image_rate_limiter.is_rate_limited(current_user.id):
-        raise HTTPException(status_code=429, detail="Too many submissions — please slow down.")
-
-    if len(request.image_base64) > MAX_IMAGE_BASE64_CHARS:
-        raise HTTPException(status_code=400, detail="Image must be under 5MB")
-
-    try:
-        decoded_image = base64.b64decode(request.image_base64, validate=True)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid image data")
-    if len(decoded_image) > MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=400, detail="Image must be under 5MB")
-
-    supabase = get_supabase()
-    scenario = await _require_writing_scenario(supabase, current_user.id, request.scenario_id)
-    nurse_card = scenario.get("nurse_card", {})
-
-    # Use Gemini Vision to read the handwritten letter
-    extracted_text = None
-    last_error = ""
     models_to_try = [
         "google/gemma-4-31b-it:free",
         "google/gemini-2.5-flash",
     ]
+    pages: List[str] = []
     async with httpx.AsyncClient(timeout=60.0) as client:
-        for model in models_to_try:
-            try:
-                response = await client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": model,
-                        "messages": [{
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": "Read this handwritten nursing letter. Extract and return ONLY the text content. Preserve structure."},
-                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{request.image_base64}"}}
-                            ],
-                        }],
-                        "max_tokens": 1000,
-                    },
-                )
-                if response.status_code == 200:
-                    result = response.json()
-                    extracted_text = result["choices"][0]["message"]["content"]
-                    break
-                else:
+        for idx, img_b64 in enumerate(images):
+            extracted = None
+            last_error = ""
+            for model in models_to_try:
+                try:
+                    response = await client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": model,
+                            "messages": [{
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": "Read this handwritten nursing letter. Extract and return ONLY the text content, exactly as written. Preserve line breaks and paragraphs. Do not correct spelling or grammar."},
+                                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+                                ],
+                            }],
+                            "max_tokens": 1500,
+                        },
+                    )
+                    if response.status_code == 200:
+                        extracted = response.json()["choices"][0]["message"]["content"]
+                        break
                     last_error = f"{model} returned HTTP {response.status_code}"
-            except Exception as exc:
-                last_error = f"{model} failed: {str(exc)}"
-                continue
-    if not extracted_text:
-        raise HTTPException(status_code=500, detail=f"Image OCR failed: {last_error}")
+                except Exception as exc:
+                    last_error = f"{model} failed: {str(exc)}"
+                    continue
+            if not extracted:
+                raise HTTPException(status_code=502, detail=f"Could not read page {idx + 1}. Try a clearer, well-lit photo.")
+            pages.append(extracted.strip())
+    return "\n\n".join(pages)
 
-    # Score the extracted text
-    feedback = await _score_and_save(
-        supabase, current_user.id, request.scenario_id,
-        extracted_text, nurse_card, scenario.get("title", ""),
-        case_notes=scenario.get("setting", ""),
-    )
 
-    return {"success": True, "extracted_text": extracted_text, "feedback": feedback}
+@router.post("/ocr")
+async def ocr_writing_images(
+    request: WritingOcrRequest,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Read one or more photos of a handwritten letter and return the combined
+    text for the student to review and edit before submitting for scoring."""
+    if _submit_image_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many photo reads — please slow down.")
+
+    if not request.images:
+        raise HTTPException(status_code=400, detail="No photo provided")
+    if len(request.images) > MAX_OCR_PAGES:
+        raise HTTPException(status_code=400, detail=f"Up to {MAX_OCR_PAGES} photos per letter")
+
+    for img_b64 in request.images:
+        if len(img_b64) > MAX_IMAGE_BASE64_CHARS:
+            raise HTTPException(status_code=400, detail="Each photo must be under 5MB")
+        try:
+            decoded = base64.b64decode(img_b64, validate=True)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid image data")
+        if len(decoded) > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=400, detail="Each photo must be under 5MB")
+
+    supabase = get_supabase()
+    await _require_writing_plan(supabase, current_user.id)
+
+    text = await _ocr_images(request.images)
+    return {"success": True, "text": text}
 
 
 # ── ADMIN: PDF EXTRACTION ────────────────────────────────────────────
