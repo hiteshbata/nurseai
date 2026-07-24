@@ -12,6 +12,7 @@ from app.services.ai_scoring import score_writing, _try_parse_json
 from app.services.plan_gating import has_writing_access, get_plan_from_profile
 from app.services.skill_graph import record_skill_observations
 from app.core.redis_client import get_redis
+import asyncio
 import base64
 import json
 import logging
@@ -169,51 +170,56 @@ async def submit_writing(
     return {"success": True, "feedback": feedback}
 
 
+async def _read_ocr_page(client, idx: int, img_b64: str) -> str:
+    """OCR one page, trying each vision model in turn. Raises HTTPException(502)
+    naming the page if every model fails, so the caller surfaces which photo to
+    re-take."""
+    models_to_try = [
+        "anthropic/claude-sonnet-5",
+        "google/gemini-2.5-flash",
+    ]
+    for model in models_to_try:
+        try:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Read this handwritten nursing letter. Extract and return ONLY the text content, exactly as written. Preserve line breaks and paragraphs. Do not correct spelling or grammar."},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+                        ],
+                    }],
+                    "max_tokens": 1500,
+                },
+            )
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"].strip()
+        except Exception:
+            continue
+    raise HTTPException(status_code=502, detail=f"Could not read page {idx + 1}. Try a clearer, well-lit photo.")
+
+
 async def _ocr_images(images: List[str]) -> str:
     """OCR each page image (base64) with vision models and return the combined
     text. OCR only — the student reviews/edits the result before it is scored,
-    so a misread never silently costs them Language/spelling marks."""
+    so a misread never silently costs them Language/spelling marks.
+
+    Pages are read concurrently (gather preserves order), so wall-time is one
+    page, not the sum -- a slow/hung provider on page 1 no longer stacks on top
+    of pages 2-3. 30s per model call (was 60): a hung provider fails fast to the
+    fallback instead of eating a full minute before model 2 is even tried."""
     import httpx
 
-    models_to_try = [
-        "google/gemma-4-31b-it:free",
-        "google/gemini-2.5-flash",
-    ]
-    pages: List[str] = []
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        for idx, img_b64 in enumerate(images):
-            extracted = None
-            last_error = ""
-            for model in models_to_try:
-                try:
-                    response = await client.post(
-                        "https://openrouter.ai/api/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": model,
-                            "messages": [{
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": "Read this handwritten nursing letter. Extract and return ONLY the text content, exactly as written. Preserve line breaks and paragraphs. Do not correct spelling or grammar."},
-                                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
-                                ],
-                            }],
-                            "max_tokens": 1500,
-                        },
-                    )
-                    if response.status_code == 200:
-                        extracted = response.json()["choices"][0]["message"]["content"]
-                        break
-                    last_error = f"{model} returned HTTP {response.status_code}"
-                except Exception as exc:
-                    last_error = f"{model} failed: {str(exc)}"
-                    continue
-            if not extracted:
-                raise HTTPException(status_code=502, detail=f"Could not read page {idx + 1}. Try a clearer, well-lit photo.")
-            pages.append(extracted.strip())
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        pages = await asyncio.gather(*(
+            _read_ocr_page(client, idx, img_b64) for idx, img_b64 in enumerate(images)
+        ))
     return "\n\n".join(pages)
 
 
