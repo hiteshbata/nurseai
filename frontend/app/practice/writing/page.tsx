@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { QRCodeSVG } from 'qrcode.react'
 import api from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
 import toast from 'react-hot-toast'
@@ -77,6 +78,18 @@ export default function WritingPracticePage() {
   const [photos, setPhotos] = useState<{ file: File; url: string }[]>([])
   const [ocrLoading, setOcrLoading] = useState(false)
   const [ocrDone, setOcrDone] = useState(false)
+  const [phoneUrl, setPhoneUrl] = useState<string | null>(null)
+  const phonePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const stopPhonePoll = () => {
+    if (phonePollRef.current) {
+      clearInterval(phonePollRef.current)
+      phonePollRef.current = null
+    }
+  }
+
+  // Clean up the polling interval if the student leaves the page mid-handoff.
+  useEffect(() => stopPhonePoll, [])
 
   const clearPhotos = () => {
     photos.forEach((p) => URL.revokeObjectURL(p.url))
@@ -88,6 +101,8 @@ export default function WritingPracticePage() {
     setWritingText('')
     setInputMode('type')
     clearPhotos()
+    stopPhonePoll()
+    setPhoneUrl(null)
   }
 
   useEffect(() => {
@@ -164,6 +179,46 @@ export default function WritingPracticePage() {
     } finally {
       setOcrLoading(false)
     }
+  }
+
+  const startPhoneSession = async () => {
+    try {
+      const res = await api.post('/writing/phone-session', {})
+      const token = res.data.token
+      setPhoneUrl(`${window.location.origin}/practice/writing/phone-upload/${token}`)
+
+      stopPhonePoll()
+      phonePollRef.current = setInterval(async () => {
+        try {
+          const poll = await api.get(`/writing/phone-session/${token}`)
+          if (poll.data.status === 'done') {
+            stopPhonePoll()
+            setWritingText(poll.data.text || '')
+            setOcrDone(true)
+            setPhoneUrl(null)
+            toast.success('Got your letter from your phone — check it for mistakes below')
+          } else if (poll.data.status === 'expired') {
+            stopPhonePoll()
+            setPhoneUrl(null)
+            toast.error('The phone link expired — please try again.')
+          }
+        } catch {
+          // transient poll error — keep trying until the student closes it
+        }
+      }, 3000)
+    } catch (error: any) {
+      const errData = error.response?.data?.detail
+      if (error.response?.status === 403 && errData?.upgrade_required) {
+        toast.error('Uploading handwriting requires Pro or Elite — please upgrade.')
+      } else {
+        toast.error('Could not start the phone link — please try again.')
+      }
+    }
+  }
+
+  const closePhoneSession = () => {
+    stopPhonePoll()
+    setPhoneUrl(null)
   }
 
   const handleSubmit = async () => {
@@ -374,6 +429,11 @@ export default function WritingPracticePage() {
                         </Button>
                       )}
                     </div>
+                    <div className="mt-3 pt-3 border-t border-gray-100 text-center">
+                      <button onClick={startPhoneSession} className="text-sm font-semibold text-primary hover:underline">
+                        📱 On a laptop? Use your phone instead
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -403,6 +463,25 @@ export default function WritingPracticePage() {
               </Card>
             </div>
           </div>
+
+          {phoneUrl && (
+            <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={closePhoneSession}>
+              <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
+                <h3 className="text-xl font-bold text-gray-900 mb-1">Scan with your phone</h3>
+                <p className="text-sm text-gray-500 mb-6">Open your phone&apos;s camera and point it at this code to photograph your letter.</p>
+                <div className="flex justify-center mb-6">
+                  <div className="p-4 bg-white rounded-xl border">
+                    <QRCodeSVG value={phoneUrl} size={200} />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 mb-6 flex items-center justify-center gap-2">
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Waiting for your phone — the text will appear here automatically.
+                </p>
+                <Button variant="outline" onClick={closePhoneSession} className="w-full">Cancel</Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )

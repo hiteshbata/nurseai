@@ -11,9 +11,12 @@ from app.core.feature_flags import require_feature
 from app.services.ai_scoring import score_writing, _try_parse_json
 from app.services.plan_gating import has_writing_access, get_plan_from_profile
 from app.services.skill_graph import record_skill_observations
+from app.core.redis_client import get_redis
 import base64
 import json
 import logging
+import secrets
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,11 @@ MAX_IMAGE_BASE64_CHARS = MAX_IMAGE_BYTES * 4 // 3 + 4
 
 MAX_PDF_BYTES = 10 * 1024 * 1024
 
+# ponytail: TEMP — writing is normally Pro/Elite only. Set to True to re-lock
+# before launch. Off right now so the upload/photo/scoring flow can be tested
+# on any account. This is the single switch — flip it back and the gate returns.
+WRITING_PLAN_GATE_ENABLED = False
+
 
 class WritingSubmitRequest(BaseModel):
     scenario_id: int
@@ -51,6 +59,8 @@ MAX_OCR_PAGES = 3
 
 async def _require_writing_plan(supabase, user_id: str) -> str:
     """Plan-gate writing access (Pro/Elite). Shared by scenario submit and OCR."""
+    if not WRITING_PLAN_GATE_ENABLED:
+        return ""  # gate temporarily off (see WRITING_PLAN_GATE_ENABLED)
     profile = await run_sync(
         supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", user_id).execute
     )
@@ -237,6 +247,92 @@ async def ocr_writing_images(
 
     text = await _ocr_images(request.images)
     return {"success": True, "text": text}
+
+
+# ── PHONE HANDOFF (scan QR on laptop, upload photos from phone) ───────
+# The student practices on a laptop but their letter is on their phone. The
+# laptop creates a short-lived session, shows a QR; the phone opens it, uploads
+# photos, we OCR them, and the laptop polls for the resulting text. Only the
+# small OCR'd text is stored (keyed by an unguessable token) -- never the image
+# bytes. Redis in prod so it works across workers; an in-process dict falls back
+# for single-worker local dev.
+
+_PHONE_SESSION_TTL = 900  # 15 minutes
+_phone_sessions_fallback: Dict[str, Dict[str, Any]] = {}
+
+
+def _phone_store_set(token: str, data: Dict[str, Any]) -> None:
+    client = get_redis()
+    if client:
+        client.setex(f"wr_upload:{token}", _PHONE_SESSION_TTL, json.dumps(data))
+    else:
+        _phone_sessions_fallback[token] = {**data, "_exp": time.time() + _PHONE_SESSION_TTL}
+
+
+def _phone_store_get(token: str) -> Optional[Dict[str, Any]]:
+    client = get_redis()
+    if client:
+        raw = client.get(f"wr_upload:{token}")
+        return json.loads(raw) if raw else None
+    entry = _phone_sessions_fallback.get(token)
+    if not entry:
+        return None
+    if entry.get("_exp", 0) < time.time():
+        _phone_sessions_fallback.pop(token, None)
+        return None
+    return {k: v for k, v in entry.items() if k != "_exp"}
+
+
+@router.post("/phone-session")
+async def create_phone_session(current_user: UserInfo = Depends(get_current_user)):
+    """Laptop: start a phone-upload session. Returns a token the laptop turns into
+    a QR code / link for the phone to open."""
+    supabase = get_supabase()
+    await _require_writing_plan(supabase, current_user.id)
+    token = secrets.token_urlsafe(24)
+    _phone_store_set(token, {"user_id": current_user.id, "status": "waiting", "text": ""})
+    return {"token": token}
+
+
+@router.get("/phone-session/{token}")
+async def poll_phone_session(token: str, current_user: UserInfo = Depends(get_current_user)):
+    """Laptop: poll for the text the phone uploaded."""
+    entry = _phone_store_get(token)
+    if not entry:
+        return {"status": "expired", "text": ""}
+    if entry.get("user_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your upload session")
+    return {"status": entry.get("status", "waiting"), "text": entry.get("text", "")}
+
+
+@router.post("/phone-upload/{token}")
+async def phone_upload(token: str, request: WritingOcrRequest):
+    """Phone: upload photos for an existing session (the token is the capability —
+    no login needed on the phone). We OCR and store only the text for the laptop."""
+    if _submit_image_rate_limiter.is_rate_limited(f"phone:{token}"):
+        raise HTTPException(status_code=429, detail="Too many uploads — please slow down.")
+
+    entry = _phone_store_get(token)
+    if not entry:
+        raise HTTPException(status_code=404, detail="This link has expired. Start again on your computer.")
+
+    if not request.images:
+        raise HTTPException(status_code=400, detail="No photo provided")
+    if len(request.images) > MAX_OCR_PAGES:
+        raise HTTPException(status_code=400, detail=f"Up to {MAX_OCR_PAGES} photos per letter")
+    for img_b64 in request.images:
+        if len(img_b64) > MAX_IMAGE_BASE64_CHARS:
+            raise HTTPException(status_code=400, detail="Each photo must be under 5MB")
+        try:
+            decoded = base64.b64decode(img_b64, validate=True)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid image data")
+        if len(decoded) > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=400, detail="Each photo must be under 5MB")
+
+    text = await _ocr_images(request.images)
+    _phone_store_set(token, {**entry, "status": "done", "text": text})
+    return {"success": True}
 
 
 # ── ADMIN: PDF EXTRACTION ────────────────────────────────────────────
