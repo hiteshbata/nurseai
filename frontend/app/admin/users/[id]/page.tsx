@@ -32,6 +32,25 @@ interface UserDetail {
   moderation: ModerationStatus
 }
 
+interface Transcript {
+  id: number
+  session_usage_id: number
+  scenario_id: number | null
+  transcript: { role: string; text: string }[]
+  created_at: string
+}
+
+interface Payment {
+  id: string
+  order_id: string | null
+  payment_id: string | null
+  plan_id: string
+  amount: number
+  currency: string
+  status: string
+  created_at: string
+}
+
 export default function AdminUserDetailPage() {
   const router = useRouter()
   const params = useParams()
@@ -45,11 +64,21 @@ export default function AdminUserDetailPage() {
   const [planChoice, setPlanChoice] = useState('pro')
   const [periodDays, setPeriodDays] = useState(30)
   const [savingPlan, setSavingPlan] = useState(false)
+  const [showBonusForm, setShowBonusForm] = useState(false)
+  const [bonusAmount, setBonusAmount] = useState(1)
+  const [bonusReason, setBonusReason] = useState('')
+  const [savingBonus, setSavingBonus] = useState(false)
   const [moderating, setModerating] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [payments, setPayments] = useState<Payment[]>([])
+  const [cancelling, setCancelling] = useState(false)
+  const [transcripts, setTranscripts] = useState<Transcript[]>([])
+  const [openTranscriptId, setOpenTranscriptId] = useState<number | null>(null)
 
   useEffect(() => {
     fetchUser()
+    fetchPayments()
+    fetchTranscripts()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
@@ -69,6 +98,40 @@ export default function AdminUserDetailPage() {
       console.error('Failed to fetch user:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchPayments = async () => {
+    try {
+      const response = await api.get(`/admin/users/${userId}/payments`)
+      setPayments(response.data.payments)
+    } catch (error) {
+      console.error('Failed to fetch payment history:', error)
+    }
+  }
+
+  const fetchTranscripts = async () => {
+    try {
+      const response = await api.get(`/admin/users/${userId}/transcripts`)
+      setTranscripts(response.data.transcripts)
+    } catch (error) {
+      console.error('Failed to fetch transcripts:', error)
+    }
+  }
+
+  const handleCancelSubscription = async () => {
+    if (!user) return
+    if (!confirm(`Turn off auto-renew for ${user.name || user.email}? Their plan stays active until it expires.`)) return
+
+    setCancelling(true)
+    try {
+      await api.post(`/admin/users/${user.user_id}/subscription/cancel`)
+      await fetchUser()
+    } catch (error: any) {
+      console.error('Failed to cancel subscription:', error)
+      alert(error.response?.data?.detail || 'Failed to cancel subscription.')
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -106,6 +169,31 @@ export default function AdminUserDetailPage() {
       alert(error.response?.data?.detail || 'Failed to change plan.')
     } finally {
       setSavingPlan(false)
+    }
+  }
+
+  const handleGrantBonus = async () => {
+    if (!user) return
+    if (!bonusReason.trim()) {
+      alert('A reason is required.')
+      return
+    }
+    if (!confirm(`Grant ${bonusAmount} bonus session(s) to ${user.name || user.email}?`)) return
+
+    setSavingBonus(true)
+    try {
+      await api.post(`/admin/users/${user.user_id}/bonus-sessions`, {
+        amount: bonusAmount,
+        reason: bonusReason,
+      })
+      await fetchUser()
+      setShowBonusForm(false)
+      setBonusReason('')
+    } catch (error: any) {
+      console.error('Failed to grant bonus sessions:', error)
+      alert(error.response?.data?.detail || 'Failed to grant bonus sessions.')
+    } finally {
+      setSavingBonus(false)
     }
   }
 
@@ -251,8 +339,58 @@ export default function AdminUserDetailPage() {
               <Row label="Auto-renew" value={p.auto_renew_enabled ? 'On' : 'Off'} />
               <Row label="Sessions used this month" value={p.sessions_used_this_month ?? '—'} />
               <Row label="Sessions reset" value={p.sessions_reset_date ? new Date(p.sessions_reset_date).toLocaleDateString() : '—'} />
+              <Row label="Bonus sessions" value={p.bonus_sessions ?? 0} />
               <Row label="Razorpay subscription" value={p.razorpay_subscription_id || '—'} mono />
             </dl>
+
+            <button
+              onClick={() => setShowBonusForm(!showBonusForm)}
+              className="mt-3 text-sm text-blue-600 hover:underline"
+            >
+              {showBonusForm ? 'Cancel' : 'Grant bonus sessions'}
+            </button>
+
+            {showBonusForm && (
+              <div className="mt-4 pt-4 border-t space-y-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Sessions to grant</label>
+                  <input
+                    type="number"
+                    value={bonusAmount}
+                    onChange={(e) => setBonusAmount(Number(e.target.value))}
+                    className="w-full border rounded px-3 py-2 text-sm"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Use a negative number to correct an over-grant.</p>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Reason</label>
+                  <input
+                    type="text"
+                    value={bonusReason}
+                    onChange={(e) => setBonusReason(e.target.value)}
+                    placeholder="e.g. valid bug report — duplicate audio bug"
+                    className="w-full border rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <button
+                  onClick={handleGrantBonus}
+                  disabled={savingBonus}
+                  className="w-full py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                >
+                  {savingBonus ? 'Saving...' : 'Grant'}
+                </button>
+              </div>
+            )}
+
+            {p.razorpay_subscription_id && p.auto_renew_enabled && (
+              <button
+                onClick={handleCancelSubscription}
+                disabled={cancelling}
+                className="mt-3 text-sm text-red-600 hover:underline disabled:opacity-50"
+              >
+                {cancelling ? 'Cancelling...' : 'Cancel subscription (turn off auto-renew)'}
+              </button>
+            )}
 
             {showPlanForm && (
               <div className="mt-4 pt-4 border-t space-y-3">
@@ -338,6 +476,84 @@ export default function AdminUserDetailPage() {
           </table>
           {user.recent_submissions.length === 0 && (
             <div className="p-8 text-center text-gray-500">No practice sessions yet.</div>
+          )}
+        </div>
+
+        {/* Voice session transcripts */}
+        <div className="bg-white rounded-lg shadow overflow-hidden mt-6">
+          <h2 className="text-lg font-bold p-6 pb-0">Voice Session Transcripts</h2>
+          <p className="text-xs text-gray-400 px-6 pt-1">Retained 90 days, admin-only. For background-check/account-safety review.</p>
+          <div className="divide-y mt-4">
+            {transcripts.map((t) => (
+              <div key={t.id} className="p-6">
+                <button
+                  onClick={() => setOpenTranscriptId(openTranscriptId === t.id ? null : t.id)}
+                  className="w-full flex justify-between items-center text-left"
+                >
+                  <span className="text-sm">
+                    Scenario {t.scenario_id ?? '—'} · {t.transcript.length} turns
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    {new Date(t.created_at).toLocaleString()} {openTranscriptId === t.id ? '▲' : '▼'}
+                  </span>
+                </button>
+                {openTranscriptId === t.id && (
+                  <div className="mt-4 space-y-2 bg-gray-50 rounded p-4 max-h-96 overflow-y-auto">
+                    {t.transcript.map((turn, i) => (
+                      <p key={i} className="text-sm">
+                        <span className={`font-semibold capitalize ${turn.role === 'nurse' ? 'text-blue-700' : 'text-gray-700'}`}>
+                          {turn.role}:
+                        </span>{' '}
+                        {turn.text}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {transcripts.length === 0 && (
+            <div className="p-8 text-center text-gray-500">No voice session transcripts yet.</div>
+          )}
+        </div>
+
+        {/* Payment history */}
+        <div className="bg-white rounded-lg shadow overflow-hidden mt-6">
+          <h2 className="text-lg font-bold p-6 pb-0">Payment History</h2>
+          <table className="w-full mt-4">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="text-left py-3 px-6">Date</th>
+                <th className="text-left py-3 px-6">Plan</th>
+                <th className="text-left py-3 px-6">Amount</th>
+                <th className="text-left py-3 px-6">Status</th>
+                <th className="text-left py-3 px-6">Payment ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments.map((pay) => (
+                <tr key={pay.id} className="border-t">
+                  <td className="py-3 px-6 text-sm text-gray-500 whitespace-nowrap">
+                    {new Date(pay.created_at).toLocaleString()}
+                  </td>
+                  <td className="py-3 px-6 capitalize">{pay.plan_id}</td>
+                  <td className="py-3 px-6">
+                    {(pay.amount / 100).toLocaleString(undefined, { style: 'currency', currency: pay.currency || 'INR' })}
+                  </td>
+                  <td className="py-3 px-6">
+                    <span className={`px-2 py-1 rounded text-xs font-semibold capitalize ${
+                      pay.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {pay.status}
+                    </span>
+                  </td>
+                  <td className="py-3 px-6 text-xs font-mono text-gray-400">{pay.payment_id || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {payments.length === 0 && (
+            <div className="p-8 text-center text-gray-500">No payments recorded.</div>
           )}
         </div>
 

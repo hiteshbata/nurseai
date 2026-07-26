@@ -4,11 +4,13 @@ import { useState, useEffect, useRef } from 'react'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
+import { compressImageToBase64 } from '@/lib/imageCompress'
 import api from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { getMockId, finishMockSection } from '@/lib/mock'
 
 interface Scenario {
   id: number
@@ -49,9 +51,19 @@ const CRITERIA: { key: string; label: string; max: number }[] = [
 
 const WORD_MIN = 120
 
+// Mock timing: the 45-min cap = 5 min reading (textarea locked) + 40 min writing.
+// The textarea unlocks once the remaining time drops to the 40-min write window.
+const WRITE_WINDOW_SECONDS = 40 * 60
+
 function countWords(text: string) {
   const trimmed = text.trim()
   return trimmed ? trimmed.split(/\s+/).length : 0
+}
+
+function fmtClock(sec: number) {
+  const m = Math.floor(Math.max(0, sec) / 60)
+  const s = Math.max(0, sec) % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
 }
 
 function scoreColor(score: number | null, max: number) {
@@ -75,11 +87,18 @@ export default function WritingPracticePage() {
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [inputMode, setInputMode] = useState<'type' | 'upload'>('type')
-  const [photos, setPhotos] = useState<{ file: File; url: string }[]>([])
+  const [photos, setPhotos] = useState<{ file: File; url: string; ocrd?: boolean }[]>([])
   const [ocrLoading, setOcrLoading] = useState(false)
   const [ocrDone, setOcrDone] = useState(false)
   const [phoneUrl, setPhoneUrl] = useState<string | null>(null)
   const phonePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Full Mock Test mode: fixed scenario, strict 5-min-read + 40-min-write timer,
+  // type-only, and the score is hidden — the section is reported to the mock.
+  const [mockId, setMockId] = useState<string | null>(null)
+  const [deadlineMs, setDeadlineMs] = useState<number | null>(null)
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
+  const autoSubmitted = useRef(false)
+  const writeLocked = !!mockId && secondsLeft !== null && secondsLeft > WRITE_WINDOW_SECONDS
 
   const stopPhonePoll = () => {
     if (phonePollRef.current) {
@@ -94,6 +113,7 @@ export default function WritingPracticePage() {
   const clearPhotos = () => {
     photos.forEach((p) => URL.revokeObjectURL(p.url))
     setPhotos([])
+    setWritingText('')
     setOcrDone(false)
   }
 
@@ -112,8 +132,12 @@ export default function WritingPracticePage() {
     }
 
     if (status === 'authenticated') {
+      const mid = getMockId()
+      setMockId(mid)
+      if (mid) { loadMockWriting(mid); return }
       loadScenarios()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status])
 
   const loadScenarios = async () => {
@@ -127,6 +151,45 @@ export default function WritingPracticePage() {
       setIsLoading(false)
     }
   }
+
+  // Mock: load the one scenario the mock froze in and drop straight into the timed
+  // writing sitting — no scenario picker.
+  const loadMockWriting = async (mid: string) => {
+    try {
+      const cur = await api.get('/mock/current')
+      if (cur.data?.current_section !== 'writing' || !cur.data?.content_id) {
+        router.replace('/practice/mock')
+        return
+      }
+      const sc = await api.get(`/writing/scenarios/${cur.data.content_id}`)
+      setSelectedScenario(sc.data)
+      if (cur.data.deadline) setDeadlineMs(new Date(cur.data.deadline).getTime())
+      setInputMode('type')
+      setPhase('write')
+    } catch {
+      toast.error('Could not load your mock writing task.')
+      router.replace('/practice/mock')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Mock countdown to the server-anchored deadline; auto-submits at 0.
+  useEffect(() => {
+    if (!deadlineMs) return
+    const tick = () => setSecondsLeft(Math.max(0, Math.round((deadlineMs - Date.now()) / 1000)))
+    tick()
+    const t = setInterval(tick, 1000)
+    return () => clearInterval(t)
+  }, [deadlineMs])
+
+  useEffect(() => {
+    if (mockId && phase === 'write' && secondsLeft === 0 && !isSubmitting && !autoSubmitted.current) {
+      autoSubmitted.current = true
+      handleSubmit(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mockId, phase, secondsLeft, isSubmitting])
 
   const handleSelectScenario = (scenario: Scenario) => {
     setSelectedScenario(scenario)
@@ -142,18 +205,24 @@ export default function WritingPracticePage() {
     setPhase('select')
   }
 
-  const fileToBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result).split(',')[1] || '')
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
-
   const addPhotos = (files: FileList | null) => {
     if (!files) return
     const picked = Array.from(files).slice(0, 3 - photos.length)
     setPhotos((prev) => [...prev, ...picked.map((file) => ({ file, url: URL.createObjectURL(file) }))])
+    setOcrDone(false)
+  }
+
+  // Browsers return multi-selected files in filename order, not tap order, so
+  // let the student fix page order themselves rather than guessing it.
+  const movePhoto = (from: number, dir: -1 | 1) => {
+    setPhotos((prev) => {
+      const to = from + dir
+      if (to < 0 || to >= prev.length) return prev
+      const next = [...prev]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return next
+    })
     setOcrDone(false)
   }
 
@@ -162,11 +231,23 @@ export default function WritingPracticePage() {
       toast.error('Add a photo of your letter first')
       return
     }
+    // Only read pages not already read, and append — so a second page never
+    // wipes the first (or the student's manual edits), and we don't re-charge
+    // OCR on pages already done.
+    // ponytail: append order follows read order, not thumbnail order after a
+    // late reorder; the text is editable so that's a rare, user-fixable edge.
+    const pending = photos.filter((p) => !p.ocrd)
+    if (!pending.length) {
+      toast('All photos already read — add another page, or edit below.')
+      return
+    }
     setOcrLoading(true)
     try {
-      const images = await Promise.all(photos.map((p) => fileToBase64(p.file)))
+      const images = await Promise.all(pending.map((p) => compressImageToBase64(p.file)))
       const res = await api.post('/writing/ocr', { images })
-      setWritingText(res.data.text || '')
+      const newText = res.data.text || ''
+      setWritingText((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${newText}` : newText))
+      setPhotos((prev) => prev.map((p) => ({ ...p, ocrd: true })))
       setOcrDone(true)
       toast.success('Read your handwriting — check it for mistakes below')
     } catch (error: any) {
@@ -185,7 +266,11 @@ export default function WritingPracticePage() {
     try {
       const res = await api.post('/writing/phone-session', {})
       const token = res.data.token
-      setPhoneUrl(`${window.location.origin}/practice/writing/phone-upload/${token}`)
+      // NEXT_PUBLIC_LAN_ORIGIN lets local dev point the QR at the laptop's LAN
+      // address (the phone can't reach 'localhost'); in prod it's unset and the
+      // QR uses the real domain the laptop is already on.
+      const base = process.env.NEXT_PUBLIC_LAN_ORIGIN || window.location.origin
+      setPhoneUrl(`${base}/practice/writing/phone-upload/${token}`)
 
       stopPhonePoll()
       phonePollRef.current = setInterval(async () => {
@@ -193,7 +278,10 @@ export default function WritingPracticePage() {
           const poll = await api.get(`/writing/phone-session/${token}`)
           if (poll.data.status === 'done') {
             stopPhonePoll()
-            setWritingText(poll.data.text || '')
+            // Append, not replace — a second QR handoff (page 2) must not wipe
+            // the text from the first.
+            const newText = poll.data.text || ''
+            setWritingText((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${newText}` : newText))
             setOcrDone(true)
             setPhoneUrl(null)
             toast.success('Got your letter from your phone — check it for mistakes below')
@@ -221,14 +309,23 @@ export default function WritingPracticePage() {
     setPhoneUrl(null)
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (auto = false) => {
     if (!selectedScenario) return
-    if (!writingText.trim()) {
+    const hasText = !!writingText.trim()
+
+    // Mock: time up (or finish) with nothing written — record the section and move
+    // on rather than trapping the student on an empty letter.
+    if (mockId && auto && !hasText) {
+      await finishMockSection(mockId, 'writing', { skipped: true })
+      router.replace('/practice/mock')
+      return
+    }
+    if (!hasText) {
       toast.error('Please write something before submitting')
       return
     }
-
-    if (countWords(writingText) < WORD_MIN) {
+    // The exam lets you submit whatever you have; only nudge on length outside a mock.
+    if (!mockId && countWords(writingText) < WORD_MIN) {
       toast.error(`Your letter is too short — aim for 180–200 words (at least ${WORD_MIN}).`)
       return
     }
@@ -239,6 +336,17 @@ export default function WritingPracticePage() {
         scenario_id: selectedScenario.id,
         content: writingText,
       })
+
+      if (mockId) {
+        // Score stays hidden in a mock — report the section, back to the controller.
+        const fb = response.data.feedback
+        await finishMockSection(mockId, 'writing', {
+          grade: fb?.estimated_oet_grade ?? null,
+          overall_score: fb?.overall_score ?? null,
+        })
+        router.replace('/practice/mock')
+        return
+      }
 
       setFeedback(response.data.feedback)
       setPhase('result')
@@ -339,16 +447,36 @@ export default function WritingPracticePage() {
     return (
       <div className="min-h-screen bg-gray-50 py-8 px-4">
         <div className="max-w-6xl mx-auto">
-          <button onClick={handleBackToScenarios} className="text-sm text-gray-500 hover:text-gray-700 mb-4">
-            ← Back to scenarios
-          </button>
+          {!mockId && (
+            <button onClick={handleBackToScenarios} className="text-sm text-gray-500 hover:text-gray-700 mb-4">
+              ← Back to scenarios
+            </button>
+          )}
 
-          {/* Exam header — informational, mirrors the real paper (no live timer) */}
-          <div className="mb-6">
-            <p className="text-xs font-semibold tracking-widest text-primary uppercase">OET Writing sub-test · Nursing</p>
-            <h2 className="text-2xl font-bold text-gray-900">{selectedScenario.title}</h2>
-            <p className="text-sm text-gray-500 mt-1">Reading time 5 minutes · Writing time 40 minutes · Body approximately 180–200 words</p>
+          {/* Exam header. In a mock it carries the live timer + reading-lock state. */}
+          <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold tracking-widest text-primary uppercase">{mockId ? 'Full Mock Test · Writing (3 of 3)' : 'OET Writing sub-test · Nursing'}</p>
+              <h2 className="text-2xl font-bold text-gray-900">{selectedScenario.title}</h2>
+              <p className="text-sm text-gray-500 mt-1">Reading time 5 minutes · Writing time 40 minutes · Body approximately 180–200 words</p>
+            </div>
+            {mockId && secondsLeft !== null && (
+              <div className={`px-4 py-2 rounded-xl font-bold tabular-nums flex items-center gap-2 shrink-0 ${
+                secondsLeft <= 0 ? 'bg-red-100 text-red-700'
+                : secondsLeft <= 300 ? 'bg-amber-100 text-amber-700'
+                : 'bg-[#0F2356]/5 text-[#0F2356]'}`}>
+                <span aria-hidden>⏱</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide">{writeLocked ? 'Reading' : 'Writing'}</span>
+                <span className="text-base">{fmtClock(secondsLeft)}</span>
+              </div>
+            )}
           </div>
+
+          {writeLocked && (
+            <div className="mb-6 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 text-sm">
+              Reading time — study the case notes now. Writing unlocks in {fmtClock(secondsLeft! - WRITE_WINDOW_SECONDS)}.
+            </div>
+          )}
 
           <div className="grid lg:grid-cols-2 gap-6 items-start">
             {/* Case notes — styled like the exam paper */}
@@ -372,21 +500,23 @@ export default function WritingPracticePage() {
               </Card>
 
               <Card className="p-6">
-                {/* Input mode toggle */}
-                <div className="inline-flex rounded-lg border border-gray-200 p-1 mb-4">
-                  <button
-                    onClick={() => setInputMode('type')}
-                    className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${inputMode === 'type' ? 'bg-primary text-white' : 'text-gray-600 hover:text-gray-900'}`}
-                  >
-                    Type
-                  </button>
-                  <button
-                    onClick={() => setInputMode('upload')}
-                    className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${inputMode === 'upload' ? 'bg-primary text-white' : 'text-gray-600 hover:text-gray-900'}`}
-                  >
-                    Upload handwritten
-                  </button>
-                </div>
+                {/* Input mode toggle — hidden in a mock (typed answers only, like the exam). */}
+                {!mockId && (
+                  <div className="inline-flex rounded-lg border border-gray-200 p-1 mb-4">
+                    <button
+                      onClick={() => setInputMode('type')}
+                      className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${inputMode === 'type' ? 'bg-primary text-white' : 'text-gray-600 hover:text-gray-900'}`}
+                    >
+                      Type
+                    </button>
+                    <button
+                      onClick={() => setInputMode('upload')}
+                      className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${inputMode === 'upload' ? 'bg-primary text-white' : 'text-gray-600 hover:text-gray-900'}`}
+                    >
+                      Upload handwritten
+                    </button>
+                  </div>
+                )}
 
                 {/* Upload panel */}
                 {inputMode === 'upload' && (
@@ -402,6 +532,27 @@ export default function WritingPracticePage() {
                           >
                             ×
                           </button>
+                          {photos.length > 1 && (
+                            <div className="flex items-center justify-between mt-1 px-0.5">
+                              <button
+                                onClick={() => movePhoto(i, -1)}
+                                disabled={i === 0}
+                                aria-label={`Move page ${i + 1} earlier`}
+                                className="text-gray-500 disabled:opacity-30 text-sm leading-none"
+                              >
+                                ◀
+                              </button>
+                              <span className="text-[10px] text-gray-400">Page {i + 1}</span>
+                              <button
+                                onClick={() => movePhoto(i, 1)}
+                                disabled={i === photos.length - 1}
+                                aria-label={`Move page ${i + 1} later`}
+                                className="text-gray-500 disabled:opacity-30 text-sm leading-none"
+                              >
+                                ▶
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                       {photos.length < 3 && (
@@ -410,7 +561,6 @@ export default function WritingPracticePage() {
                           <input
                             type="file"
                             accept="image/*"
-                            capture="environment"
                             multiple
                             className="hidden"
                             onChange={(e) => { addPhotos(e.target.files); e.target.value = '' }}
@@ -450,15 +600,16 @@ export default function WritingPracticePage() {
                   id="writing"
                   value={writingText}
                   onChange={(e) => setWritingText(e.target.value)}
-                  className="w-full h-80 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-100 focus:border-emerald-500 outline-none resize-y leading-relaxed"
-                  placeholder={inputMode === 'upload' ? 'Your letter text will appear here after reading your photos.' : 'Dear ...,\n\nWrite your letter here.'}
+                  disabled={writeLocked}
+                  className="w-full h-80 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-100 focus:border-emerald-500 outline-none resize-y leading-relaxed disabled:bg-gray-50 disabled:cursor-not-allowed"
+                  placeholder={writeLocked ? 'Reading time — writing is locked for now.' : inputMode === 'upload' ? 'Your letter text will appear here after reading your photos.' : 'Dear ...,\n\nWrite your letter here.'}
                 />
                 <div className={`text-sm mt-2 ${wordTone}`}>
                   {words} words {words === 0 ? '' : words < WORD_MIN ? '— aim for 180–200' : words > 200 ? '— a little long, aim for 180–200' : '✓'}
                 </div>
 
-                <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full mt-4">
-                  {isSubmitting ? 'Scoring...' : 'Submit for Scoring'}
+                <Button onClick={() => handleSubmit(false)} disabled={isSubmitting || writeLocked} className="w-full mt-4">
+                  {isSubmitting ? (mockId ? 'Submitting…' : 'Scoring...') : writeLocked ? 'Reading time…' : mockId ? 'Finish Writing →' : 'Submit for Scoring'}
                 </Button>
               </Card>
             </div>

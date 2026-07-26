@@ -1,6 +1,6 @@
 'use client'
 
-import { Mic, PenLine, ArrowRight } from "lucide-react"
+import { Mic, PenLine, BookOpen, ArrowRight } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 const WRITING_PLANS = ["pro", "elite"]
@@ -61,6 +61,12 @@ export function QuickActions({ plan }: { plan?: string | null }) {
         icon={<PenLine className="h-6 w-6" aria-hidden="true" />}
         badge={hasWritingAccess ? undefined : "Pro"}
         onClick={() => router.push("/practice/writing")}
+      />
+      <QuickActionCard
+        title="Practice Reading"
+        cta="Start reading task"
+        icon={<BookOpen className="h-6 w-6" aria-hidden="true" />}
+        onClick={() => router.push("/practice/reading")}
       />
     </div>
   )

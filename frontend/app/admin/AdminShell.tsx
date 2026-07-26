@@ -12,21 +12,44 @@ import toast from 'react-hot-toast'
 // are still enforced server-side by each endpoint's own require_*() dep.
 const STAFF_ROLES = new Set(['support', 'analyst', 'admin', 'owner'])
 
-const NAV_ITEMS = [
-  { href: '/admin', label: 'Dashboard' },
-  { href: '/admin/users', label: 'Users' },
-  { href: '/admin/scenarios', label: 'Scenarios' },
-  { href: '/admin/reading', label: 'Reading' },
-  { href: '/admin/writing', label: 'Writing' },
-  { href: '/admin/listening', label: 'Listening' },
-  { href: '/admin/audit-log', label: 'Action History' },
-  { href: '/admin/ai-costs', label: 'AI Cost & Margin' },
-  { href: '/admin/failed-payments', label: 'Failed Payments' },
-  { href: '/admin/coupons', label: 'Coupons' },
-  { href: '/admin/expiring-soon', label: 'Expiring Soon' },
-  { href: '/admin/scenario-generator', label: 'Generator' },
-  { href: '/admin/logs', label: 'Error Logs' },
-  { href: '/admin/settings', label: 'Settings' },
+const NAV_GROUPS = [
+  {
+    label: 'Overview',
+    items: [{ href: '/admin', label: 'Dashboard' }],
+  },
+  {
+    label: 'Content',
+    items: [
+      { href: '/admin/scenarios', label: 'Scenarios' },
+      { href: '/admin/reading', label: 'Reading' },
+      { href: '/admin/writing', label: 'Writing' },
+      { href: '/admin/listening', label: 'Listening' },
+      { href: '/admin/scenario-generator', label: 'Generator' },
+    ],
+  },
+  {
+    label: 'Users',
+    items: [
+      { href: '/admin/users', label: 'Users' },
+      { href: '/admin/audit-log', label: 'Action History' },
+    ],
+  },
+  {
+    label: 'Revenue',
+    items: [
+      { href: '/admin/ai-costs', label: 'AI Cost & Margin' },
+      { href: '/admin/failed-payments', label: 'Failed Payments' },
+      { href: '/admin/coupons', label: 'Coupons' },
+      { href: '/admin/expiring-soon', label: 'Expiring Soon' },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { href: '/admin/logs', label: 'Error Logs' },
+      { href: '/admin/settings', label: 'Settings' },
+    ],
+  },
 ]
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
@@ -35,6 +58,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const router = useRouter()
   const [unresolvedCount, setUnresolvedCount] = useState(0)
   const [roleStatus, setRoleStatus] = useState<'checking' | 'staff' | 'denied'>('checking')
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   useEffect(() => {
     // Hide main site navbar on admin pages
@@ -103,45 +127,103 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   if (!session?.user || roleStatus !== 'staff') return null
 
+  const renderNavGroups = (onNavigate?: () => void) =>
+    NAV_GROUPS.map((group) => (
+      <div key={group.label} className="mb-6">
+        <div className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
+          {group.label}
+        </div>
+        {group.items.map((item) => {
+          const isActive = pathname === item.href ||
+            (item.href !== '/admin' && pathname.startsWith(item.href))
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              prefetch={true}
+              onClick={onNavigate}
+              className={`flex items-center justify-between gap-2 px-3 py-2 rounded-md text-sm font-medium transition ${
+                isActive
+                  ? 'bg-blue-50 text-blue-600'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-blue-600'
+              }`}
+            >
+              {item.label}
+              {item.href === '/admin/logs' && unresolvedCount > 0 && (
+                <span className="bg-red-500 text-white text-xs font-bold min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full">
+                  {unresolvedCount}
+                </span>
+              )}
+            </Link>
+          )
+        })}
+      </div>
+    ))
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link href="/admin" className="text-xl font-bold text-blue-600">
-            SpeakOET Admin
-          </Link>
-          <div className="hidden md:flex items-center gap-6">
-            {NAV_ITEMS.map((item) => {
-              const isActive = pathname === item.href ||
-                (item.href !== '/admin' && pathname.startsWith(item.href))
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  prefetch={true}
-                  className={`text-sm font-semibold transition flex items-center gap-1.5 ${
-                    isActive ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'
-                  }`}
-                >
-                  {item.label}
-                  {item.href === '/admin/logs' && unresolvedCount > 0 && (
-                    <span className="bg-red-500 text-white text-xs font-bold min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full">
-                      {unresolvedCount}
-                    </span>
-                  )}
-                </Link>
-              )
-            })}
+    <div className="min-h-screen bg-gray-50 md:flex">
+      {/* Mobile top bar */}
+      <div className="md:hidden bg-white shadow-md sticky top-0 z-40 flex items-center justify-between px-4 py-3">
+        <Link href="/admin" className="text-lg font-bold text-blue-600">
+          SpeakOET Admin
+        </Link>
+        <button
+          onClick={() => setMobileNavOpen(true)}
+          aria-label="Open admin menu"
+          className="text-gray-600 border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium"
+        >
+          Menu
+        </button>
+      </div>
+
+      {/* Mobile drawer */}
+      {mobileNavOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          <div
+            className="fixed inset-0 bg-black/40"
+            onClick={() => setMobileNavOpen(false)}
+          />
+          <div className="relative w-64 bg-white shadow-xl h-full overflow-y-auto p-4">
+            <div className="flex items-center justify-between mb-4">
+              <Link href="/admin" className="text-lg font-bold text-blue-600" onClick={() => setMobileNavOpen(false)}>
+                SpeakOET Admin
+              </Link>
+              <button
+                onClick={() => setMobileNavOpen(false)}
+                aria-label="Close admin menu"
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+            {renderNavGroups(() => setMobileNavOpen(false))}
+            <Link
+              href="/"
+              className="block px-3 py-2 text-sm text-gray-400 hover:text-gray-600 transition"
+            >
+              Back to Site
+            </Link>
           </div>
+        </div>
+      )}
+
+      {/* Desktop sidebar */}
+      <nav className="hidden md:flex md:flex-col md:w-60 md:shrink-0 md:h-screen md:sticky md:top-0 bg-white shadow-md overflow-y-auto p-4">
+        <Link href="/admin" className="text-xl font-bold text-blue-600 px-3 mb-6 block">
+          SpeakOET Admin
+        </Link>
+        {renderNavGroups()}
+        <div className="mt-auto pt-4 border-t border-gray-100">
           <Link
             href="/"
-            className="text-sm text-gray-400 hover:text-gray-600 transition"
+            className="block px-3 py-2 text-sm text-gray-400 hover:text-gray-600 transition"
           >
             Back to Site
           </Link>
         </div>
       </nav>
-      {children}
+
+      <div className="flex-1 min-w-0">{children}</div>
     </div>
   )
 }

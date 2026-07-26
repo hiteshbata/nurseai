@@ -1,17 +1,16 @@
 """
 OpenAI Realtime API adapter.
 
-Wire protocol is unchanged from the pre-refactor speaking_realtime.py --
-this is a straight extraction of that proven, already-in-production protocol
-handling behind the ProviderAdapter interface, not a rewrite of it. OpenAI
-has since published a GA event schema (response.output_audio.delta instead
-of response.audio.delta, session.audio.output.* instead of top-level
-voice/input_audio_format, etc.) but this adapter deliberately keeps the
-older `OpenAI-Beta: realtime=v1` event names, since that's what's been
-verified working in this project. Migrating to the GA schema is a
-follow-up, tracked separately -- see the rollout notes in the deliverables
-doc, not bundled into this refactor so a protocol mismatch can't be
-conflated with an architecture regression.
+Speaks the GA wire protocol (OpenAI removed the Beta interface --
+`OpenAI-Beta: realtime=v1` header -- on 2026-05-12; connecting with it now
+hard-fails with "The Realtime Beta API is no longer supported"). Audio/turn
+config lives under session.audio.input/output instead of top-level
+voice/input_audio_format, audio format is an object ({"type":"audio/pcm",
+"rate":24000}) instead of the bare string "pcm16", and the output audio
+events are namespaced response.output_audio(_transcript).delta instead of
+response.audio(_transcript).delta. Input-side events (input_audio_buffer.*,
+conversation.item.input_audio_transcription.completed) and session lifecycle
+events (response.created/done, error) are unchanged from Beta.
 """
 from __future__ import annotations
 
@@ -61,7 +60,6 @@ class OpenAIRealtimeAdapter(RealtimeProviderAdapter):
                 url,
                 extra_headers={
                     "Authorization": f"Bearer {self.api_key}",
-                    "OpenAI-Beta": "realtime=v1",
                 },
                 close_timeout=1,
                 open_timeout=30,
@@ -73,18 +71,25 @@ class OpenAIRealtimeAdapter(RealtimeProviderAdapter):
         await self._ws.send(json.dumps({
             "type": "session.update",
             "session": {
-                "modalities": ["audio", "text"],
+                "type": "realtime",
                 "instructions": self.system_prompt,
-                "voice": self.voice,
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "input_audio_transcription": {"model": "whisper-1"},
-                "turn_detection": {
-                    "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 500,
+                "audio": {
+                    "input": {
+                        "format": {"type": "audio/pcm", "rate": 24000},
+                        "turn_detection": {
+                            "type": "server_vad",
+                            "threshold": 0.5,
+                            "prefix_padding_ms": 300,
+                            "silence_duration_ms": 500,
+                        },
+                        "transcription": {"model": "whisper-1"},
+                    },
+                    "output": {
+                        "format": {"type": "audio/pcm", "rate": 24000},
+                        "voice": self.voice,
+                    },
                 },
+                "output_modalities": ["audio"],
             },
         }))
 
@@ -123,12 +128,12 @@ class OpenAIRealtimeAdapter(RealtimeProviderAdapter):
                 event = json.loads(message)
                 event_type = event.get("type")
 
-                if event_type == "response.audio.delta":
+                if event_type == "response.output_audio.delta":
                     audio_b64 = event.get("delta")
                     if audio_b64:
                         yield base64.b64decode(audio_b64)
 
-                elif event_type == "response.audio_transcript.delta":
+                elif event_type == "response.output_audio_transcript.delta":
                     yield TranscriptDelta(role="patient", delta=event.get("delta", ""))
 
                 elif event_type == "conversation.item.input_audio_transcription.completed":
@@ -145,10 +150,18 @@ class OpenAIRealtimeAdapter(RealtimeProviderAdapter):
                     yield Interrupted()
 
                 elif event_type == "error":
+                    error_detail = event.get("error", {})
+                    if error_detail.get("code") == "response_cancel_not_active":
+                        # Benign race, not a real failure: cancel_response() fires on every
+                        # barge-in, but GA's server_vad routinely auto-cancels/finishes the
+                        # response before our explicit response.cancel arrives. The interrupt
+                        # already succeeded either way -- surfacing this as ProviderError was
+                        # tearing down the whole session (frontend treats any error as fatal).
+                        continue
                     logger.error("[OPENAI_REALTIME_ERROR] %s", _redact(json.dumps(event)[:500]))
                     yield ProviderError(
-                        message=event.get("error", {}).get("message", "Realtime error"),
-                        code=event.get("error", {}).get("code"),
+                        message=error_detail.get("message", "Realtime error"),
+                        code=error_detail.get("code"),
                         recoverable=True,
                     )
         except ws_exc.ConnectionClosed as e:

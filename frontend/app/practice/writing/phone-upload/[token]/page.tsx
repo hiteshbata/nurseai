@@ -2,16 +2,19 @@
 
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
-import api from '@/lib/api'
+import axios from 'axios'
 import toast from 'react-hot-toast'
+import { compressImageToBase64 } from '@/lib/imageCompress'
 
-const fileToBase64 = (file: File): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result).split(',')[1] || '')
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
+// This page is opened on the phone via the QR link. In local dev the laptop's
+// backend is on 'localhost', which the phone can't reach — so swap localhost for
+// the host the page itself was loaded from (the laptop's LAN IP). In production
+// NEXT_PUBLIC_API_URL is a real domain with no 'localhost', so it's unchanged.
+function phoneApiBase(): string {
+  const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  if (typeof window === 'undefined') return base
+  return base.replace('//localhost', `//${window.location.hostname}`).replace('//127.0.0.1', `//${window.location.hostname}`)
+}
 
 export default function PhoneUploadPage() {
   const params = useParams()
@@ -32,19 +35,50 @@ export default function PhoneUploadPage() {
       return prev.filter((_, j) => j !== i)
     })
 
+  // Browsers return multi-selected files in filename order, not tap order, so
+  // let the student fix page order themselves rather than guessing it.
+  const movePhoto = (from: number, dir: -1 | 1) =>
+    setPhotos((prev) => {
+      const to = from + dir
+      if (to < 0 || to >= prev.length) return prev
+      const next = [...prev]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return next
+    })
+
   const send = async () => {
     if (!photos.length) {
       toast.error('Add a photo of your letter first')
       return
     }
     setSending(true)
+    const startedAt = Date.now()
     try {
-      const images = await Promise.all(photos.map((p) => fileToBase64(p.file)))
-      await api.post(`/writing/phone-upload/${token}`, { images })
+      const images = await Promise.all(photos.map((p) => compressImageToBase64(p.file)))
+      // Explicit timeout so a dead/very slow hotspot link fails fast and
+      // distinguishably instead of hanging indefinitely with axios's default
+      // (no timeout), which otherwise looks identical to an instant connection
+      // refusal once it finally does give up.
+      await axios.post(`${phoneApiBase()}/writing/phone-upload/${token}`, { images }, { timeout: 25000 })
       setDone(true)
     } catch (error: any) {
-      const detail = error.response?.data?.detail
-      toast.error(typeof detail === 'string' ? detail : 'Upload failed — try again with clearer photos.')
+      const elapsedSec = Math.round((Date.now() - startedAt) / 1000)
+      if (error.code === 'ECONNABORTED') {
+        toast.error(`Upload timed out after ${elapsedSec}s — your connection is too slow right now. Try moving closer to the router, or a stronger signal.`, { duration: 7000 })
+      } else if (!error.response) {
+        // Request never reached the server — wrong/unreachable backend address,
+        // CORS block, or the phone isn't on the same network as the laptop.
+        toast.error(`Couldn't reach the server (after ${elapsedSec}s) at ${phoneApiBase()}. Check your phone is on the same Wi-Fi as your computer.`, { duration: 7000 })
+      } else {
+        const detail = error.response.data?.detail
+        const message = typeof detail === 'string'
+          ? detail
+          : Array.isArray(detail)
+          ? detail.map((d: any) => d?.msg || JSON.stringify(d)).join('; ')
+          : `Upload failed (${error.response.status}). Try again with clearer photos.`
+        toast.error(message)
+      }
     } finally {
       setSending(false)
     }
@@ -79,6 +113,27 @@ export default function PhoneUploadPage() {
               >
                 ×
               </button>
+              {photos.length > 1 && (
+                <div className="flex items-center justify-between mt-1">
+                  <button
+                    onClick={() => movePhoto(i, -1)}
+                    disabled={i === 0}
+                    aria-label={`Move page ${i + 1} earlier`}
+                    className="text-gray-500 disabled:opacity-30 px-2 py-1 text-lg leading-none"
+                  >
+                    ◀
+                  </button>
+                  <span className="text-xs text-gray-400">Page {i + 1}</span>
+                  <button
+                    onClick={() => movePhoto(i, 1)}
+                    disabled={i === photos.length - 1}
+                    aria-label={`Move page ${i + 1} later`}
+                    className="text-gray-500 disabled:opacity-30 px-2 py-1 text-lg leading-none"
+                  >
+                    ▶
+                  </button>
+                </div>
+              )}
             </div>
           ))}
           {photos.length < 3 && (
@@ -88,7 +143,6 @@ export default function PhoneUploadPage() {
               <input
                 type="file"
                 accept="image/*"
-                capture="environment"
                 multiple
                 className="hidden"
                 onChange={(e) => { addPhotos(e.target.files); e.target.value = '' }}

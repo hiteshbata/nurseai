@@ -6,6 +6,7 @@ import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
+import { getMockId } from '@/lib/mock'
 import SelectPhase from './SelectPhase'
 import {
   Scenario,
@@ -71,6 +72,14 @@ export default function SpeakingPage() {
   const [isScoring, setIsScoring] = useState(false)
   const [conversationError, setConversationError] = useState<string | null>(null)
 
+  // Full Mock Test mode: two role plays back to back, no picker, no per-roleplay
+  // result screen (scores stay hidden until the whole mock is complete), driven
+  // entirely by ?mock=<id> in the URL -- same idiom as the other 3 mock sections.
+  const [mockId, setMockId] = useState<string | null>(null)
+  const [mockRoleplay, setMockRoleplay] = useState<1 | 2 | null>(null)
+  const [mockTransition, setMockTransition] = useState<'entering' | 'between' | 'finishing' | null>(null)
+  const mockLoading = !!mockId && mockRoleplay === null
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     const saved = window.localStorage.getItem(AUTO_LISTEN_KEY)
@@ -95,12 +104,14 @@ export default function SpeakingPage() {
       return
     }
     if (status === 'authenticated') {
+      setMockId(getMockId())
       loadScenarios()
     }
   }, [status])
 
   useEffect(() => {
     if (scenarios.length === 0 || typeof window === 'undefined') return
+    if (mockId) return // mock mode picks its own scenario below, never the picker/resume flow
     const params = new URLSearchParams(window.location.search)
     const scenarioId = params.get('scenario')
     if (!scenarioId) {
@@ -128,10 +139,46 @@ export default function SpeakingPage() {
       handleSelectScenario(match)
     }
     setHasRestoredSession(true)
-  }, [scenarios, hasRestoredSession])
+  }, [scenarios, hasRestoredSession, mockId])
+
+  // Mock mode: load whichever role play (1 or 2) the mock says is next, find its
+  // scenario, and drop straight into the briefing -- same handleSelectScenario the
+  // picker/deep-link paths above use, so timers/state reset exactly the same way.
+  useEffect(() => {
+    if (!mockId || scenarios.length === 0 || mockRoleplay !== null) return
+    let cancelled = false
+    setMockTransition('entering')
+    api.get(`/mock/${mockId}/speaking/next`)
+      .then(async (res) => {
+        if (cancelled) return
+        const { roleplay, scenario_id: scenarioId } = res.data
+        let match = scenarios.find((s) => s.id === scenarioId) || null
+        if (!match) {
+          try {
+            match = (await api.get(`/speaking/scenarios/${scenarioId}`)).data
+          } catch {
+            // fall through -- redirect below
+          }
+        }
+        if (cancelled) return
+        if (match) {
+          setMockRoleplay(roleplay)
+          handleSelectScenario(match)
+          setMockTransition(null)
+        } else {
+          router.replace('/practice/mock')
+        }
+      })
+      .catch(() => { if (!cancelled) router.replace('/practice/mock') })
+    return () => { cancelled = true }
+    // handleSelectScenario/router intentionally omitted below: same convention as
+    // the deep-link effect above, only needs to re-run when these 3 change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mockId, scenarios, mockRoleplay])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !selectedScenario) return
+    if (mockId) return // mock roleplays aren't resumable via the plain localStorage flow
     if (phase === 'select') {
       window.localStorage.removeItem(SPEAKING_SESSION_KEY)
       return
@@ -146,7 +193,7 @@ export default function SpeakingPage() {
       sessionId,
       feedback,
     }))
-  }, [phase, selectedScenario, readingTime, examSeconds, convHistory, history, sessionId, feedback])
+  }, [phase, selectedScenario, readingTime, examSeconds, convHistory, history, sessionId, feedback, mockId])
 
   useEffect(() => {
     if (phase !== 'briefing') return
@@ -235,7 +282,45 @@ export default function SpeakingPage() {
     setPhase('briefing')
   }, [])
 
+  // Mock mode: report the finished role play, load the next one straight into its
+  // briefing (real OET gives no score between role plays either), or on role play
+  // 2 hand off to the controller, which now shows the unlocked 4-band report.
+  // Best-effort like finishMockSection elsewhere -- a failed report call must not
+  // trap the student; the mock is resumable via /mock/current regardless.
+  const finishMockRoleplay = useCallback(async (roleplay: 1 | 2, resultFeedback: any) => {
+    if (!mockId) return
+    setMockTransition(roleplay === 1 ? 'between' : 'finishing')
+    try {
+      const res = await api.post(`/mock/${mockId}/speaking/${roleplay}/done`, {
+        result: { overall_band: resultFeedback?.overall_band ?? 0 },
+      })
+      if (res.data.next_roleplay && res.data.next_scenario_id) {
+        let match = scenarios.find((s) => s.id === res.data.next_scenario_id) || null
+        if (!match) {
+          try {
+            match = (await api.get(`/speaking/scenarios/${res.data.next_scenario_id}`)).data
+          } catch {
+            // fall through to the controller redirect below
+          }
+        }
+        if (match) {
+          setMockRoleplay(res.data.next_roleplay)
+          handleSelectScenario(match)
+          setMockTransition(null)
+          return
+        }
+      }
+    } catch {
+      // fall through -- the controller can always resume/report the true state
+    }
+    router.replace('/practice/mock')
+  }, [mockId, scenarios, handleSelectScenario, router])
+
   const handleSessionEnd = useCallback((chatHistory: ChatMessage[], resultFeedback: any) => {
+    if (mockId && mockRoleplay) {
+      finishMockRoleplay(mockRoleplay, resultFeedback)
+      return
+    }
     setHistory(chatHistory)
     setFeedback(resultFeedback)
     setComparisonResult(null)
@@ -249,7 +334,7 @@ export default function SpeakingPage() {
         is_premium_trial: resultFeedback.is_premium_trial,
       })
     }
-  }, [selectedScenario])
+  }, [selectedScenario, mockId, mockRoleplay, finishMockRoleplay])
 
   const handleRetryWeakest = useCallback(() => {
     if (selectedScenario) handleSelectScenario(selectedScenario)
@@ -315,6 +400,19 @@ export default function SpeakingPage() {
             ))}
           </div>
         </div>
+      </div>
+    )
+  }
+
+  if (mockId && (mockTransition || mockLoading)) {
+    const message =
+      mockTransition === 'between' ? 'Role play 1 complete. Preparing role play 2…'
+      : mockTransition === 'finishing' ? 'Finishing up your mock test…'
+      : 'Loading your speaking test…'
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#0F2356] text-white gap-4">
+        <div className="w-8 h-8 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+        <p className="text-sm text-blue-100 tracking-wide">{message}</p>
       </div>
     )
   }
@@ -386,6 +484,7 @@ export default function SpeakingPage() {
       onTryAgain={handleTryAgain}
       onRetryWeakest={handleRetryWeakest}
       setPhase={setPhase}
+      mockRoleplay={mockRoleplay}
     />
   )
 }

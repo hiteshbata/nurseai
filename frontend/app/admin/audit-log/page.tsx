@@ -25,6 +25,7 @@ const ACTION_COLORS: Record<string, string> = {
   reinstate: 'bg-green-100 text-green-800',
   delete: 'bg-red-100 text-red-800',
   impersonated: 'bg-blue-100 text-blue-800',
+  subscription_cancelled: 'bg-amber-100 text-amber-800',
 }
 
 function formatDetail(detail: Record<string, any> | null): string {
@@ -35,19 +36,26 @@ function formatDetail(detail: Record<string, any> | null): string {
     .join(', ')
 }
 
+const PAGE_SIZE = 100
+
 export default function AdminAuditLogPage() {
   const router = useRouter()
   const [entries, setEntries] = useState<AuditEntry[]>([])
+  const [hasMore, setHasMore] = useState(false)
+  const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchLog()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset])
 
   const fetchLog = async () => {
+    setLoading(true)
     try {
-      const response = await api.get('/admin/audit-log', { params: { limit: 150 } })
-      setEntries(response.data)
+      const response = await api.get('/admin/audit-log', { params: { limit: PAGE_SIZE, offset } })
+      setEntries(response.data.entries)
+      setHasMore(response.data.has_more)
     } catch (error: any) {
       if (error.response?.status === 403) {
         alert('Admin access required')
@@ -57,14 +65,6 @@ export default function AdminAuditLogPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl">Loading audit log...</div>
-      </div>
-    )
   }
 
   return (
@@ -102,10 +102,37 @@ export default function AdminAuditLogPage() {
               ))}
             </tbody>
           </table>
-          {entries.length === 0 && (
-            <div className="p-8 text-center text-gray-500">No admin actions recorded yet.</div>
+          {!loading && entries.length === 0 && (
+            <div className="p-8 text-center text-gray-500">
+              {offset === 0 ? 'No admin actions recorded yet.' : 'No more entries.'}
+            </div>
+          )}
+          {loading && (
+            <div className="p-8 text-center text-gray-500">Loading...</div>
           )}
         </div>
+
+        {(offset > 0 || hasMore) && (
+          <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
+            <span>Showing {offset + 1}–{offset + entries.length}</span>
+            <div className="flex gap-2">
+              <button
+                disabled={offset === 0}
+                onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+                className="px-3 py-1 border rounded disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <button
+                disabled={!hasMore}
+                onClick={() => setOffset(offset + PAGE_SIZE)}
+                className="px-3 py-1 border rounded disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

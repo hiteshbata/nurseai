@@ -786,6 +786,45 @@ def admin_set_user_plan(
     return {"success": True, "plan": req.plan}
 
 
+# ── MANUAL BONUS SESSIONS (bug reports, goodwill credits) ────────────
+
+class GrantBonusSessionsRequest(BaseModel):
+    amount: int = Field(..., description="Sessions to add; use a negative number to correct an over-grant")
+    reason: str
+
+
+@router.post("/users/{user_id}/bonus-sessions")
+def admin_grant_bonus_sessions(
+    user_id: str,
+    req: GrantBonusSessionsRequest,
+    current_user: UserInfo = Depends(require_support),
+):
+    """Manually top up a user's bonus-session wallet -- the same wallet
+    referrals credit (see reward_referral in the referrals migration), used
+    here for things a referral can't detect: a valid bug report, a content
+    mistake flagged by a student, or a support goodwill gesture. Rare,
+    human-judged action, so a plain read-then-write is fine -- no need for
+    the atomic RPC referrals uses for its high-frequency, unattended path.
+    """
+    supabase = get_supabase()
+    existing = supabase.table("user_profiles").select("bonus_sessions").eq("user_id", user_id).execute().data
+    if not existing:
+        raise HTTPException(status_code=404, detail="User profile not found")
+
+    new_total = max(0, existing[0].get("bonus_sessions", 0) + req.amount)
+    supabase.table("user_profiles").update({"bonus_sessions": new_total}).eq("user_id", user_id).execute()
+
+    _write_audit_log(
+        supabase, current_user, "bonus_sessions_granted", "user", target_id=user_id,
+        detail={"amount": req.amount, "new_total": new_total, "reason": req.reason},
+    )
+    logger.info(
+        "admin bonus sessions | admin=%s target=%s amount=%+d reason=%s",
+        current_user.id, user_id, req.amount, req.reason,
+    )
+    return {"success": True, "bonus_sessions": new_total}
+
+
 # ── MODERATION: SUSPEND / BAN / REINSTATE / DELETE ───────────────────
 
 # Supabase's admin-native lockout: ban_duration blocks new sign-ins and

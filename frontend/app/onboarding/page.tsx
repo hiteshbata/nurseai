@@ -76,6 +76,20 @@ export default function OnboardingPage() {
     }
   }, [status, router])
 
+  // Best-effort: redeem whatever referral code Navbar captured from a
+  // ?ref=CODE link into localStorage. Every new signup passes through this
+  // page before they can use the app, and the backend redeem is idempotent
+  // (no-ops if already referred), so firing it here — rather than at signup,
+  // where an email-confirm flow has no session yet — is the one safe place
+  // that covers both signup paths.
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    const code = localStorage.getItem('referral_code')
+    if (!code) return
+    api.post('/referrals/redeem', { code }).catch(() => {})
+    localStorage.removeItem('referral_code')
+  }, [status])
+
   // A completed user should never see the wizard restart from step 1 —
   // bounce them to where they can actually edit their plan, and resume
   // an incomplete run at whatever step still has missing data.

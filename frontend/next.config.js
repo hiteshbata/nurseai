@@ -47,10 +47,18 @@ const nextConfig = {
               // stays without it.
               `script-src 'self' 'unsafe-inline' ${process.env.NODE_ENV !== 'production' ? "'unsafe-eval' " : ''}https://checkout.razorpay.com https://www.googletagmanager.com https://www.clarity.ms`,
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: https://cdn.sanity.io https://*.clarity.ms",
+              "img-src 'self' data: blob: https://cdn.sanity.io https://*.clarity.ms https://*.supabase.co",
+              // <audio> for the Listening module: clips are served from the public
+              // Supabase storage bucket; blob: covers the admin's local pre-upload preview.
+              "media-src 'self' blob: https://*.supabase.co",
               "font-src 'self' data:",
               // localhost:8000 only in dev, so a local backend can be called; prod stays locked to api.speakoet.com.
-              `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? 'http://localhost:8000 ws://localhost:8000 ' : ''}https://api.speakoet.com wss://api.speakoet.com https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://www.google-analytics.com https://www.clarity.ms https://*.clarity.ms https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io`,
+              // LAN_API_ORIGIN (dev-only, set in .env.local, never in prod) additionally
+              // allows a phone on the same Wi-Fi to call the backend directly during
+              // QR-handoff testing -- CSP connect-src blocks browser-initiated fetch/XHR
+              // to any host not listed here (plain navigation/curl aren't affected, which
+              // is why "visit the URL directly" can work while the app's own upload can't).
+              `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? `http://localhost:8000 ws://localhost:8000 ${process.env.LAN_API_ORIGIN || ''} ` : ''}https://api.speakoet.com wss://api.speakoet.com https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://www.google-analytics.com https://www.clarity.ms https://*.clarity.ms https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io`,
               "frame-src https://checkout.razorpay.com https://api.razorpay.com",
             ].join('; '),
           },

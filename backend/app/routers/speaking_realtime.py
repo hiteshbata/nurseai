@@ -175,14 +175,16 @@ class _SessionMetrics:
     comparison view -- adapters never see or touch this."""
 
     __slots__ = (
-        "provider", "session_id", "user_id", "started_at", "input_bytes", "output_bytes",
+        "provider", "session_id", "user_id", "scenario_id", "started_at", "input_bytes", "output_bytes",
         "interrupted_count", "error_count", "ended_reason", "provider_ready_at",
+        "transcript_turns", "_patient_buffer",
     )
 
-    def __init__(self, provider: str, session_id: int, user_id: str):
+    def __init__(self, provider: str, session_id: int, user_id: str, scenario_id: int):
         self.provider = provider
         self.session_id = session_id
         self.user_id = user_id
+        self.scenario_id = scenario_id
         self.started_at = time.monotonic()
         self.provider_ready_at: float | None = None
         self.input_bytes = 0
@@ -190,6 +192,16 @@ class _SessionMetrics:
         self.interrupted_count = 0
         self.error_count = 0
         self.ended_reason = "unknown"
+        self.transcript_turns: list[dict] = []
+        self._patient_buffer = ""
+
+    def append_patient_delta(self, delta: str) -> None:
+        self._patient_buffer += delta
+
+    def flush_patient_turn(self) -> None:
+        if self._patient_buffer:
+            self.transcript_turns.append({"role": "patient", "text": self._patient_buffer})
+            self._patient_buffer = ""
 
 
 def _insert_realtime_metrics_row_sync(row: dict) -> None:
@@ -240,6 +252,30 @@ async def _persist_realtime_metrics(metrics: _SessionMetrics, capabilities) -> N
         user_id=metrics.user_id, session_id=metrics.session_id, is_estimate=True,
         detail={"input_seconds": round(input_seconds, 2), "output_seconds": round(output_seconds, 2)},
     )
+
+
+def _insert_transcript_row_sync(row: dict) -> None:
+    get_supabase().table("session_transcripts").insert(row).execute()
+
+
+async def _persist_transcript(metrics: _SessionMetrics) -> None:
+    """Writes the full conversation (nurse + patient turns) captured during
+    the session, for admin background-check/review use -- see
+    2026-07-21_session_transcripts.sql. Skips the insert entirely for
+    sessions with no captured turns (e.g. connection dropped before any
+    speech), so the table doesn't fill with empty rows."""
+    metrics.flush_patient_turn()
+    if not metrics.transcript_turns:
+        return
+    try:
+        await run_sync(_insert_transcript_row_sync, {
+            "session_usage_id": metrics.session_id,
+            "user_id": metrics.user_id,
+            "scenario_id": metrics.scenario_id,
+            "transcript": metrics.transcript_turns,
+        })
+    except Exception as e:
+        logger.warning("[TRANSCRIPT_PERSIST_FAILED] %s", str(e)[:300])
 
 
 async def _send_json_safe(websocket: WebSocket, payload: dict) -> bool:
@@ -355,7 +391,7 @@ async def realtime_stream(websocket: WebSocket):
         return
 
     adapter = adapter_class(system_prompt=system_prompt, voice=voice, api_key=api_key, model=model)
-    metrics = _SessionMetrics(provider=provider, session_id=session_id, user_id=user.id)
+    metrics = _SessionMetrics(provider=provider, session_id=session_id, user_id=user.id, scenario_id=scenario_id)
 
     try:
         await adapter.connect()
@@ -426,18 +462,21 @@ async def realtime_stream(websocket: WebSocket):
                     continue
 
                 if isinstance(item, TranscriptDelta):
+                    metrics.append_patient_delta(item.delta)
                     if not await _send_json_safe(websocket, {
                         "type": "transcript.delta", "role": item.role, "delta": item.delta,
                     }):
                         return
 
                 elif isinstance(item, TranscriptFinal):
+                    metrics.transcript_turns.append({"role": item.role, "text": item.transcript})
                     if not await _send_json_safe(websocket, {
                         "type": "transcript.final", "role": item.role, "transcript": item.transcript,
                     }):
                         return
 
                 elif isinstance(item, ResponseDone):
+                    metrics.flush_patient_turn()
                     if not await _send_json_safe(websocket, {"type": "response.done"}):
                         return
 
@@ -501,6 +540,7 @@ async def realtime_stream(websocket: WebSocket):
     finally:
         await adapter.disconnect()
         await _persist_realtime_metrics(metrics, capabilities)
+        await _persist_transcript(metrics)
         try:
             await websocket.close()
         except Exception:

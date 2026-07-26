@@ -55,15 +55,15 @@ class FakeTable:
     """In-memory stand-in for a Supabase table with real upsert semantics."""
 
     def __init__(self, rows_by_id):
-        self._rows = rows_by_id  # dict[str, dict] keyed by user_id
+        self._rows = rows_by_id  # dict[str, dict] keyed by user_id/id
 
     def upsert(self, row, on_conflict=None, ignore_duplicates=False):
-        user_id = row["user_id"]
-        exists = user_id in self._rows
+        key = row.get("user_id") or row.get("id")
+        exists = key in self._rows
         if exists and ignore_duplicates:
             pass  # ON CONFLICT DO NOTHING -- existing row untouched
         else:
-            self._rows[user_id] = dict(row)  # INSERT or DO UPDATE
+            self._rows[key] = dict(row)  # INSERT or DO UPDATE
         return self
 
     def select(self, *_args, **_kwargs):
@@ -85,10 +85,14 @@ class FakeTable:
 class FakeSupabase:
     def __init__(self, rows_by_id):
         self._rows = rows_by_id
+        self._mirror_rows: dict = {}  # public.users -- see get_current_user's second upsert
 
     def table(self, name):
-        assert name == "user_roles"
-        return FakeTable(self._rows)
+        if name == "user_roles":
+            return FakeTable(self._rows)
+        if name == "users":
+            return FakeTable(self._mirror_rows)
+        raise AssertionError(f"unexpected table: {name!r}")
 
 
 def run_get_current_user(fake_supabase, user_id):
@@ -158,6 +162,18 @@ class AdminSelfDemotionTests(unittest.TestCase):
         cached_at = auth_module._user_role_cache["user-2"]
         run_get_current_user(fake, "user-2")
         self.assertEqual(auth_module._user_role_cache["user-2"], cached_at)
+
+    def test_users_mirror_synced_alongside_role(self):
+        """The users-mirror table sync (2026-07-18_users_mirror.sql) rides
+        the same request that upserts user_roles -- verifies it actually
+        writes email/name, unlike the ignore_duplicates=True role upsert
+        this test class otherwise exercises."""
+        rows = {}
+        fake = FakeSupabase(rows)
+        run_get_current_user(fake, "new-user-2")
+        mirror_row = fake._mirror_rows["new-user-2"]
+        self.assertEqual(mirror_row["email"], "nurse@example.com")
+        self.assertEqual(mirror_row["name"], "Test Nurse")
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ from app.core.feature_flags import require_feature, close_if_disabled
 from app.services.speech_to_text import speech_to_text
 from app.services.ai_scoring import get_patient_response, score_speaking, _call_ai
 from app.services.pronunciation import get_pronunciation_feedback
+from app.services.skill_graph import record_skill_observations
 from app.services.plan_gating import (
     get_scoring_model,
     get_plan_from_profile,
@@ -817,6 +818,13 @@ async def score_speaking_session(
             "duration_seconds": request.duration_seconds,
         }).execute
     )
+
+    criterion_scores = {
+        f"speaking:{criterion}": data["score"]
+        for criterion, data in feedback.get("scores", {}).items()
+        if isinstance(data, dict) and isinstance(data.get("score"), (int, float))
+    }
+    await record_skill_observations(current_user.id, criterion_scores)
 
     return {
         "success": True,

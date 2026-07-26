@@ -74,6 +74,9 @@ interface SpeakingSessionProps {
   onTryAgain: () => void
   onRetryWeakest: () => void
   setPhase: Dispatch<SetStateAction<Phase>>
+  // Full Mock Test mode: which role play (1 or 2) this session is, or null/undefined
+  // outside a mock. Swaps the standalone-practice stepper for exam-style labeling.
+  mockRoleplay?: 1 | 2 | null
 }
 
 export default function SpeakingSession({
@@ -120,6 +123,7 @@ export default function SpeakingSession({
   onTryAgain,
   onRetryWeakest,
   setPhase,
+  mockRoleplay,
 }: SpeakingSessionProps) {
   const [scoringElapsed, setScoringElapsed] = useState(0)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -388,27 +392,36 @@ export default function SpeakingSession({
     return (
       <div className="min-h-screen bg-[#F8FAFC] px-4 py-10">
         <div className="mx-auto max-w-3xl">
-          <div className="flex items-center justify-center gap-2 mb-8 flex-wrap">
-            {STAGES_NAV.map((stage, i) => (
-              <div key={stage.key} className="flex items-center gap-2">
-                <div
-                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all ${
-                    stage.key === 'briefing'
-                      ? 'bg-emerald-500 text-white'
-                      : stage.key === 'select'
-                      ? 'bg-[#0F2356]/10 text-[#0F2356]'
-                      : 'bg-gray-100 text-gray-400'
-                  }`}
-                >
-                  {stage.key === 'select' && <CheckCircle2 className="size-3" />}
-                  {stage.label}
-                </div>
-                {i < STAGES_NAV.length - 1 && (
-                  <span className="text-gray-300 text-xs">›</span>
-                )}
+          {mockRoleplay ? (
+            <div className="flex justify-center mb-8">
+              <div className="rounded-2xl bg-[#0F2356] text-white px-5 py-2.5 shadow-md">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-200">Full Mock Test</p>
+                <p className="text-sm font-semibold">Speaking · Role play {mockRoleplay} of 2</p>
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-2 mb-8 flex-wrap">
+              {STAGES_NAV.map((stage, i) => (
+                <div key={stage.key} className="flex items-center gap-2">
+                  <div
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all ${
+                      stage.key === 'briefing'
+                        ? 'bg-emerald-500 text-white'
+                        : stage.key === 'select'
+                        ? 'bg-[#0F2356]/10 text-[#0F2356]'
+                        : 'bg-gray-100 text-gray-400'
+                    }`}
+                  >
+                    {stage.key === 'select' && <CheckCircle2 className="size-3" />}
+                    {stage.label}
+                  </div>
+                  {i < STAGES_NAV.length - 1 && (
+                    <span className="text-gray-300 text-xs">›</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="rounded-2xl bg-white shadow-sm p-8">
             <div className="mb-6">
@@ -453,12 +466,16 @@ export default function SpeakingSession({
               >
                 {readingTime > 0 ? 'Start Early' : 'Begin Speaking'}
               </button>
-              <button
-                onClick={onTryAgain}
-                className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100 transition"
-              >
-                Back to Scenarios
-              </button>
+              {/* No escape hatch back to the scenario picker in a mock -- role plays
+                  lock behind you, same as every other section once it's started. */}
+              {!mockRoleplay && (
+                <button
+                  onClick={onTryAgain}
+                  className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100 transition"
+                >
+                  Back to Scenarios
+                </button>
+              )}
             </div>
           </div>
         </div>

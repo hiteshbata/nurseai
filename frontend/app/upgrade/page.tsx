@@ -16,6 +16,7 @@ export default function UpgradePage() {
   const [paid, setPaid] = useState(false)
   const [plans, setPlans] = useState<Plan[] | null>(null)
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly')
+  const [couponCode, setCouponCode] = useState('')
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -84,6 +85,15 @@ export default function UpgradePage() {
           <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full">
             2 months free
           </span>
+        </div>
+
+        <div className="flex justify-center mb-8">
+          <input
+            value={couponCode}
+            onChange={(e) => setCouponCode(e.target.value)}
+            placeholder="Have a coupon code?"
+            className="px-4 py-2 border rounded-lg text-sm w-64 text-center uppercase"
+          />
         </div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -160,6 +170,7 @@ export default function UpgradePage() {
                         className="bg-[#0F2356] text-white hover:bg-[#0F2356]/90"
                         mode={isAnnual ? 'order' : 'subscription'}
                         billingCycle={isAnnual ? 'annual' : 'monthly'}
+                        couponCode={couponCode}
                       />
                       <p className="text-xs text-gray-400 text-center mt-2">
                         {isAnnual

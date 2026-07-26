@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from app.core.config import settings
 from app.routers.auth import get_current_user, UserInfo
@@ -5,6 +6,8 @@ from app.core.supabase import get_supabase
 from app.core.plans import PLAN_LIMITS
 from app.services.plan_gating import get_plan_from_profile, parse_timestamp
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -19,9 +22,15 @@ def get_month_start_utc():
 def _usage_payload(profile_data: dict, month_start: str) -> dict:
     """Pure computation, no DB access. If the stored reset_date is stale,
     reports sessions_used as 0 without writing -- the actual reset write
-    only happens on the check-and-increment (POST) path."""
+    only happens on the check-and-increment (POST) path.
+
+    bonus_sessions (from referrals/admin grants) is a spend-down wallet, not
+    a monthly allowance: it's only drawn on once the plan's own monthly quota
+    is exhausted, and unlike sessions_used_this_month it's never reset --
+    unspent bonus carries over across months untouched."""
     plan = get_plan_from_profile(profile_data)
-    limit = PLAN_LIMITS.get(plan, 3)
+    plan_limit = PLAN_LIMITS.get(plan, 3)
+    bonus_sessions = profile_data.get("bonus_sessions", 0)
 
     reset_date = profile_data.get("sessions_reset_date")
     if not reset_date or reset_date < month_start:
@@ -29,10 +38,13 @@ def _usage_payload(profile_data: dict, month_start: str) -> dict:
     else:
         sessions_used = profile_data.get("sessions_used_this_month", 0)
 
+    plan_remaining = max(0, plan_limit - sessions_used)
+
     return {
         "sessions_used": sessions_used,
-        "sessions_limit": limit,
-        "sessions_remaining": max(0, limit - sessions_used),
+        "sessions_limit": plan_limit + bonus_sessions,
+        "sessions_remaining": plan_remaining + bonus_sessions,
+        "bonus_sessions": bonus_sessions,
         "plan": plan,
         "auto_renew_enabled": bool(profile_data.get("auto_renew_enabled")),
         "plan_expires_at": profile_data.get("plan_expires_at"),
@@ -44,7 +56,7 @@ def get_session_usage(current_user: UserInfo = Depends(get_current_user)):
     supabase = get_supabase()
 
     profile = supabase.table("user_profiles").select(
-        "plan, plan_expires_at, sessions_used_this_month, sessions_reset_date, auto_renew_enabled"
+        "plan, plan_expires_at, sessions_used_this_month, sessions_reset_date, auto_renew_enabled, bonus_sessions"
     ).eq("user_id", current_user.id).execute()
 
     if not profile.data:
@@ -53,6 +65,7 @@ def get_session_usage(current_user: UserInfo = Depends(get_current_user)):
             "sessions_used": 0,
             "sessions_limit": free_limit,
             "sessions_remaining": free_limit,
+            "bonus_sessions": 0,
             "plan": "free",
             "auto_renew_enabled": False,
             "plan_expires_at": None,
@@ -80,7 +93,7 @@ def check_and_increment_session(
 
     for _ in range(MAX_INCREMENT_RETRIES):
         profile = supabase.table("user_profiles").select(
-            "plan, plan_expires_at, sessions_used_this_month, sessions_reset_date, auto_renew_enabled"
+            "plan, plan_expires_at, sessions_used_this_month, sessions_reset_date, auto_renew_enabled, bonus_sessions"
         ).eq("user_id", current_user.id).execute()
         profile_data = profile.data[0]
         month_start = get_month_start_utc()
@@ -111,16 +124,32 @@ def check_and_increment_session(
                 },
             )
 
-        # Compare-and-swap: only succeeds if sessions_used_this_month hasn't
+        # Spend the plan's own monthly quota before touching the bonus
+        # wallet, so a never-expiring referral/bonus credit is saved for
+        # whenever the plan quota runs dry rather than drained first.
+        plan_limit = PLAN_LIMITS.get(usage["plan"], 3)
+        spending_bonus = usage["sessions_used"] >= plan_limit
+
+        # Compare-and-swap: only succeeds if the counter being spent hasn't
         # changed since we read it, so two concurrent requests can't both
-        # observe the same count and both write the same incremented value.
-        result = (
-            supabase.table("user_profiles")
-            .update({"sessions_used_this_month": usage["sessions_used"] + 1})
-            .eq("user_id", current_user.id)
-            .eq("sessions_used_this_month", usage["sessions_used"])
-            .execute()
-        )
+        # observe the same count and both write the same decremented/
+        # incremented value.
+        if spending_bonus:
+            result = (
+                supabase.table("user_profiles")
+                .update({"bonus_sessions": usage["bonus_sessions"] - 1})
+                .eq("user_id", current_user.id)
+                .eq("bonus_sessions", usage["bonus_sessions"])
+                .execute()
+            )
+        else:
+            result = (
+                supabase.table("user_profiles")
+                .update({"sessions_used_this_month": usage["sessions_used"] + 1})
+                .eq("user_id", current_user.id)
+                .eq("sessions_used_this_month", usage["sessions_used"])
+                .execute()
+            )
         if result.data:
             break
     else:
@@ -136,10 +165,16 @@ def check_and_increment_session(
     }).execute()
     session_id = session_row.data[0]["id"] if session_row.data else None
 
+    if is_first_ever_session(current_user.id, "speaking"):
+        try:
+            supabase.rpc("reward_referral", {"p_referred_id": current_user.id}).execute()
+        except Exception:
+            logger.exception("reward_referral failed | user_id=%s", current_user.id)
+
     return {
         "allowed": True,
         "session_id": session_id,
-        "sessions_used": usage["sessions_used"] + 1,
+        "sessions_used": usage["sessions_used"] + (0 if spending_bonus else 1),
         "sessions_remaining": usage["sessions_remaining"] - 1,
     }
 

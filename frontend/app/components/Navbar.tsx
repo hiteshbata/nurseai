@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { supabase, signOut, useSupabaseSession } from '@/lib/supabase'
-import { LayoutDashboard, Settings, LogOut } from 'lucide-react'
+import { LayoutDashboard, Settings, LogOut, Gift } from 'lucide-react'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
 import api from '@/lib/api'
 
@@ -16,9 +16,13 @@ const publicNavLinks = [
 ]
 
 const appNavLinks = [
+  { href: '/hub', label: 'Study Hub' },
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/practice/speaking', label: 'Speaking' },
   { href: '/practice/writing', label: 'Writing' },
+  { href: '/practice/reading', label: 'Reading' },
+  { href: '/practice/listening', label: 'Listening' },
+  { href: '/practice/mock', label: 'Mock Test' },
 ]
 
 const WRITING_PLANS = ['pro', 'elite']
@@ -104,6 +108,14 @@ export function Navbar() {
     const handler = () => setScrolled(window.scrollY > 10)
     window.addEventListener('scroll', handler)
     return () => window.removeEventListener('scroll', handler)
+  }, [])
+
+  // Captured wherever a ?ref=CODE link first lands (Navbar mounts on every
+  // page), then redeemed once the visitor actually signs up and hits
+  // onboarding — see the redeem call in onboarding/page.tsx.
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get('ref')
+    if (ref) localStorage.setItem('referral_code', ref)
   }, [])
 
   const PlanUsagePill = ({ onNavigate }: { onNavigate?: () => void }) => {
@@ -223,6 +235,14 @@ export function Navbar() {
                   >
                     <Settings className="h-4 w-4" />
                     Settings
+                  </Link>
+                  <Link
+                    href="/refer"
+                    onClick={() => setAvatarOpen(false)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <Gift className="h-4 w-4" />
+                    Refer &amp; Earn
                   </Link>
                   <div className="border-t border-gray-100 my-1" />
                   <button

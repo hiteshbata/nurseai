@@ -25,7 +25,7 @@ Account Information: When you register for a SpeakOET account, we collect your n
 
 Profile Data: We collect any additional information you choose to add to your user profile to personalize your learning experience.
 
-Practice and Assessment Data: Because SpeakOET is specifically designed to help healthcare professionals practice OET speaking, we collect and process the audio recordings of your speaking practice sessions. Furthermore, we store the AI-generated feedback, your performance scores, and your historical progress metrics. This allows you to effectively track your improvement over time.
+Practice and Assessment Data: Because SpeakOET is specifically designed to help healthcare professionals practice OET speaking, we collect and process the audio recordings of your speaking practice sessions. For live voice roleplay sessions, we also generate and store a text transcript of the conversation, which we retain for up to 90 days for quality assurance and account safety review before it is automatically deleted. Furthermore, we store the AI-generated feedback, your performance scores, and your historical progress metrics. This allows you to effectively track your improvement over time.
 
 Support Communications: If you contact us for customer support, technical assistance, or general inquiries, we collect your contact details and the contents of your messages to assist you effectively.
 
@@ -117,7 +117,7 @@ export default function PrivacyPage() {
   return (
     <main className="min-h-screen px-4 py-20 max-w-3xl mx-auto">
       <h1 className="text-3xl font-bold text-[#0F2356] mb-2">Privacy Policy</h1>
-      <p className="text-gray-500 text-sm mb-10">Effective Date: July 12, 2026</p>
+      <p className="text-gray-500 text-sm mb-10">Effective Date: July 21, 2026</p>
 
       <div className="space-y-10">
         {SECTIONS.map(({ heading, body }) => (

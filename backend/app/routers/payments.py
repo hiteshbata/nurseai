@@ -71,6 +71,75 @@ def get_expected_amount_paise(plan_id: str, billing_cycle: str = "monthly") -> i
     return prices[plan_id]
 
 
+RAZORPAY_MIN_AMOUNT_PAISE = 100  # Razorpay rejects orders below ₹1.
+
+
+def get_coupon(code: str) -> Optional[dict]:
+    supabase = get_supabase()
+    result = (
+        supabase.table("coupon_codes")
+        .select("*")
+        .eq("code", code.strip().upper())
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def validate_coupon_eligibility(coupon: Optional[dict]) -> dict:
+    """Raise if a coupon can't be used right now (missing/inactive/expired/
+    exhausted). Shared by the one-off order path and the recurring
+    subscription path -- see apply_coupon and create_subscription."""
+    if not coupon or not coupon["active"]:
+        raise HTTPException(status_code=400, detail="Invalid or inactive coupon code")
+    expires_at = coupon.get("expires_at")
+    if expires_at and datetime.fromisoformat(expires_at.replace("Z", "+00:00")) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="This coupon has expired")
+    max_redemptions = coupon.get("max_redemptions")
+    if max_redemptions is not None and coupon["times_redeemed"] >= max_redemptions:
+        raise HTTPException(status_code=400, detail="This coupon has reached its redemption limit")
+    return coupon
+
+
+def compute_discount(coupon: dict, base_amount_paise: int) -> int:
+    if coupon["discount_type"] == "percent":
+        discounted = base_amount_paise * (100 - coupon["discount_value"]) // 100
+    else:
+        discounted = base_amount_paise - coupon["discount_value"]
+    return max(discounted, RAZORPAY_MIN_AMOUNT_PAISE)
+
+
+def apply_coupon(code: str, base_amount_paise: int) -> tuple[dict, int]:
+    """Validate a coupon and return (coupon_row, discounted_amount_paise).
+    Only used on the one-off order path -- see create_order/verify_payment.
+    Redemption itself (incrementing times_redeemed) happens separately in
+    verify_payment, only after payment is actually confirmed, not here."""
+    coupon = validate_coupon_eligibility(get_coupon(code))
+    return coupon, compute_discount(coupon, base_amount_paise)
+
+
+def redeem_coupon(code: str) -> None:
+    """Atomic increment via RPC (see backend/migrations/2026-07-18_coupon_codes.sql)
+    so two concurrent redemptions of the last unit of a capped coupon can't
+    both succeed. Call only after a payment is confirmed (not at order
+    creation), so abandoned checkouts don't burn redemptions."""
+    get_supabase().rpc("redeem_coupon", {"p_code": code.strip().upper()}).execute()
+
+
+def subscription_charge_is_coupon_trusted(coupon_code: Optional[str], subscription: dict) -> bool:
+    """True only for the first successful charge (paid_count == 1) of a
+    subscription created with a coupon-linked Razorpay Offer (see
+    create_subscription). Razorpay's own Offer engine decides that
+    discounted amount, not us -- the offer_id was only ever set
+    server-side from a coupon we'd already validated, never
+    client-supplied -- so callers should skip the usual Plan-price
+    equality check for exactly this one charge and trust whatever
+    Razorpay actually captured. Every renewal after it (paid_count > 1)
+    bills the plan's full price again, since the offer doesn't carry
+    forward."""
+    return bool(coupon_code) and subscription.get("paid_count") == 1
+
+
 def get_subscription_expected_amount_paise(client: "razorpay.Client", subscription: dict) -> int:
     """Recurring subscriptions bill whatever amount is fixed on their Razorpay
     Plan entity at creation time -- NOT our local PLAN_PRICE_PAISE, which only
@@ -206,6 +275,7 @@ def verify_subscription_payment_signature(payment_id: str, subscription_id: str,
 class CreateOrderRequest(BaseModel):
     plan_id: str = "basic"
     billing_cycle: str = "monthly"
+    coupon_code: Optional[str] = None
 
 
 class CreateOrderResponse(BaseModel):
@@ -224,20 +294,33 @@ def create_order(
     billing_cycle = validate_billing_cycle(req.billing_cycle)
     amount_paise = get_expected_amount_paise(req.plan_id, billing_cycle)
 
+    coupon = None
+    if req.coupon_code:
+        coupon, amount_paise = apply_coupon(req.coupon_code, amount_paise)
+
     client = get_razorpay_client()
     short_id = current_user.id.replace("-", "")[:12]
     receipt = f"{short_id}_{int(__import__('time').time())}"
+
+    notes = {
+        "user_id": current_user.id,
+        "plan_id": req.plan_id,
+        "billing_cycle": billing_cycle,
+    }
+    if coupon:
+        # expected_amount_paise lets verify-payment trust the discount that
+        # was already locked into this Razorpay order at creation time,
+        # instead of re-deriving it from the coupon row (which could have
+        # changed -- expired, deactivated -- in the meantime).
+        notes["coupon_code"] = coupon["code"]
+        notes["expected_amount_paise"] = str(amount_paise)
 
     try:
         order = client.order.create({
             "amount": amount_paise,
             "currency": "INR",
             "receipt": receipt,
-            "notes": {
-                "user_id": current_user.id,
-                "plan_id": req.plan_id,
-                "billing_cycle": billing_cycle,
-            },
+            "notes": notes,
         })
     except Exception:
         logger.exception(
@@ -335,7 +418,12 @@ def verify_payment(
 
     profile_plan = validate_plan_id(plan_id)
 
-    expected_amount = get_expected_amount_paise(plan_id, billing_cycle)
+    coupon_code = notes.get("coupon_code")
+    stored_expected_amount = notes.get("expected_amount_paise")
+    if coupon_code and stored_expected_amount is not None:
+        expected_amount = int(stored_expected_amount)
+    else:
+        expected_amount = get_expected_amount_paise(plan_id, billing_cycle)
     if amount != expected_amount:
         logger.error(
             "verify-payment amount mismatch | order_id=%s plan_id=%s expected=%s got=%s user_id=%s",
@@ -361,6 +449,9 @@ def verify_payment(
         )
         return VerifyPaymentResponse(success=True, message="Payment already verified")
 
+    if coupon_code:
+        redeem_coupon(coupon_code)
+
     period_days = ANNUAL_PERIOD_DAYS if billing_cycle == "annual" else PLAN_PERIOD_DAYS
     grant_subscription_period(str(current_user.id), profile_plan, previous_plan, period_days=period_days)
 
@@ -377,6 +468,7 @@ def verify_payment(
 
 class CreateSubscriptionRequest(BaseModel):
     plan_id: str = "basic"
+    coupon_code: Optional[str] = None
 
 
 class CreateSubscriptionResponse(BaseModel):
@@ -392,17 +484,40 @@ def create_subscription(
     validate_plan_id(req.plan_id)
     razorpay_plan_id = get_razorpay_plan_id(req.plan_id)
 
+    # Razorpay only lets discounts be created as an "Offer" from their
+    # Dashboard (no API for it) -- a coupon usable on recurring billing
+    # must have a matching Offer already created there, linked here by ID.
+    # Razorpay's own Offer engine decides the discounted first-cycle
+    # amount, not us -- see the trust-Razorpay's-own-charge comment in
+    # verify_subscription_payment.
+    coupon = None
+    offer_id = None
+    if req.coupon_code:
+        coupon = validate_coupon_eligibility(get_coupon(req.coupon_code))
+        offer_id = coupon.get("razorpay_offer_id")
+        if not offer_id:
+            raise HTTPException(
+                status_code=400,
+                detail="This coupon isn't set up for monthly billing yet",
+            )
+
     client = get_razorpay_client()
+    sub_notes = {
+        "user_id": current_user.id,
+        "plan_id": req.plan_id,
+    }
+    sub_params = {
+        "plan_id": razorpay_plan_id,
+        "customer_notify": 1,
+        "total_count": 120,  # ~10 years of monthly cycles -- effectively "until cancelled"
+        "notes": sub_notes,
+    }
+    if offer_id:
+        sub_params["offer_id"] = offer_id
+        sub_notes["coupon_code"] = coupon["code"]
+
     try:
-        subscription = client.subscription.create({
-            "plan_id": razorpay_plan_id,
-            "customer_notify": 1,
-            "total_count": 120,  # ~10 years of monthly cycles -- effectively "until cancelled"
-            "notes": {
-                "user_id": current_user.id,
-                "plan_id": req.plan_id,
-            },
-        })
+        subscription = client.subscription.create(sub_params)
     except Exception:
         logger.exception(
             "create-subscription failed | user_id=%s plan_id=%s",
@@ -471,14 +586,18 @@ def verify_subscription_payment(
 
     profile_plan = validate_plan_id(plan_id)
 
+    coupon_code = notes.get("coupon_code")
+    is_first_cycle_coupon_charge = subscription_charge_is_coupon_trusted(coupon_code, subscription)
+
     amount = payment.get("amount")
-    expected_amount = get_subscription_expected_amount_paise(client, subscription)
-    if amount != expected_amount:
-        logger.error(
-            "verify-subscription-payment amount mismatch | subscription_id=%s plan_id=%s expected=%s got=%s user_id=%s",
-            req.razorpay_subscription_id, plan_id, expected_amount, amount, current_user.id,
-        )
-        raise HTTPException(status_code=400, detail="Payment amount does not match plan price")
+    if not is_first_cycle_coupon_charge:
+        expected_amount = get_subscription_expected_amount_paise(client, subscription)
+        if amount != expected_amount:
+            logger.error(
+                "verify-subscription-payment amount mismatch | subscription_id=%s plan_id=%s expected=%s got=%s user_id=%s",
+                req.razorpay_subscription_id, plan_id, expected_amount, amount, current_user.id,
+            )
+            raise HTTPException(status_code=400, detail="Payment amount does not match plan price")
 
     previous_plan = get_current_plan(str(current_user.id))
 
@@ -503,6 +622,9 @@ def verify_subscription_payment(
             req.razorpay_payment_id,
         )
         return VerifySubscriptionPaymentResponse(success=True, message="Payment already verified")
+
+    if is_first_cycle_coupon_charge:
+        redeem_coupon(coupon_code)
 
     grant_subscription_period(str(current_user.id), profile_plan, previous_plan)
 
@@ -583,6 +705,7 @@ def _finalize_payment(
     extra_profile_update: dict | None = None,
     extra_event_fields: dict | None = None,
     expected_amount_paise: int | None = None,
+    coupon_code: str | None = None,
 ) -> Response:
     """Shared tail for payment.captured / subscription.charged: validate the
     plan, verify the amount, grant the subscription period, and log. The
@@ -590,7 +713,11 @@ def _finalize_payment(
     so those stay in each caller. expected_amount_paise lets callers override
     the amount check -- subscription.charged must pass the price locked on
     the Razorpay Plan at subscription creation (see
-    get_subscription_expected_amount_paise), not today's live price."""
+    get_subscription_expected_amount_paise), not today's live price.
+    coupon_code, if passed, is redeemed once this payment is confirmed
+    new (not a webhook/client-verify race repeat) -- callers must only
+    pass it when this specific payment legitimately used the coupon (see
+    the payment.captured and subscription.charged branches below)."""
     try:
         profile_plan = validate_plan_id(plan_id)
     except HTTPException:
@@ -626,6 +753,9 @@ def _finalize_payment(
     if result == "already_processed":
         logger.info("%s %s already processed (race with another path) — skipping", label, payment_id)
         return Response(status_code=200)
+
+    if coupon_code:
+        redeem_coupon(coupon_code)
 
     period_days = ANNUAL_PERIOD_DAYS if billing_cycle == "annual" else PLAN_PERIOD_DAYS
     grant_subscription_period(user_id, profile_plan, previous_plan, period_days=period_days)
@@ -679,6 +809,8 @@ def _process_webhook_body(body_str: str, signature: str) -> Response:
         plan_id = notes.get("plan_id")
         user_id = notes.get("user_id")
         billing_cycle = notes.get("billing_cycle") or "monthly"
+        coupon_code = notes.get("coupon_code")
+        stored_expected_amount = notes.get("expected_amount_paise")
 
         if not payment_id or not order_id:
             logger.warning("payment.captured missing payment_id or order_id")
@@ -705,6 +837,18 @@ def _process_webhook_body(body_str: str, signature: str) -> Response:
             return Response(status_code=200)
 
         amount = payment.get("amount", 0)
+        # A coupon-discounted order bakes its final amount into
+        # expected_amount_paise at create-order time (see create_order) --
+        # reuse that here so this fallback path (fires if the client never
+        # calls /verify-payment, e.g. tab closed after paying) doesn't
+        # wrongly reject a legitimately discounted payment as a mismatch
+        # and silently refuse to grant the plan.
+        order_expected_amount_paise = None
+        if coupon_code and stored_expected_amount is not None:
+            try:
+                order_expected_amount_paise = int(stored_expected_amount)
+            except (TypeError, ValueError):
+                order_expected_amount_paise = None
         return _finalize_payment(
             user_id=user_id,
             order_id=order_id,
@@ -715,6 +859,8 @@ def _process_webhook_body(body_str: str, signature: str) -> Response:
             verb="upgraded to",
             event_source="webhook",
             billing_cycle=billing_cycle,
+            expected_amount_paise=order_expected_amount_paise,
+            coupon_code=coupon_code if order_expected_amount_paise is not None else None,
         )
 
     elif event_type == "payment.failed":
@@ -754,6 +900,7 @@ def _process_webhook_body(body_str: str, signature: str) -> Response:
         notes = get_notes(subscription)
         plan_id = notes.get("plan_id")
         user_id = notes.get("user_id")
+        coupon_code = notes.get("coupon_code")
 
         if not payment_id or not subscription_id:
             logger.warning("subscription.charged missing payment_id or subscription_id")
@@ -779,7 +926,12 @@ def _process_webhook_body(body_str: str, signature: str) -> Response:
             return Response(status_code=200)
 
         amount = payment.get("amount", 0)
-        expected_amount = get_subscription_expected_amount_paise(get_razorpay_client(), subscription)
+        is_first_cycle_coupon_charge = subscription_charge_is_coupon_trusted(coupon_code, subscription)
+        expected_amount = (
+            amount
+            if is_first_cycle_coupon_charge
+            else get_subscription_expected_amount_paise(get_razorpay_client(), subscription)
+        )
         return _finalize_payment(
             user_id=user_id,
             order_id=payment.get("order_id") or subscription_id,
@@ -790,6 +942,7 @@ def _process_webhook_body(body_str: str, signature: str) -> Response:
             verb="renewed",
             event_source="subscription_webhook",
             expected_amount_paise=expected_amount,
+            coupon_code=coupon_code if is_first_cycle_coupon_charge else None,
             extra_profile_update={
                 "razorpay_subscription_id": subscription_id,
                 "auto_renew_enabled": True,

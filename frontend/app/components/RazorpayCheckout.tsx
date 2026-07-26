@@ -21,6 +21,10 @@ interface RazorpayCheckoutProps {
   // Plan entity set up for auto-renewal yet.
   mode?: 'order' | 'subscription'
   billingCycle?: 'monthly' | 'annual'
+  // In 'subscription' mode only takes effect if the coupon has a
+  // Razorpay Offer linked (backend rejects it otherwise) -- discounts just
+  // the first billing cycle, not every renewal.
+  couponCode?: string
 }
 
 declare global {
@@ -63,6 +67,7 @@ export function RazorpayCheckout({
   className = '',
   mode = 'subscription',
   billingCycle = 'monthly',
+  couponCode,
 }: RazorpayCheckoutProps) {
   const [isLoading, setIsLoading] = useState(false)
 
@@ -88,6 +93,7 @@ export function RazorpayCheckout({
       if (mode === 'subscription') {
         const subRes = await api.post('/payments/create-subscription', {
           plan_id: planId,
+          coupon_code: couponCode?.trim() || undefined,
         })
         const { subscription_id } = subRes.data
 
@@ -147,6 +153,7 @@ export function RazorpayCheckout({
         const orderRes = await api.post('/payments/create-order', {
           plan_id: planId,
           billing_cycle: billingCycle,
+          coupon_code: couponCode?.trim() || undefined,
         })
 
         const { order_id, amount, currency } = orderRes.data
@@ -216,7 +223,7 @@ export function RazorpayCheckout({
     } finally {
       setIsLoading(false)
     }
-  }, [amountPaise, planId, planLabel, onSuccess, mode, billingCycle])
+  }, [amountPaise, planId, planLabel, onSuccess, mode, billingCycle, couponCode])
 
   return (
     <button

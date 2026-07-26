@@ -96,9 +96,11 @@ def test_connect_success_sends_session_update(monkeypatch):
     assert adapter._ws is fake_ws
     sent = json.loads(fake_ws.sent[0])
     assert sent["type"] == "session.update"
-    assert sent["session"]["voice"] == "alloy"
+    assert sent["session"]["type"] == "realtime"
     assert sent["session"]["instructions"] == "You are a patient."
-    assert sent["session"]["input_audio_format"] == "pcm16"
+    assert sent["session"]["audio"]["output"]["voice"] == "alloy"
+    assert sent["session"]["audio"]["input"]["format"] == {"type": "audio/pcm", "rate": 24000}
+    assert sent["session"]["audio"]["output"]["format"] == {"type": "audio/pcm", "rate": 24000}
 
 
 def test_connect_failure_raises_provider_connect_error(monkeypatch):
@@ -186,8 +188,8 @@ def test_receive_events_empty_when_never_connected():
 
 def test_receive_events_audio_delta_and_transcript_delta():
     messages = [
-        json.dumps({"type": "response.audio.delta", "delta": base64.b64encode(b"\x09\x08").decode()}),
-        json.dumps({"type": "response.audio_transcript.delta", "delta": "Hel"}),
+        json.dumps({"type": "response.output_audio.delta", "delta": base64.b64encode(b"\x09\x08").decode()}),
+        json.dumps({"type": "response.output_audio_transcript.delta", "delta": "Hel"}),
     ]
     adapter = _adapter()
     adapter._ws = FakeWS(messages=messages)
@@ -240,6 +242,20 @@ def test_receive_events_recoverable_error():
     assert err.recoverable is True
     assert err.message == "bad request"
     assert err.code == "invalid"
+
+
+def test_receive_events_swallows_benign_cancel_race():
+    messages = [
+        json.dumps({"type": "error", "error": {"message": "Cancellation failed: no active response found", "code": "response_cancel_not_active"}}),
+        json.dumps({"type": "response.done"}),
+    ]
+    adapter = _adapter()
+    adapter._ws = FakeWS(messages=messages)
+
+    events = _run(_collect_events(adapter))
+
+    assert not any(isinstance(e, ProviderError) for e in events)
+    assert ResponseDone() in events
 
 
 def test_receive_events_connection_closed_is_unrecoverable():

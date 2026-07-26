@@ -1,5 +1,23 @@
-﻿from supabase import create_client, Client
+﻿import socket
+
+from supabase import create_client, Client
 from app.core.config import settings
+
+# Some networks (seen in local/sandboxed dev) hand back NAT64-synthesized
+# IPv6 addresses for public hosts like *.supabase.co ahead of the working
+# IPv4 ones, but never actually route them. socket.create_connection tries
+# addresses sequentially with no Happy-Eyeballs racing, so every cold
+# connection (first JWKS fetch, first REST call) stalls ~40s on the dead
+# IPv6 entry before falling back to IPv4. Sorting IPv4 first removes the
+# stall; real IPv6 connectivity still works exactly the same when reachable.
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _ipv4_first_getaddrinfo(*args, **kwargs):
+    return sorted(_orig_getaddrinfo(*args, **kwargs), key=lambda r: r[0] != socket.AF_INET)
+
+
+socket.getaddrinfo = _ipv4_first_getaddrinfo
 
 # postgrest-py 0.16.x hardcodes http2=True with no override in ClientOptions.
 # Supabase/Render idle-close the HTTP/2 connection before httpx's keepalive
