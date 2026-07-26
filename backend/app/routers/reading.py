@@ -1129,7 +1129,12 @@ def create_test(req: ReadingTestCreate, _admin=Depends(require_admin)):
     supabase = get_supabase()
     # Draft by default: a new test is empty, so it starts hidden. Admin previews it,
     # then flips it live once its passages are attached and reviewed.
-    row = supabase.table("reading_tests").insert({"title": req.title.strip(), "is_active": False}).execute().data[0]
+    try:
+        row = supabase.table("reading_tests").insert({"title": req.title.strip(), "is_active": False}).execute().data[0]
+    except Exception as e:
+        if "duplicate key" in str(e).lower():
+            raise HTTPException(status_code=409, detail=f"A reading test titled \"{req.title.strip()}\" already exists")
+        raise
     return row
 
 

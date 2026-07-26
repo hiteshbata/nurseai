@@ -696,7 +696,12 @@ def create_test(req: ListeningTestCreate, _admin=Depends(require_admin)):
     supabase = get_supabase()
     # Draft by default: a new test is empty, so it starts hidden until its sections
     # + audio are attached and reviewed, then the admin flips it live.
-    row = supabase.table("listening_tests").insert({"title": req.title.strip(), "is_active": False}).execute().data[0]
+    try:
+        row = supabase.table("listening_tests").insert({"title": req.title.strip(), "is_active": False}).execute().data[0]
+    except Exception as e:
+        if "duplicate key" in str(e).lower():
+            raise HTTPException(status_code=409, detail=f"A listening test titled \"{req.title.strip()}\" already exists")
+        raise
     return row
 
 

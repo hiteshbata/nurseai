@@ -49,9 +49,9 @@ export default function NewScenarioPage() {
     try {
       await api.post('/admin/scenarios', cleanedData)
       router.push('/admin/scenarios')
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create scenario:', error)
-      alert('Failed to create scenario')
+      alert(error?.response?.data?.detail || 'Failed to create scenario')
     } finally {
       setLoading(false)
     }

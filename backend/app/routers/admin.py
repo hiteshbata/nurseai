@@ -152,15 +152,20 @@ def admin_create_scenario(
 ):
     """Create a new scenario with interlocutor + nurse cards."""
     supabase = get_supabase()
-    data = supabase.table("scenarios").insert({
-        "module": scenario.module,
-        "title": scenario.title,
-        "setting": scenario.setting,
-        "difficulty": scenario.difficulty,
-        "interlocutor_card": scenario.interlocutor_card,
-        "nurse_card": scenario.nurse_card,
-        "scoring_criteria": scenario.scoring_criteria,
-    }).execute()
+    try:
+        data = supabase.table("scenarios").insert({
+            "module": scenario.module,
+            "title": scenario.title,
+            "setting": scenario.setting,
+            "difficulty": scenario.difficulty,
+            "interlocutor_card": scenario.interlocutor_card,
+            "nurse_card": scenario.nurse_card,
+            "scoring_criteria": scenario.scoring_criteria,
+        }).execute()
+    except Exception as e:
+        if "duplicate key" in str(e).lower():
+            raise HTTPException(status_code=409, detail=f"A {scenario.module} scenario titled \"{scenario.title}\" already exists")
+        raise
     created = data.data[0]
     _write_audit_log(
         supabase, current_user, "scenario_created", "scenario",

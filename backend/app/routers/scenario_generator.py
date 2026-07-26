@@ -188,28 +188,35 @@ def save_scenario(payload: Dict[str, Any], _admin=Depends(require_admin)):
     inter = payload.get("interlocutor_card", {}) or {}
 
     supabase = get_supabase()
-    data = supabase.table("scenarios").insert({
-        "module": "speaking",
-        "is_active": True,
-        "title": payload["title"],
-        "setting": payload.get("setting", ""),
-        "difficulty": payload.get("difficulty", "intermediate"),
-        "nurse_card": {
-            "role": nurse.get("role", "You are the nurse in charge"),
-            "tasks": nurse.get("tasks", []),
-            "setting_description": payload.get("setting", ""),
-            "patient_summary": f"{patient.get('name', '')}, {patient.get('age', '')}, {patient.get('reason_for_admission', '')}",
-        },
-        "interlocutor_card": {
-            "patient_name": patient.get("name", "Patient"),
-            "age": str(patient.get("age", "")),
-            "condition": patient.get("reason_for_admission", ""),
-            "mood": patient.get("emotional_state", "Cooperative"),
-            "background": patient.get("background", ""),
-            "concerns": inter.get("questions_to_ask", []),
-            "instructions_for_ai": inter.get("persona", ""),
-        },
-        "scoring_criteria": SCORING_CRITERIA,
-        "specialty": payload.get("specialty", ""),
-    }).execute()
+    try:
+        data = supabase.table("scenarios").insert({
+            "module": "speaking",
+            "is_active": True,
+            "title": payload["title"],
+            "setting": payload.get("setting", ""),
+            "difficulty": payload.get("difficulty", "intermediate"),
+            "nurse_card": {
+                "role": nurse.get("role", "You are the nurse in charge"),
+                "tasks": nurse.get("tasks", []),
+                "setting_description": payload.get("setting", ""),
+                "patient_summary": f"{patient.get('name', '')}, {patient.get('age', '')}, {patient.get('reason_for_admission', '')}",
+            },
+            "interlocutor_card": {
+                "patient_name": patient.get("name", "Patient"),
+                "age": str(patient.get("age", "")),
+                "condition": patient.get("reason_for_admission", ""),
+                "mood": patient.get("emotional_state", "Cooperative"),
+                "background": patient.get("background", ""),
+                "concerns": inter.get("questions_to_ask", []),
+                "instructions_for_ai": inter.get("persona", ""),
+            },
+            "scoring_criteria": SCORING_CRITERIA,
+            "specialty": payload.get("specialty", ""),
+        }).execute()
+    except HTTPException:
+        raise
+    except Exception as e:
+        if "duplicate key" in str(e).lower():
+            raise HTTPException(status_code=409, detail=f"A speaking scenario titled \"{payload['title']}\" already exists")
+        raise
     return data.data[0]
