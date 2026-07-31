@@ -1,4 +1,7 @@
+'use client'
+
 import Image from 'next/image'
+import { useInView } from '@/app/hooks/useInView'
 
 // Every claim here must stay literally true — that is the point of this
 // section. It asserts: registered nurse in India, MSc Nursing completed, four
@@ -19,10 +22,19 @@ const FOUNDER = {
 }
 
 export default function FounderSection() {
+  const { ref, inView } = useInView<HTMLDivElement>()
+
   return (
     <section className="bg-[#0F2356] py-16 md:py-24">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col items-center text-center gap-6">
+        <div
+          ref={ref}
+          className="flex flex-col items-center text-center gap-6 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+          style={{
+            opacity: inView ? 1 : 0,
+            transform: inView ? "translateY(0)" : "translateY(12px)",
+          }}
+        >
           {/* The source is a 2:3 portrait, so a plain square crop would centre on
               the chest. object-position pulls the crop up to the face; the slight
               zoom fills the circle with head-and-shoulders instead of a distant
@@ -37,7 +49,7 @@ export default function FounderSection() {
             />
           </div>
 
-          <h2 className="text-3xl md:text-4xl font-bold text-white text-balance">{FOUNDER.heading}</h2>
+          <h2 className="font-display text-3xl md:text-4xl font-semibold text-white text-balance">{FOUNDER.heading}</h2>
 
           <p className="text-white/80 text-base leading-relaxed max-w-xl text-balance">{FOUNDER.story}</p>
 

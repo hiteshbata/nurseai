@@ -220,6 +220,9 @@ export default function AdminListeningPage() {
   const [newTitle, setNewTitle] = useState('')
   const [creating, setCreating] = useState(false)
 
+  const [selectedTestIds, setSelectedTestIds] = useState<Set<number>>(new Set())
+  const [bulkWorking, setBulkWorking] = useState(false)
+
   const [activeTest, setActiveTest] = useState<TestRow | null>(null)
   const [detail, setDetail] = useState<TestDetail | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
@@ -280,6 +283,33 @@ export default function AdminListeningPage() {
       fetchTests()
       if (activeTest?.id === t.id) loadDetail(t.id)
     } catch (e: any) { toast.error(errorMessage(e, 'Failed')) }
+  }
+
+  const toggleTestSelect = (id: number) =>
+    setSelectedTestIds((s) => {
+      const next = new Set(s)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  const toggleSelectAllTests = () =>
+    setSelectedTestIds((s) => (s.size === tests.length ? new Set() : new Set(tests.map((t) => t.id))))
+
+  const bulkSetPublish = async (goLive: boolean) => {
+    const ids = [...selectedTestIds]
+    if (ids.length === 0) return
+    setBulkWorking(true)
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => api.post(`/listening/admin/tests/${id}/active`, { is_active: goLive }))
+      )
+      const failed = results.filter((r) => r.status === 'rejected').length
+      if (failed) toast.error(`${failed} of ${ids.length} failed`)
+      else toast.success(`${ids.length} test${ids.length > 1 ? 's' : ''} ${goLive ? 'published' : 'unpublished'}`)
+      setSelectedTestIds(new Set())
+      fetchTests()
+    } finally {
+      setBulkWorking(false)
+    }
   }
 
   const deleteTest = async (t: TestRow) => {
@@ -710,17 +740,41 @@ export default function AdminListeningPage() {
       </div>
 
       <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="font-bold mb-4">All tests ({tests.length})</h2>
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <h2 className="font-bold">All tests ({tests.length})</h2>
+          {selectedTestIds.size > 0 && (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-500">{selectedTestIds.size} selected</span>
+              <button onClick={() => bulkSetPublish(true)} disabled={bulkWorking} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50">
+                {bulkWorking ? 'Working…' : 'Publish selected'}
+              </button>
+              <button onClick={() => bulkSetPublish(false)} disabled={bulkWorking} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-300 disabled:opacity-50">
+                Unpublish selected
+              </button>
+              <button onClick={() => setSelectedTestIds(new Set())} className="text-xs text-gray-500 hover:text-gray-700">Clear</button>
+            </div>
+          )}
+        </div>
         {tests.length === 0 ? <p className="text-gray-400 text-sm">None yet — create one above.</p> : (
           <div className="space-y-2">
+            {tests.length > 1 && (
+              <label className="flex items-center gap-2 text-xs text-gray-500 px-1">
+                <input type="checkbox" checked={selectedTestIds.size === tests.length} onChange={toggleSelectAllTests} />
+                Select all
+              </label>
+            )}
             {tests.map((t) => (
-              <div key={t.id} className="flex items-center justify-between gap-3 border rounded-lg px-4 py-3">
-                <div className="min-w-0">
-                  <p className="font-semibold truncate">{t.title} {t.is_active ? <span className="text-xs text-emerald-600">● live</span> : <span className="text-xs text-gray-400">draft</span>}</p>
-                  <p className="text-xs text-gray-500">
-                    {t.section_count} sections · Parts {t.parts.join('/') || '—'} · {t.question_count} Q
-                    {t.missing_answers > 0 && <span className="text-red-500"> · {t.missing_answers} missing answers</span>}
-                  </p>
+              <div key={t.id} className={`flex items-center justify-between gap-3 border rounded-lg px-4 py-3 ${selectedTestIds.has(t.id) ? 'bg-blue-50' : ''}`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <input type="checkbox" checked={selectedTestIds.has(t.id)} onChange={() => toggleTestSelect(t.id)} aria-label={`Select ${t.title}`} />
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate">{t.title} {t.is_active ? <span className="text-xs text-emerald-600">● live</span> : <span className="text-xs text-gray-400">draft</span>}</p>
+                    <p className="text-xs text-gray-500">
+                      {t.section_count} sections · Parts {t.parts.join('/') || '—'} · {t.question_count} Q
+                      {t.missing_answers > 0 && <span className="text-red-500"> · {t.missing_answers} missing answers</span>}
+                      {t.missing_audio > 0 && <span className="text-amber-600"> · {t.missing_audio} missing audio</span>}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex gap-3 shrink-0 text-sm">
                   <button onClick={() => manage(t)} className="text-blue-600 font-semibold">Manage</button>

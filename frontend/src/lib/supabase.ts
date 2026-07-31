@@ -106,6 +106,27 @@ export async function signUp(email: string, password: string, name: string) {
   return data
 }
 
+export async function signInAnonymously() {
+  const client = getClient()
+  if (!client) throw new Error('Supabase is not configured.')
+  const { data, error } = await client.auth.signInAnonymously()
+  if (error) throw error
+  return data
+}
+
+// Converts the current anonymous session into a real account, same user_id,
+// so everything recorded while anonymous (e.g. a free mock test) carries
+// over. Whether this completes immediately or needs an email confirmation
+// click first is a Supabase project setting, not something the caller
+// controls — check session.user.is_anonymous afterward to tell which happened.
+export async function linkAnonymousAccount(email: string, password: string, name: string) {
+  const client = getClient()
+  if (!client) throw new Error('Supabase is not configured.')
+  const { data, error } = await client.auth.updateUser({ email, password, data: { name } })
+  if (error) throw error
+  return data
+}
+
 export async function requestPasswordReset(email: string) {
   const client = getClient()
   if (!client) throw new Error('Supabase is not configured.')

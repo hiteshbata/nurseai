@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Lock, Check } from 'lucide-react'
 import api from '@/lib/api'
 
 interface WeakCriterion {
@@ -61,8 +62,8 @@ export function StudyPlanCard() {
     return (
       <div className="rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 p-5">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 text-sm">
-            🔒
+          <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+            <Lock className="w-4 h-4 text-indigo-600" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-1">
@@ -136,7 +137,7 @@ export function StudyPlanCard() {
         <ul className="space-y-1.5 mb-4">
           {data.action_steps.map((step, i) => (
             <li key={i} className="flex gap-2 text-sm text-slate-700">
-              <span className="shrink-0 text-indigo-500">✓</span>
+              <Check className="w-4 h-4 shrink-0 text-indigo-500 mt-0.5" strokeWidth={3} aria-hidden="true" />
               <span>{step}</span>
             </li>
           ))}

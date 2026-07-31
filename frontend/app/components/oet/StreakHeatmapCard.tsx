@@ -91,7 +91,7 @@ export function StreakHeatmapCard({
             <div
               key={key}
               className={`aspect-square rounded-md transition-colors ${
-                practiced ? 'bg-teal-600' : 'bg-slate-100'
+                practiced ? 'bg-accent' : 'bg-slate-100'
               } ${isToday ? 'ring-2 ring-slate-400 ring-offset-1' : ''}`}
               title={`${key}: ${practiced ? 'practiced' : 'not practiced'}`}
             />

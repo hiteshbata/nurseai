@@ -47,6 +47,12 @@ interface UseRealtimeSpeakingSessionReturn {
   stopListening: () => void
   sendTypedMessage: (text: string) => Promise<void>
   stopSpeaking: () => void
+  /**
+   * Amplitude (0-1) of the patient's voice as it is currently playing, for
+   * the VoiceOrb waveform. Sampled once per animation frame, so it reads an
+   * AnalyserNode directly rather than going through React state.
+   */
+  getOutputLevel: () => number
 }
 
 // Fallback only used if the backend's session.ready never arrives (should
@@ -106,6 +112,15 @@ export function useRealtimeSpeakingSession({
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([])
   const nextPlaybackTimeRef = useRef(0)
   const suppressPlaybackRef = useRef(false)
+
+  // Every playback source routes through this analyser instead of straight to
+  // the destination, so the orb's waveform can be driven by the patient's
+  // actual voice. Recreated per AudioContext -- teardown closes the context,
+  // which leaves the old node attached to nothing.
+  const outputAnalyserRef = useRef<AnalyserNode | null>(null)
+  // Explicit ArrayBuffer: a bare `Uint8Array` ref widens to ArrayBufferLike,
+  // which getByteTimeDomainData won't accept.
+  const outputDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null)
 
   // Streaming patient transcript -- true while the current response's text
   // is still being appended to the last convHistory bubble.
@@ -173,9 +188,18 @@ export function useRealtimeSpeakingSession({
     const buffer = ctx.createBuffer(1, float32.length, outputSampleRateRef.current)
     buffer.copyToChannel(float32, 0)
 
+    if (!outputAnalyserRef.current) {
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 256
+      analyser.smoothingTimeConstant = 0.6
+      analyser.connect(ctx.destination)
+      outputAnalyserRef.current = analyser
+      outputDataRef.current = new Uint8Array(analyser.frequencyBinCount)
+    }
+
     const source = ctx.createBufferSource()
     source.buffer = buffer
-    source.connect(ctx.destination)
+    source.connect(outputAnalyserRef.current)
 
     const startAt = Math.max(ctx.currentTime, nextPlaybackTimeRef.current)
     source.onended = () => {
@@ -209,6 +233,10 @@ export function useRealtimeSpeakingSession({
       audioContextRef.current.close().catch(() => {})
     }
     audioContextRef.current = null
+    // Belongs to the context just closed -- playPcm16Chunk rebuilds it against
+    // whatever context the next session creates.
+    outputAnalyserRef.current = null
+    outputDataRef.current = null
 
     if (wsRef.current) {
       wsRef.current.onopen = null
@@ -282,6 +310,14 @@ export function useRealtimeSpeakingSession({
         setIsProcessing(false)
         break
       case 'interrupted':
+        // The response being cancelled server-side may never send its own
+        // response.done -- without this, the next reply's first delta finds
+        // patientTurnActiveRef still true and glues onto the interrupted
+        // bubble (or, if a stray response.done from the cancelled turn
+        // arrives after the new one has already started, splits a fragment
+        // into its own bubble instead). Ending the turn here, at the moment
+        // we know it's over, removes the race either way.
+        patientTurnActiveRef.current = false
         interruptPlayback()
         break
       case 'session.warning':
@@ -529,6 +565,21 @@ export function useRealtimeSpeakingSession({
 
   const dismissSttError = useCallback(() => setSttError(null), [])
 
+  // Scaled so ordinary speech lands around 0.4-0.8; raw RMS on voice sits
+  // near 0.1-0.2, which is too small to read as movement on the orb.
+  const getOutputLevel = useCallback(() => {
+    const analyser = outputAnalyserRef.current
+    const data = outputDataRef.current
+    if (!analyser || !data) return 0
+    analyser.getByteTimeDomainData(data)
+    let sum = 0
+    for (let i = 0; i < data.length; i++) {
+      const v = data[i] / 128 - 1
+      sum += v * v
+    }
+    return Math.min(1, Math.sqrt(sum / data.length) * 2.4)
+  }, [])
+
   return {
     isListening,
     isConnecting,
@@ -542,5 +593,6 @@ export function useRealtimeSpeakingSession({
     stopListening,
     sendTypedMessage,
     stopSpeaking,
+    getOutputLevel,
   }
 }

@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSupabaseSession } from '@/lib/supabase'
+import Link from 'next/link'
+import { useSupabaseSession, linkAnonymousAccount, getCurrentSession, humanizeAuthError } from '@/lib/supabase'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
+import { FOUR_WEEK_PLANS, type OetModule } from '@/lib/oetScoring'
 
 // Phase 1 sitting: Listening -> Reading -> Writing, then Speaking separately.
 type Section = 'listening' | 'reading' | 'writing'
@@ -40,6 +42,12 @@ interface FullResults {
   speaking?: SpeakingResult
 }
 
+interface MockTestPack {
+  id: number
+  label: string
+  completed: boolean
+}
+
 // Official OET timing, shown on the cover sheet so the sitting reads as the real exam.
 const SECTIONS: { key: Section; label: string; time: string; blurb: string }[] = [
   { key: 'listening', label: 'Listening', time: '~40 min', blurb: 'Three parts. Each recording plays once.' },
@@ -57,8 +65,10 @@ function sectionRoute(section: Section, contentId: number | null | undefined, mo
 export default function MockTestPage() {
   const { status } = useSupabaseSession()
   const router = useRouter()
-  const [view, setView] = useState<'loading' | 'landing' | 'entering' | 'sealed' | 'report'>('loading')
+  const [view, setView] = useState<'loading' | 'picker' | 'landing' | 'entering' | 'sealed' | 'report'>('loading')
   const [mockId, setMockId] = useState<string | null>(null)
+  const [packs, setPacks] = useState<MockTestPack[]>([])
+  const [selectedPack, setSelectedPack] = useState<MockTestPack | null>(null)
   const [starting, setStarting] = useState(false)
   const enteredRef = useRef(false) // guard against a double redirect in strict-mode remounts
 
@@ -67,6 +77,12 @@ export default function MockTestPage() {
     enteredRef.current = true
     setView('entering')
     router.replace(sectionRoute(s.current_section as Section, s.content_id, s.id!))
+  }
+
+  const showPicker = () => {
+    setSelectedPack(null)
+    setView('picker')
+    api.get('/mock/tests').then((res) => setPacks(res.data || [])).catch(() => setPacks([]))
   }
 
   useEffect(() => {
@@ -83,16 +99,22 @@ export default function MockTestPage() {
         if (s.active && s.status === 'in_progress' && s.current_section) return routeInto(s)
         if (s.active && s.status === 'awaiting_speaking') return setView('sealed')
         if (s.active && s.status === 'complete') return setView('report')
-        setView('landing')
+        showPicker()
       })
-      .catch(() => setView('landing'))
+      .catch(() => showPicker())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status])
 
+  const pickPack = (pack: MockTestPack) => {
+    setSelectedPack(pack)
+    setView('landing')
+  }
+
   const begin = async () => {
+    if (!selectedPack) return showPicker()
     setStarting(true)
     try {
-      const res = await api.post('/mock/start', {})
+      const res = await api.post('/mock/start', { mock_test_id: selectedPack.id })
       const s: MockState = { active: true, ...res.data }
       if (s.id) setMockId(s.id)
       if (s.current_section) return routeInto(s)
@@ -102,6 +124,16 @@ export default function MockTestPage() {
       toast.error(typeof detail === 'string' ? detail : 'Could not start your mock test. Please try again.')
       setStarting(false)
     }
+  }
+
+  if (view === 'picker') {
+    return (
+      <PickerScreen
+        packs={packs}
+        onSelect={pickPack}
+        onDashboard={() => router.push('/dashboard')}
+      />
+    )
   }
 
   if (view === 'loading' || view === 'entering') {
@@ -121,17 +153,17 @@ export default function MockTestPage() {
         mockId={mockId}
         onDashboard={() => router.push('/dashboard')}
         onStartSpeaking={() => router.push(`/practice/speaking?mock=${mockId}`)}
-        onStartNew={begin}
+        onStartNew={showPicker}
         starting={starting}
       />
     )
   }
 
   if (view === 'report' && mockId) {
-    return <ReportView mockId={mockId} onDashboard={() => router.push('/dashboard')} onStartNew={begin} starting={starting} />
+    return <ReportView mockId={mockId} onDashboard={() => router.push('/dashboard')} onStartNew={showPicker} starting={starting} />
   }
 
-  // ── LANDING: exam cover sheet ──
+  // ── LANDING: exam cover sheet for the chosen pack ──
   return (
     <div className="min-h-screen bg-gray-100 py-10 px-4 sm:py-16">
       <div className="mx-auto w-full max-w-2xl mock-rise">
@@ -140,7 +172,7 @@ export default function MockTestPage() {
           {/* Official header bar */}
           <div className="bg-[#0F2356] px-7 py-6 sm:px-9 sm:py-7">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-300">Occupational English Test · Nursing</p>
-            <h1 className="mt-1.5 text-2xl sm:text-3xl font-bold text-white">Full Mock Test</h1>
+            <h1 className="mt-1.5 text-2xl sm:text-3xl font-bold text-white">{selectedPack?.label || 'Full Mock Test'}</h1>
             <p className="mt-2 text-sm text-blue-100/90 leading-relaxed">
               One timed sitting under real exam conditions. Sections run in order and lock behind you — just like the day itself.
             </p>
@@ -205,6 +237,69 @@ export default function MockTestPage() {
           from { opacity: 0; transform: translateY(12px); }
           to { opacity: 1; transform: translateY(0); }
         }
+      `}</style>
+    </div>
+  )
+}
+
+// Numbered packs an admin has generated (/admin/mock-tests). Each is a fixed,
+// pre-built bundle -- picking one skips the old per-attempt random assembly,
+// so there's no "Assembling your paper…" wait once a pack exists.
+function PickerScreen({
+  packs,
+  onSelect,
+  onDashboard,
+}: {
+  packs: MockTestPack[]
+  onSelect: (pack: MockTestPack) => void
+  onDashboard: () => void
+}) {
+  return (
+    <div className="min-h-screen bg-gray-100 py-10 px-4 sm:py-16">
+      <div className="mx-auto w-full max-w-2xl mock-rise">
+        <div className="rounded-2xl bg-white shadow-[0_24px_60px_-24px_rgba(15,35,86,0.45)] overflow-hidden ring-1 ring-black/5">
+          <div className="bg-[#0F2356] px-7 py-6 sm:px-9 sm:py-7">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-300">Occupational English Test · Nursing</p>
+            <h1 className="mt-1.5 text-2xl sm:text-3xl font-bold text-white">Full Mock Test</h1>
+            <p className="mt-2 text-sm text-blue-100/90 leading-relaxed">Choose a mock test to begin.</p>
+          </div>
+
+          <div className="px-7 py-7 sm:px-9">
+            {packs.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-6">
+                No mock tests are available yet. Check back soon.
+              </p>
+            ) : (
+              <ul className="divide-y divide-gray-100">
+                {packs.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      onClick={() => onSelect(p)}
+                      className="w-full flex items-center justify-between gap-4 py-4 text-left hover:bg-gray-50 transition rounded-lg px-2 -mx-2"
+                    >
+                      <div>
+                        <p className="font-semibold text-gray-900">{p.label}</p>
+                        <p className="text-[13px] text-gray-500">{p.completed ? 'Completed — retake anytime' : 'Not started yet'}</p>
+                      </div>
+                      <span className="shrink-0 text-sm font-semibold text-blue-600">
+                        {p.completed ? 'Retake →' : 'Start →'}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        <button onClick={onDashboard} className="mt-6 block w-full text-center text-sm text-gray-400 hover:text-gray-600 transition">
+          Not now — back to dashboard
+        </button>
+      </div>
+
+      <style jsx>{`
+        .mock-rise { animation: mockRise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        @keyframes mockRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
     </div>
   )
@@ -349,6 +444,8 @@ function ReportView({
               ))}
             </div>
 
+            <FreeReportGate results={results || {}} />
+
             <Button onClick={onStartNew} disabled={starting} className="mt-6 w-full">
               {starting ? 'Assembling your paper…' : 'Start another mock test'}
             </Button>
@@ -362,6 +459,143 @@ function ReportView({
         .mock-rise { animation: mockRise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
         @keyframes mockRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
+    </div>
+  )
+}
+
+// Weakest of the four sub-tests by fraction of its own scale -- band/6 for
+// Listening/Reading/Speaking, overall_score/500 for Writing. Not a fabricated
+// combined band (the app doesn't put all four on one comparable numeric
+// scale), just "which one is relatively furthest behind."
+function weakestModule(results: FullResults): { module: OetModule; label: string } | null {
+  const entries: { module: OetModule; label: string; fraction: number }[] = []
+  if (results.listening?.band != null) entries.push({ module: 'listening', label: 'Listening', fraction: results.listening.band / 6 })
+  if (results.reading?.band != null) entries.push({ module: 'reading', label: 'Reading', fraction: results.reading.band / 6 })
+  if (results.speaking?.overall_band != null) entries.push({ module: 'speaking', label: 'Speaking', fraction: results.speaking.overall_band / 6 })
+  if (results.writing?.overall_score != null) entries.push({ module: 'writing', label: 'Writing', fraction: results.writing.overall_score / 500 })
+  if (!entries.length) return null
+  return entries.reduce((min, e) => (e.fraction < min.fraction ? e : min))
+}
+
+// The free-mock-test lead magnet (see /tools/oet-mock-test-free): raw scores
+// above are already free for everyone. This panel only renders anything
+// extra while the viewer is still on an anonymous Supabase session -- the
+// moment they create a real account (same user_id, no data migration), it
+// swaps to the unlocked report in place.
+function FreeReportGate({ results }: { results: FullResults }) {
+  const { session } = useSupabaseSession()
+  const [linked, setLinked] = useState(false)
+  const [pendingConfirm, setPendingConfirm] = useState(false)
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  if (!session?.user?.is_anonymous) return null // paid/regular accounts always see the free score cards, no gate at all
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (password.length < 8) {
+      toast.error('Password must be at least 8 characters')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await linkAnonymousAccount(email, password, name)
+      const fresh = await getCurrentSession()
+      if (fresh && !fresh.user.is_anonymous) {
+        toast.success('Account created — your full report is unlocked!')
+        setLinked(true)
+      } else {
+        setPendingConfirm(true)
+      }
+    } catch (err: any) {
+      toast.error(humanizeAuthError(err?.message))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (linked) {
+    const weak = weakestModule(results)
+    return (
+      <div className="mt-6 rounded-xl border border-emerald-100 bg-emerald-50 px-5 py-5">
+        <p className="text-sm font-semibold text-emerald-900">Your full band report</p>
+        {weak ? (
+          <>
+            <p className="mt-2 text-sm text-emerald-800">
+              Your comparatively weakest sub-test is <strong>{weak.label}</strong> — here's a free 4-week plan for it.
+            </p>
+            <ol className="mt-3 space-y-2">
+              {FOUR_WEEK_PLANS[weak.module].map((step) => (
+                <li key={step.title} className="text-[13px] text-emerald-900">
+                  <span className="font-semibold">{step.title}:</span> {step.body}
+                </li>
+              ))}
+            </ol>
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-emerald-800">Complete all four sub-tests to see your weakest-area plan.</p>
+        )}
+        <Link href="/tools/oet-score-calculator" className="mt-3 inline-block text-sm font-semibold text-emerald-900 underline">
+          Check these scores against your regulator →
+        </Link>
+        <Link
+          href="/upgrade"
+          className="mt-4 block rounded-lg bg-[#0F2356] px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-[#0F2356]/90 transition"
+        >
+          Unlock unlimited mock tests →
+        </Link>
+      </div>
+    )
+  }
+
+  if (pendingConfirm) {
+    return (
+      <div className="mt-6 rounded-xl border border-dashed border-gray-300 px-5 py-5 text-center">
+        <p className="text-sm text-gray-700">
+          Check your email to confirm your account, then reopen this page to see your full report.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-6 rounded-xl border border-dashed border-gray-300 px-5 py-5">
+      <p className="font-semibold text-gray-800">Get your full band report</p>
+      <p className="mt-1 text-[13px] text-gray-500">
+        Create a free account to see your weakest sub-test, a targeted 4-week study plan, and a regulator pass/fail check.
+      </p>
+      <form onSubmit={handleSubmit} className="mt-4 space-y-2.5">
+        <input
+          type="text"
+          required
+          placeholder="Full name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-[#0F2356]/40"
+        />
+        <input
+          type="email"
+          required
+          placeholder="Email address"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-[#0F2356]/40"
+        />
+        <input
+          type="password"
+          required
+          minLength={8}
+          placeholder="Create a password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-[#0F2356]/40"
+        />
+        <Button type="submit" disabled={submitting} className="w-full">
+          {submitting ? 'Creating account…' : 'Unlock my full report →'}
+        </Button>
+      </form>
     </div>
   )
 }

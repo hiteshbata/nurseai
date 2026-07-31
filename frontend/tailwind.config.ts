@@ -47,6 +47,17 @@ module.exports = {
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },
+      fontFamily: {
+        display: ['var(--font-display)', 'Georgia', 'serif'],
+      },
+      boxShadow: {
+        // Tinted from the brand navy instead of flat black, with a soft,
+        // wide falloff -- the default Tailwind shadow-sm/shadow-md/shadow-xl
+        // scale used everywhere else on the landing page renders as generic
+        // template chrome at this saturation.
+        premium: '0 1px 2px rgba(15, 35, 86, 0.06), 0 8px 24px -8px rgba(15, 35, 86, 0.14)',
+        'premium-lg': '0 2px 6px rgba(15, 35, 86, 0.08), 0 24px 48px -12px rgba(15, 35, 86, 0.22)',
+      },
     },
   },
   plugins: [require('@tailwindcss/typography')],

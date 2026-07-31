@@ -1,9 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Progress } from '@/components/ui/progress'
-import { getPlans, type Plan } from '@/lib/api'
 
 interface UpgradeBannerProps {
   sessionsUsed: number
@@ -15,37 +13,29 @@ interface UpgradeBannerProps {
 const PCT_THRESHOLD = 80
 
 export function UpgradeBanner({ sessionsUsed, sessionsLimit, sessionsRemaining, plan }: UpgradeBannerProps) {
-  const [proLimit, setProLimit] = useState<number | null>(null)
-
-  useEffect(() => {
-    getPlans().then((plans: Plan[]) => {
-      const pro = plans.find((p: Plan) => p.id === 'pro')
-      if (pro) setProLimit(pro.sessions_limit)
-    }).catch(() => {})
-  }, [])
-
   if (plan !== 'free') return null
 
   const pct = sessionsLimit > 0 ? (sessionsUsed / sessionsLimit) * 100 : 0
   const isNearLimit = pct >= PCT_THRESHOLD
   const isNewUser = sessionsUsed === 0
 
+  // The sidebar plan card already shows the running count, so this banner only
+  // earns its space at the two moments it says something new: first visit, and
+  // nearly out of sessions. Mid-month "4 of 10 used" was a duplicate ask.
+  if (!isNewUser && !isNearLimit) return null
+
   const headline = isNewUser
     ? 'Start with your free sessions'
-    : isNearLimit
-      ? `Only ${sessionsRemaining} session${sessionsRemaining !== 1 ? 's' : ''} left this month`
-      : `${sessionsUsed} of ${sessionsLimit} sessions used this month`
+    : `Only ${sessionsRemaining} session${sessionsRemaining !== 1 ? 's' : ''} left this month`
 
   const subtitle = isNewUser
     ? `You have ${sessionsLimit} free sessions this month — full OET scoring, pronunciation analysis, and progress tracking included.`
-    : isNearLimit
-      ? 'Upgrade to Pro to keep practising without interruption.'
-      : `Get ${proLimit ?? 30} sessions per month with full OET scoring, pronunciation analysis, and progress tracking.`
+    : 'Upgrade to Pro to keep practising without interruption.'
 
-  const ctaLabel = isNearLimit ? 'Upgrade to Pro' : 'See Plans & Pricing'
+  const ctaLabel = isNewUser ? 'See Plans & Pricing' : 'Upgrade to Pro'
 
   return (
-    <section className="mx-auto w-full max-w-5xl px-4 sm:px-6">
+    <section className="w-full">
       <div className="rounded-2xl bg-[#0F2356] p-5 sm:p-6 shadow-md">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex-1 min-w-0">

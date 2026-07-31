@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, Dispatch, SetStateAction } fr
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
-import { CheckCircle2, Mic, Trophy, Target, Captions, PartyPopper } from 'lucide-react'
+import { CheckCircle2, Mic, Trophy, Target, Captions, PartyPopper, MessageSquareText, Download } from 'lucide-react'
 import VoiceOrb from '@/components/VoiceOrb'
 import PlanUsageBanner from '@/components/PlanUsageBanner'
 import api from '@/lib/api'
@@ -126,6 +126,11 @@ export default function SpeakingSession({
   mockRoleplay,
 }: SpeakingSessionProps) {
   const [scoringElapsed, setScoringElapsed] = useState(0)
+  // Focus mode is the default: a live chat log scrolling past while you're
+  // trying to hold a real conversation pulls the student into reading instead
+  // of speaking. Everything is still captured — this only hides it until the
+  // student asks for it or the session ends.
+  const [showTranscript, setShowTranscript] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   // Session-long recording (separate from live STT streaming below) --
@@ -381,6 +386,23 @@ export default function SpeakingSession({
     }
   }, [selectedScenario, pastSubmissions, setIsComparing, setComparisonError, setComparisonResult])
 
+  const handleDownloadTranscript = useCallback(() => {
+    const title = selectedScenario?.title || 'Speaking practice'
+    const body = history
+      .map((m) => `${m.role === 'nurse' ? 'You (Nurse)' : 'Patient'}: ${m.content}`)
+      .join('\n\n')
+    const blob = new Blob(
+      [`OET Speaking Practice — ${title}\n${new Date().toLocaleString()}\n\n${body}\n`],
+      { type: 'text/plain;charset=utf-8' }
+    )
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `oet-speaking-transcript-${new Date().toISOString().slice(0, 10)}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [history, selectedScenario])
+
   /* ── BRIEFING (v0 redesign) ── */
   if (phase === 'briefing' && selectedScenario) {
     const formatTime = (s: number) => {
@@ -491,6 +513,22 @@ export default function SpeakingSession({
     const liveCaption = session.interimText || (session.isSpeaking ? lastPatientMessage : '') || ''
     const liveCaptionSpeaker = session.interimText ? 'You' : 'Patient'
 
+    const elapsedLabel = `${String(Math.floor(examSeconds / 60)).padStart(2, '0')}:${String(examSeconds % 60).padStart(2, '0')}`
+    const nurseTurnCount = convHistory.filter((m) => m.role === 'nurse').length
+
+    const captionNode = captionsOn && liveCaption ? (
+      <div
+        role="status"
+        aria-live="polite"
+        className="rounded-xl bg-[#0F2356] px-4 py-3 text-center"
+      >
+        <span className="mr-2 text-xs font-semibold uppercase tracking-wide text-emerald-300">
+          {liveCaptionSpeaker}
+        </span>
+        <span className="text-base font-medium text-white">{liveCaption}</span>
+      </div>
+    ) : null
+
     return (
       <div className="fixed inset-0 top-[64px] bg-[#F8FAFC] z-40 flex flex-col lg:flex-row">
         {/* LEFT PANEL */}
@@ -587,12 +625,80 @@ export default function SpeakingSession({
                 <Captions className="size-3.5" />
                 Captions
               </button>
-              <p className="font-mono text-base font-bold text-[#0F2356]">
-              {String(Math.floor(examSeconds / 60)).padStart(2, '0')}:{String(examSeconds % 60).padStart(2, '0')}
-              </p>
+              <button
+                onClick={() => setShowTranscript((v) => !v)}
+                role="switch"
+                aria-checked={showTranscript}
+                title="Show the running text of the conversation. Off by default so you can focus on speaking."
+                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+                  showTranscript ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                <MessageSquareText className="size-3.5" />
+                Transcript
+              </button>
+              {/* Focus mode shows the clock large under the orb instead. */}
+              {showTranscript && (
+                <p className="font-mono text-base font-bold tabular-nums text-[#0F2356]">
+                  {elapsedLabel}
+                </p>
+              )}
             </div>
           </div>
 
+          {/* FOCUS MODE (default) — orb, status, clock. No scrolling text to
+              read, so the student stays in the conversation. Captions are the
+              opt-in escape hatch for hearing difficulty or preference. */}
+          {!showTranscript && (
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-8">
+              <div className="flex min-h-full flex-col items-center justify-center">
+                <VoiceOrb
+                  variant="hero"
+                  isListening={session.isListening}
+                  isConnecting={session.isConnecting}
+                  isProcessing={isProcessing}
+                  isSpeaking={session.isSpeaking}
+                  isEnding={isEnding}
+                  canEndSession={convHistory.some((m) => m.role === 'nurse')}
+                  getOutputLevel={session.getOutputLevel}
+                  statusOverride={
+                    isEnding
+                      ? scoringElapsed < 8
+                        ? 'Analysing your responses...'
+                        : 'Still analysing — this can take up to a minute...'
+                      : undefined
+                  }
+                  onToggle={handleToggleListening}
+                  onEndSession={handleEndConversation}
+                >
+                  <div className="flex flex-col items-center gap-1">
+                    <p className="font-mono text-4xl font-bold tabular-nums text-[#0F2356]">
+                      {elapsedLabel}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {nurseTurnCount === 0
+                        ? 'Tap the orb to start speaking'
+                        : `${nurseTurnCount} response${nurseTurnCount === 1 ? '' : 's'} so far`}
+                    </p>
+                  </div>
+
+                  {/* Height is reserved whether or not there's caption text
+                      right now, so the orb never jumps as speech starts/stops. */}
+                  {captionsOn && (
+                    <div className="flex min-h-[64px] w-full max-w-md items-center">
+                      {captionNode ?? (
+                        <p className="w-full text-center text-xs text-gray-300">
+                          Captions will appear here as you speak
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </VoiceOrb>
+              </div>
+            </div>
+          )}
+
+          {showTranscript && (
           <div className="flex-1 min-h-0 overflow-y-auto p-6" role="log" aria-live="polite">
             {convHistory.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
@@ -659,6 +765,7 @@ export default function SpeakingSession({
               </div>
             )}
           </div>
+          )}
 
           <div className="border-t border-gray-100 bg-white px-4 py-3">
             <div className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row">
@@ -696,36 +803,32 @@ export default function SpeakingSession({
             )}
           </div>
 
-          {captionsOn && liveCaption && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="mx-4 mb-2 rounded-xl bg-[#0F2356] px-4 py-3 text-center"
-            >
-              <span className="mr-2 text-xs font-semibold uppercase tracking-wide text-emerald-300">
-                {liveCaptionSpeaker}
-              </span>
-              <span className="text-base font-medium text-white">{liveCaption}</span>
-            </div>
-          )}
+          {/* Focus mode already renders the orb (and captions) as its hero, so
+              the bottom bar is only needed when the transcript takes over. */}
+          {showTranscript && (
+            <>
+              {captionNode && <div className="mx-4 mb-2">{captionNode}</div>}
 
-          <VoiceOrb
-            isListening={session.isListening}
-            isConnecting={session.isConnecting}
-            isProcessing={isProcessing}
-            isSpeaking={session.isSpeaking}
-            isEnding={isEnding}
-            canEndSession={convHistory.some(m => m.role === 'nurse')}
-            statusOverride={
-              isEnding
-                ? scoringElapsed < 8
-                  ? 'Scoring your responses...'
-                  : "Still scoring — this can take up to a minute..."
-                : undefined
-            }
-            onToggle={handleToggleListening}
-            onEndSession={handleEndConversation}
-          />
+              <VoiceOrb
+                isListening={session.isListening}
+                isConnecting={session.isConnecting}
+                isProcessing={isProcessing}
+                isSpeaking={session.isSpeaking}
+                isEnding={isEnding}
+                canEndSession={convHistory.some(m => m.role === 'nurse')}
+                getOutputLevel={session.getOutputLevel}
+                statusOverride={
+                  isEnding
+                    ? scoringElapsed < 8
+                      ? 'Analysing your responses...'
+                      : "Still analysing — this can take up to a minute..."
+                    : undefined
+                }
+                onToggle={handleToggleListening}
+                onEndSession={handleEndConversation}
+              />
+            </>
+          )}
 
           {(session.sttError || conversationError) && (
             <div className="flex items-center justify-center gap-2 py-1" role="alert" aria-live="assertive">
@@ -777,6 +880,46 @@ export default function SpeakingSession({
         return weakest
       },
       null
+    )
+
+    // One transcript block for both the scored and the scoring-failed branch --
+    // they rendered identical markup twice before.
+    const transcriptBlock = (
+      <div className="mb-8">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h3 className="text-base font-bold text-[#0F2356]">Conversation Transcript</h3>
+          {history.length > 0 && (
+            <button
+              onClick={handleDownloadTranscript}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-[#0F2356] hover:text-[#0F2356]"
+            >
+              <Download className="size-3.5" />
+              Download
+            </button>
+          )}
+        </div>
+        <div className="flex flex-col gap-4">
+          {history.map((msg, i) => (
+            <div key={i} className={`flex gap-3 ${msg.role === 'nurse' ? 'flex-row-reverse' : 'flex-row'}`}>
+              <Avatar className="size-8 shrink-0">
+                <AvatarFallback className={`text-xs font-bold text-white ${msg.role === 'nurse' ? 'bg-[#0F2356]' : 'bg-gray-400'}`}>
+                  {msg.role === 'nurse' ? 'N' : 'P'}
+                </AvatarFallback>
+              </Avatar>
+              <div className={`flex flex-col gap-1 max-w-[75%] ${msg.role === 'nurse' ? 'items-end' : 'items-start'}`}>
+                <span className="text-xs text-gray-400">
+                  {msg.role === 'nurse' ? 'You (Nurse)' : 'Patient'}
+                </span>
+                <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                  msg.role === 'nurse' ? 'bg-[#0F2356] text-white' : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {msg.content}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     )
 
     const renderCriterion = (key: string, label: string) => {
@@ -1196,59 +1339,12 @@ export default function SpeakingSession({
                 </div>
               )}
 
-              {/* Transcript */}
-              <div className="mb-8">
-                <h3 className="text-base font-bold text-[#0F2356] mb-4">Conversation Transcript</h3>
-                <div className="flex flex-col gap-4">
-                  {history.map((msg, i) => (
-                    <div key={i} className={`flex gap-3 ${msg.role === 'nurse' ? 'flex-row-reverse' : 'flex-row'}`}>
-                      <Avatar className="size-8 shrink-0">
-                        <AvatarFallback className={`text-xs font-bold text-white ${msg.role === 'nurse' ? 'bg-[#0F2356]' : 'bg-gray-400'}`}>
-                          {msg.role === 'nurse' ? 'N' : 'P'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className={`flex flex-col gap-1 max-w-[75%] ${msg.role === 'nurse' ? 'items-end' : 'items-start'}`}>
-                        <span className="text-xs text-gray-400">
-                          {msg.role === 'nurse' ? 'You (Nurse)' : 'Patient'}
-                        </span>
-                        <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                          msg.role === 'nurse' ? 'bg-[#0F2356] text-white' : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {msg.content}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {transcriptBlock}
             </>
           ) : (
-            <div className="text-center py-16">
-              <p className="text-gray-500 mb-4">Scoring is temporarily unavailable</p>
-              <div className="mb-8">
-                <h3 className="text-base font-bold text-[#0F2356] mb-4">Conversation Transcript</h3>
-                <div className="flex flex-col gap-4 max-w-2xl mx-auto">
-                  {history.map((msg, i) => (
-                    <div key={i} className={`flex gap-3 ${msg.role === 'nurse' ? 'flex-row-reverse' : 'flex-row'}`}>
-                      <Avatar className="size-8 shrink-0">
-                        <AvatarFallback className={`text-xs font-bold text-white ${msg.role === 'nurse' ? 'bg-[#0F2356]' : 'bg-gray-400'}`}>
-                          {msg.role === 'nurse' ? 'N' : 'P'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className={`flex flex-col gap-1 max-w-[75%] ${msg.role === 'nurse' ? 'items-end' : 'items-start'}`}>
-                        <span className="text-xs text-gray-400">
-                          {msg.role === 'nurse' ? 'You (Nurse)' : 'Patient'}
-                        </span>
-                        <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                          msg.role === 'nurse' ? 'bg-[#0F2356] text-white' : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {msg.content}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <div className="py-16">
+              <p className="mb-4 text-center text-gray-500">Scoring is temporarily unavailable</p>
+              <div className="mx-auto max-w-2xl">{transcriptBlock}</div>
             </div>
           )}
 

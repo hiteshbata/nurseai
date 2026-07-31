@@ -18,6 +18,11 @@ const nextConfig = {
         destination: 'https://www.speakoet.com/:path*',
         permanent: true,
       },
+      {
+        source: '/learn/oet-for-indian-nurses',
+        destination: '/oet/india',
+        permanent: true,
+      },
     ]
   },
   async headers() {

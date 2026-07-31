@@ -53,7 +53,7 @@ function Pentagon({ scores, allNull }: { scores: number[]; allNull: boolean }) {
       <polygon points={outerPoints} fill="none" stroke="#cbd5e1" strokeWidth={1.5} />
 
       {!allNull && (
-        <polygon points={innerPoints} fill="rgba(13,148,136,0.3)" stroke="#0d9488" strokeWidth={2} />
+        <polygon points={innerPoints} fill="rgba(16,185,129,0.3)" stroke="#10B981" strokeWidth={2} />
       )}
 
       {CRITERIA.map((name, i) => {
@@ -88,7 +88,7 @@ function ScoreBar({ name, score, allNull }: { name: string; score: number | null
       </span>
       <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
         <div
-          className={`h-2 rounded-full transition-all ${allNull ? 'bg-slate-200' : score !== null && score >= 4 ? 'bg-teal-600' : score !== null && score >= 3 ? 'bg-amber-500' : score !== null ? 'bg-red-400' : 'bg-slate-200'}`}
+          className={`h-2 rounded-full transition-all ${allNull ? 'bg-slate-200' : score !== null && score >= 4 ? 'bg-emerald-600' : score !== null && score >= 3 ? 'bg-amber-500' : score !== null ? 'bg-red-400' : 'bg-slate-200'}`}
           style={{ width: `${pct}%` }}
         />
       </div>

@@ -11,7 +11,6 @@ import { CriteriaPentagonCard } from "./oet/CriteriaPentagonCard"
 import { MilestoneBadges } from "./oet/MilestoneBadges"
 import { ProgressChart } from "./ProgressChart"
 import { RecentSessions } from "./oet/recent-sessions"
-import { QuickActions } from "./oet/quick-actions"
 import { UpgradeBanner } from "./UpgradeBanner"
 import type { OetDashboardProps } from "./oet/types"
 
@@ -43,9 +42,10 @@ function UpgradeBannerSkeleton() {
 
 export function OetDashboard(props: OetDashboardProps) {
   return (
-    <main className="min-h-screen bg-background">
-      <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:py-12">
-        <div className="flex flex-col gap-8">
+    // AppShell owns <main>, the page width, and the horizontal padding, so the
+    // sidebar edge and the card edge line up on every app route.
+    <div className="w-full py-8 lg:py-12">
+      <div className="flex flex-col gap-8">
           <DashboardHeader userName={props.userName} />
 
           {props.sessionUsageReady === false ? (
@@ -121,12 +121,9 @@ export function OetDashboard(props: OetDashboardProps) {
               />
 
               <RecentSessions recentSubmissions={props.recentSubmissions} />
-
-              <QuickActions plan={props.sessionUsage?.plan} />
             </>
           )}
-        </div>
       </div>
-    </main>
+    </div>
   )
 }

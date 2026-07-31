@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react"
 import { ChevronDown } from "lucide-react"
 import { getPlans, FALLBACK_PLANS, type Plan } from "@/lib/api"
+import { useInView } from "@/app/hooks/useInView"
 
 export default function FAQSection() {
   const [openIndex, setOpenIndex] = useState<number | null>(null)
   const [plans, setPlans] = useState<Plan[]>(FALLBACK_PLANS)
+  const { ref, inView } = useInView<HTMLDivElement>()
 
   useEffect(() => {
     getPlans().then(setPlans).catch(() => {})
@@ -57,9 +59,16 @@ export default function FAQSection() {
   return (
     <section className="bg-white py-16 md:py-24">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h2 className="text-3xl md:text-4xl font-bold text-[#0F2356] text-center mb-12">Common Questions</h2>
+        <h2 className="font-display text-3xl md:text-4xl font-semibold text-[#0F2356] text-center mb-12">Common Questions</h2>
 
-        <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+        <div
+          ref={ref}
+          className="rounded-2xl overflow-hidden border border-gray-100 shadow-premium transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+          style={{
+            opacity: inView ? 1 : 0,
+            transform: inView ? "translateY(0)" : "translateY(12px)",
+          }}
+        >
           {faqs.map((faq, i) => {
             const isOpen = openIndex === i
             return (
@@ -77,11 +86,15 @@ export default function FAQSection() {
                     aria-hidden="true"
                   />
                 </button>
-                {isOpen && (
-                  <div className="px-6 pb-5">
-                    <p className="text-gray-600 text-sm leading-relaxed">{faq.a}</p>
+                <div
+                  className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                    isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                  }`}
+                >
+                  <div className="overflow-hidden">
+                    <p className="px-6 pb-5 text-gray-600 text-sm leading-relaxed">{faq.a}</p>
                   </div>
-                )}
+                </div>
                 {i < faqs.length - 1 && <div className="border-b border-gray-100" />}
               </div>
             )

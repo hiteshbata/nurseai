@@ -47,6 +47,14 @@ interface UseSpeakingSessionReturn {
   stopListening: () => void
   sendTypedMessage: (text: string) => Promise<void>
   stopSpeaking: () => void
+  /**
+   * Never provided here. This path plays the patient's reply through an
+   * HTMLAudioElement (see useAudioPlayback), which has no analyser to sample,
+   * so the orb falls back to synthetic waveform motion. Declared only so
+   * SpeakingSession can read it off either hook without a type guard --
+   * see useRealtimeSpeakingSession for the implemented version.
+   */
+  getOutputLevel?: () => number
 }
 
 const STT_MIME_CANDIDATES = ['audio/webm;codecs=opus', 'audio/webm']

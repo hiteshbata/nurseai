@@ -31,6 +31,17 @@ function GoogleIcon() {
   )
 }
 
+function MicrosoftIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21" className="h-4 w-4 shrink-0" aria-hidden="true">
+      <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+      <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+      <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+    </svg>
+  )
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const { session, status: authStatus } = useSupabaseSession()
@@ -38,6 +49,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [microsoftLoading, setMicrosoftLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({})
@@ -61,6 +73,23 @@ export default function LoginPage() {
     } catch (error: any) {
       toast.error(error.message || 'Google sign in failed')
       setGoogleLoading(false)
+    }
+  }
+
+  const handleMicrosoftSignIn = async () => {
+    setMicrosoftLoading(true)
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'azure',
+        options: {
+          redirectTo: window.location.origin + '/auth/callback',
+          scopes: 'email',
+        },
+      })
+      if (error) throw error
+    } catch (error: any) {
+      toast.error(error.message || 'Microsoft sign in failed')
+      setMicrosoftLoading(false)
     }
   }
 
@@ -112,12 +141,13 @@ export default function LoginPage() {
       <AuthLeftPanel />
 
       <div className="flex flex-1 items-center justify-center bg-white px-6 py-12 sm:px-10">
-        <div className="w-full max-w-md">
-          <div className="mb-8 flex items-center gap-2 lg:hidden">
+        <div className="w-full max-w-md motion-safe:animate-[panel-slide-in_0.45s_ease-out_both]">
+          <div className="mb-8 flex flex-col gap-2 lg:hidden">
             <SpeakOETLogo height={28} variant="full" theme="dark" priority />
+            <p className="text-sm text-gray-500">Practice OET Speaking with confidence</p>
           </div>
 
-          <div className="flex w-full flex-col gap-6">
+          <div className="flex w-full flex-col gap-6 sm:rounded-2xl sm:border sm:border-gray-100 sm:p-8 sm:shadow-[0_1px_2px_rgba(15,35,86,0.04),0_8px_24px_rgba(15,35,86,0.06)]">
             <div className="flex flex-col gap-1">
               <h2 className="text-2xl font-bold text-[#0F2356] text-balance">
                 Welcome back
@@ -128,28 +158,44 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
+              <div className="motion-safe:animate-[message-in_0.25s_ease-out_both] rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
                 {error}
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={googleLoading || isLoading}
-              className="h-11 w-full rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 shadow-sm transition-all duration-150 hover:bg-gray-50 hover:shadow-md flex items-center justify-center gap-2"
-            >
-              {googleLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <GoogleIcon />
-              )}
-              Continue with Google
-            </button>
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={googleLoading || microsoftLoading || isLoading}
+                className="h-11 w-full rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 shadow-sm transition-all duration-150 hover:bg-gray-50 hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {googleLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <GoogleIcon />
+                )}
+                Continue with Google
+              </button>
+
+              <button
+                type="button"
+                onClick={handleMicrosoftSignIn}
+                disabled={googleLoading || microsoftLoading || isLoading}
+                className="h-11 w-full rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 shadow-sm transition-all duration-150 hover:bg-gray-50 hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {microsoftLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <MicrosoftIcon />
+                )}
+                Continue with Microsoft
+              </button>
+            </div>
 
             <div className="flex items-center gap-3" role="separator" aria-label="or">
               <div className="h-px flex-1 bg-gray-200" />
-              <span className="text-xs font-medium text-gray-400">or</span>
+              <span className="text-xs font-medium tracking-wide text-gray-400">OR</span>
               <div className="h-px flex-1 bg-gray-200" />
             </div>
 
@@ -235,8 +281,8 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={isLoading || googleLoading}
-                className="h-11 w-full rounded-xl bg-emerald-500 text-sm font-semibold text-white shadow-sm transition-all duration-150 hover:bg-emerald-600 hover:shadow-md active:scale-[0.99] disabled:opacity-60 flex items-center justify-center gap-2"
+                disabled={isLoading || googleLoading || microsoftLoading}
+                className="h-11 w-full rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-600 text-sm font-semibold text-white shadow-sm transition-all duration-150 hover:from-emerald-600 hover:to-emerald-700 hover:shadow-md active:scale-[0.99] disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {isLoading ? (
                   <>
@@ -249,6 +295,14 @@ export default function LoginPage() {
               </button>
             </form>
 
+            <p className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5" aria-hidden="true">
+                <rect x="3" y="11" width="18" height="10" rx="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              Your data is encrypted and never shared
+            </p>
+
             <p className="text-center text-sm text-gray-500">
               Don&apos;t have an account?{' '}
               <Link
@@ -259,6 +313,17 @@ export default function LoginPage() {
               </Link>
             </p>
           </div>
+
+          <p className="mt-6 text-center text-xs text-gray-400">
+            By signing in, you agree to our{' '}
+            <Link href="/terms" className="underline hover:text-gray-600 focus-visible:outline-none focus-visible:underline">
+              Terms
+            </Link>{' '}
+            and{' '}
+            <Link href="/privacy" className="underline hover:text-gray-600 focus-visible:outline-none focus-visible:underline">
+              Privacy Policy
+            </Link>
+          </p>
         </div>
       </div>
     </main>

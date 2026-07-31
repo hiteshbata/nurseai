@@ -1,8 +1,10 @@
 import Link from "next/link"
-import { ArrowRight, Mic, PenTool } from "lucide-react"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Mic, PenTool } from "lucide-react"
+import { buttonVariants } from "@/components/ui/button"
 import { ScorePill, BandBadge } from "./score-pill"
 import type { Submission } from "./types"
+
+const viewLinkClass = buttonVariants({ variant: "outline", size: "sm" })
 
 function TypeBadge({ type }: { type: string }) {
   const isSpeak = type.toLowerCase() === "speaking"
@@ -30,13 +32,9 @@ export function RecentSessions({
 
   return (
     <section className="rounded-2xl border border-gray-100 bg-card p-6 shadow-sm">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-primary">Recent Sessions</h2>
-        <button className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:text-emerald-600">
-          View All
-          <ArrowRight className="h-4 w-4" aria-hidden="true" />
-        </button>
-      </div>
+      {/* "View All" removed: it had no onClick and no destination, and there is
+          no full-history page to point it at yet. */}
+      <h2 className="text-lg font-bold text-primary">Recent Sessions</h2>
 
       {/* Mobile: stacked cards */}
       <div className="mt-4 space-y-3 sm:hidden">
@@ -54,13 +52,12 @@ export function RecentSessions({
                 <ScorePill score={row.score} />
                 <BandBadge band={row.band} />
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-input text-primary"
+              <Link
+                href={`/sessions/${row.id}`}
+                className={`${viewLinkClass} border-input text-primary`}
               >
                 View
-              </Button>
+              </Link>
             </div>
           </div>
         ))}
@@ -97,13 +94,12 @@ export function RecentSessions({
                   <BandBadge band={row.band} />
                 </td>
                 <td className="py-4 text-right">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-input text-primary"
+                  <Link
+                    href={`/sessions/${row.id}`}
+                    className={`${viewLinkClass} border-input text-primary`}
                   >
                     View
-                  </Button>
+                  </Link>
                 </td>
               </tr>
             ))}

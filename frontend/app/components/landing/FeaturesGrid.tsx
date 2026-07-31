@@ -1,4 +1,7 @@
+"use client"
+
 import { Bot, BarChart2, TrendingUp, Heart, Zap, Globe } from "lucide-react"
+import { useInView } from "@/app/hooks/useInView"
 
 const features = [
   {
@@ -40,32 +43,44 @@ const features = [
 ]
 
 export default function FeaturesGrid() {
+  const { ref, inView } = useInView<HTMLDivElement>()
+
   return (
     <section id="features" className="bg-white py-16 md:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-[#0F2356] text-balance">
+        <div className="text-center mb-14">
+          <h2 className="font-display text-3xl md:text-4xl font-semibold text-[#0F2356] text-balance">
             Everything You Need to Pass OET
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map(({ icon: Icon, title, text, accent }) => {
+        {/* A plain divided list, not another grid of bordered cards -- the
+            page already leans on the rounded-card-with-shadow container for
+            things that need a boundary (comparisons, panels). Six identical
+            icon-heading-text boxes here would just repeat that container as
+            page structure. */}
+        <div ref={ref} className="grid grid-cols-1 md:grid-cols-2 gap-x-14 gap-y-10">
+          {features.map(({ icon: Icon, title, text, accent }, i) => {
             const isEmerald = accent === "emerald"
             return (
               <div
                 key={title}
-                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow"
+                className="flex gap-4 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                style={{
+                  transitionDelay: `${i * 80}ms`,
+                  opacity: inView ? 1 : 0,
+                  transform: inView ? "translateY(0)" : "translateY(12px)",
+                }}
               >
-                <div
-                  className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${
-                    isEmerald ? "bg-emerald-50" : "bg-[#0F2356]/5"
-                  }`}
-                >
-                  <Icon className={`w-5 h-5 ${isEmerald ? "text-[#10B981]" : "text-[#0F2356]"}`} aria-hidden="true" />
+                <Icon
+                  className={`w-6 h-6 shrink-0 mt-0.5 ${isEmerald ? "text-[#10B981]" : "text-[#0F2356]"}`}
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                />
+                <div>
+                  <h3 className="text-base font-bold text-[#0F2356] mb-1.5">{title}</h3>
+                  <p className="text-gray-500 text-sm leading-relaxed">{text}</p>
                 </div>
-                <h3 className="text-base font-bold text-[#0F2356] mb-2">{title}</h3>
-                <p className="text-gray-500 text-sm leading-relaxed">{text}</p>
               </div>
             )
           })}

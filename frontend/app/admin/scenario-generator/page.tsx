@@ -61,61 +61,130 @@ const emptyData = (): ScenarioData => ({
   is_original: false,
 })
 
+interface QueueResult {
+  name: string
+  status: 'saved' | 'error'
+  title?: string
+  message?: string
+}
+
+type QueueItem =
+  | { kind: 'file'; file: File; name: string }
+  | { kind: 'data'; data: any; name: string }
+
 export default function ScenarioGeneratorPage() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState<Step>('upload')
   const [scenario, setScenario] = useState<ScenarioData>(emptyData)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [queue, setQueue] = useState<QueueItem[]>([])
+  const [fileIndex, setFileIndex] = useState(0)
   const [extracting, setExtracting] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [savedId, setSavedId] = useState<number | null>(null)
-  const [savedTitle, setSavedTitle] = useState<string>('')
-  const [savedSpecialty, setSavedSpecialty] = useState<string>('')
+  const [results, setResults] = useState<QueueResult[]>([])
 
-  const handleFileSelect = (file: File | null) => {
+  const handleFilesSelect = async (fileList: FileList | null) => {
     setError(null)
-    if (!file) return
-    const allowed = ['image/jpeg', 'image/png', 'image/webp']
-    if (!allowed.includes(file.type)) {
-      setError('Only JPG, PNG, and WebP images are supported')
-      return
+    if (!fileList || fileList.length === 0) return
+    const allowedImg = ['image/jpeg', 'image/png', 'image/webp']
+    const items: QueueItem[] = []
+    let skipped = 0
+    let errMsg: string | null = null
+    const pdfFiles: File[] = []
+
+    for (const f of Array.from(fileList)) {
+      if (allowedImg.includes(f.type)) {
+        if (f.size > 5 * 1024 * 1024) { skipped++; continue }
+        items.push({ kind: 'file', file: f, name: f.name })
+      } else if (f.type === 'application/pdf') {
+        if (f.size > 10 * 1024 * 1024) { skipped++; continue }
+        pdfFiles.push(f)
+      } else {
+        skipped++
+      }
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Image must be under 5MB')
-      return
+
+    if (pdfFiles.length > 0) {
+      setExtracting(true)
+      for (const pdf of pdfFiles) {
+        try {
+          const formData = new FormData()
+          formData.append('file', pdf)
+          const res = await api.post('/admin/scenario/extract-from-pdf', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          })
+          const scenarios: any[] = res.data?.scenarios || []
+          if (scenarios.length === 0) {
+            errMsg = res.data?.error || `No scenarios found in ${pdf.name}`
+          }
+          scenarios.forEach((s, i) => items.push({ kind: 'data', data: s, name: `${pdf.name} #${i + 1}` }))
+        } catch (e: any) {
+          errMsg = e.response?.data?.detail || `Failed to read ${pdf.name}`
+        }
+      }
+      setExtracting(false)
     }
-    setImageFile(file)
-    const reader = new FileReader()
-    reader.onload = (e) => setImagePreview(e.target?.result as string)
-    reader.readAsDataURL(file)
+
+    if (skipped > 0) errMsg = `Skipped ${skipped} file(s): only JPG/PNG/WebP under 5MB, or a PDF under 10MB, are supported`
+    if (errMsg) setError(errMsg)
+    if (items.length === 0) return
+
+    setQueue(items)
+    setFileIndex(0)
+    setResults([])
+    const first = items[0]
+    if (first.kind === 'file') {
+      const reader = new FileReader()
+      reader.onload = (e) => setImagePreview(e.target?.result as string)
+      reader.readAsDataURL(first.file)
+    } else {
+      setImagePreview(null)
+    }
   }
 
-  const handleExtract = async () => {
-    if (!imageFile) return
+  const processQueueItem = async (idx: number) => {
+    const item = queue[idx]
+    if (!item) {
+      setStep('saved')
+      return
+    }
+    setFileIndex(idx)
+
+    if (item.kind === 'data') {
+      setScenario(mergeData(item.data))
+      setImagePreview(null)
+      setStep('review')
+      return
+    }
+
     setExtracting(true)
     setError(null)
     try {
       const formData = new FormData()
-      formData.append('file', imageFile)
+      formData.append('file', item.file)
       const res = await api.post('/admin/scenario/extract-from-image', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      if (res.data?.error) {
-        setError(res.data.error)
-        return
-      }
+      if (res.data?.error) throw new Error(res.data.error)
       setScenario(mergeData(res.data))
       setStep('review')
     } catch (e: any) {
-      setError(e.response?.data?.detail || 'Extraction failed. Please try again.')
+      const msg = e?.response?.data?.detail || e?.message || 'Extraction failed'
+      setResults((prev) => [...prev, { name: item.name, status: 'error', message: msg }])
+      if (idx + 1 < queue.length) {
+        await processQueueItem(idx + 1)
+      } else {
+        setStep('saved')
+      }
     } finally {
       setExtracting(false)
     }
   }
+
+  const handleExtract = () => processQueueItem(0)
 
   const mergeData = (data: any): ScenarioData => {
     const base = emptyData()
@@ -165,11 +234,13 @@ export default function ScenarioGeneratorPage() {
     setSaving(true)
     setError(null)
     try {
-      const res = await api.post('/admin/scenario/save', scenario)
-      setSavedId(res.data.id)
-      setSavedTitle(scenario.title)
-      setSavedSpecialty(scenario.specialty)
-      setStep('saved')
+      await api.post('/admin/scenario/save', scenario)
+      setResults((prev) => [...prev, { name: queue[fileIndex]?.name || scenario.title, status: 'saved', title: scenario.title }])
+      if (fileIndex + 1 < queue.length) {
+        await processQueueItem(fileIndex + 1)
+      } else {
+        setStep('saved')
+      }
     } catch (e: any) {
       setError(e.response?.data?.detail || 'Save failed')
     } finally {
@@ -177,13 +248,23 @@ export default function ScenarioGeneratorPage() {
     }
   }
 
+  const skipCurrent = () => {
+    setResults((prev) => [...prev, { name: queue[fileIndex]?.name, status: 'error', message: 'Skipped' }])
+    if (fileIndex + 1 < queue.length) {
+      processQueueItem(fileIndex + 1)
+    } else {
+      setStep('saved')
+    }
+  }
+
   const resetWizard = () => {
     setStep('upload')
     setScenario(emptyData())
     setImagePreview(null)
-    setImageFile(null)
+    setQueue([])
+    setFileIndex(0)
+    setResults([])
     setError(null)
-    setSavedId(null)
   }
 
   const updateField = (path: string, value: any) => {
@@ -243,8 +324,7 @@ export default function ScenarioGeneratorPage() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setDragging(false)
-    const file = e.dataTransfer.files[0]
-    handleFileSelect(file)
+    handleFilesSelect(e.dataTransfer.files)
   }
 
   const inputClasses = 'w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white text-sm'
@@ -257,7 +337,7 @@ export default function ScenarioGeneratorPage() {
         <div className="max-w-2xl mx-auto">
           <div className="bg-white rounded-2xl shadow-lg p-8">
             <h1 className="text-3xl font-bold mb-2">Scenario Generator</h1>
-            <p className="text-gray-600 mb-8">Upload an OET roleplay card image to extract and create a scenario.</p>
+            <p className="text-gray-600 mb-8">Upload OET roleplay card images, or a PDF containing multiple cards. Each scenario is extracted and reviewed one at a time, so you can create multiple speaking sessions in one pass.</p>
 
             <div
               ref={dropZoneRef}
@@ -269,24 +349,29 @@ export default function ScenarioGeneratorPage() {
                 dragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400'
               }`}
             >
-              {imagePreview ? (
+              {queue.length > 0 ? (
                 <div className="space-y-4">
-                  <img src={imagePreview} alt="Preview" className="max-h-64 mx-auto rounded-lg shadow" />
+                  {imagePreview && <img src={imagePreview} alt="Preview" className="max-h-64 mx-auto rounded-lg shadow" />}
+                  <p className="text-sm font-semibold text-gray-700">{queue.length} scenario{queue.length > 1 ? 's' : ''} ready</p>
+                  <ul className="text-xs text-gray-500 max-h-24 overflow-y-auto">
+                    {queue.map((q, i) => <li key={i}>{q.name}</li>)}
+                  </ul>
                   <p className="text-sm text-gray-500">Click or drag to replace</p>
                 </div>
               ) : (
                 <div className="text-gray-400">
                   <div className="text-5xl mb-4">📄</div>
-                  <p className="text-lg font-semibold text-gray-600 mb-1">Drop OET roleplay card image here</p>
-                  <p className="text-sm">or click to browse &bull; JPG, PNG, WebP &bull; max 5MB</p>
+                  <p className="text-lg font-semibold text-gray-600 mb-1">Drop OET roleplay card images or a PDF here</p>
+                  <p className="text-sm">or click to browse &bull; JPG, PNG, WebP (5MB each) or PDF (10MB) &bull; multiple allowed</p>
                 </div>
               )}
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                multiple
+                accept="image/jpeg,image/png,image/webp,application/pdf"
                 className="hidden"
-                onChange={(e) => handleFileSelect(e.target.files?.[0] || null)}
+                onChange={(e) => handleFilesSelect(e.target.files)}
               />
             </div>
 
@@ -296,7 +381,7 @@ export default function ScenarioGeneratorPage() {
 
             <button
               onClick={handleExtract}
-              disabled={!imageFile || extracting}
+              disabled={queue.length === 0 || extracting}
               className="mt-6 w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {extracting ? (
@@ -305,8 +390,10 @@ export default function ScenarioGeneratorPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  Analyzing image with AI...
+                  Reading with AI...
                 </span>
+              ) : queue.length > 1 ? (
+                `Extract First Scenario (1 of ${queue.length})`
               ) : (
                 'Extract Scenario'
               )}
@@ -335,6 +422,9 @@ export default function ScenarioGeneratorPage() {
             <div className="flex items-center justify-between mb-8">
               <h1 className="text-2xl font-bold">
                 {isGenerated ? 'Generated Original Scenario' : 'Review Extracted Scenario'}
+                {queue.length > 1 && (
+                  <span className="ml-3 text-sm font-normal text-gray-500">scenario {fileIndex + 1} of {queue.length}</span>
+                )}
               </h1>
               {isGenerated && <span className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-semibold">Original</span>}
             </div>
@@ -524,8 +614,23 @@ export default function ScenarioGeneratorPage() {
                 disabled={saving}
                 className="flex-1 py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition shadow-md disabled:opacity-50"
               >
-                {saving ? 'Saving...' : isGenerated ? 'Save Original Scenario' : 'Save This Scenario'}
+                {saving
+                  ? 'Saving...'
+                  : isGenerated
+                  ? 'Save Original Scenario'
+                  : fileIndex + 1 < queue.length
+                  ? `Save & Continue (${fileIndex + 2} of ${queue.length})`
+                  : 'Save This Scenario'}
               </button>
+              {!isGenerated && fileIndex + 1 < queue.length && (
+                <button
+                  onClick={skipCurrent}
+                  disabled={saving || extracting}
+                  className="py-3 px-4 border border-gray-300 text-gray-500 rounded-xl font-semibold hover:bg-gray-50 transition"
+                >
+                  Skip
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -535,18 +640,32 @@ export default function ScenarioGeneratorPage() {
 
   /* ── STEP 4: SAVED ── */
   if (step === 'saved') {
+    const savedCount = results.filter((r) => r.status === 'saved').length
+    const errorCount = results.filter((r) => r.status === 'error').length
     return (
       <div className="min-h-screen bg-gray-50 py-12 px-4 flex items-center justify-center">
         <div className="max-w-lg w-full">
           <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
             <div className="text-5xl mb-4">✅</div>
-            <h1 className="text-2xl font-bold mb-2">Scenario saved to database</h1>
-            <p className="text-gray-600 mb-6">
-              <span className="font-semibold">{savedTitle}</span> &mdash; {savedSpecialty.replace('_', ' ')}
-            </p>
+            <h1 className="text-2xl font-bold mb-2">
+              {savedCount} scenario{savedCount !== 1 ? 's' : ''} saved
+            </h1>
+            {errorCount > 0 && (
+              <p className="text-sm text-red-600 mb-4">{errorCount} skipped or failed</p>
+            )}
+            <ul className="text-left text-sm mb-6 max-h-48 overflow-y-auto divide-y">
+              {results.map((r, i) => (
+                <li key={i} className="py-2 flex items-center justify-between gap-3">
+                  <span className="truncate text-gray-700">{r.status === 'saved' ? r.title : r.name}</span>
+                  <span className={r.status === 'saved' ? 'text-green-600' : 'text-red-500'}>
+                    {r.status === 'saved' ? 'Saved' : r.message || 'Failed'}
+                  </span>
+                </li>
+              ))}
+            </ul>
             <div className="flex gap-3">
               <button onClick={resetWizard} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition shadow-md">
-                Add Another Scenario
+                Add More Scenarios
               </button>
               <button onClick={() => router.push('/admin/scenarios')} className="flex-1 py-3 border border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition">
                 View All Scenarios

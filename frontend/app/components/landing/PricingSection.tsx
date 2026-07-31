@@ -1,13 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Check } from 'lucide-react'
 import { getPlans, FALLBACK_PLANS, type Plan } from '@/lib/api'
+import { useInView } from '@/app/hooks/useInView'
 
 export default function PricingSection() {
   // Seeded with the known-current fallback rather than null -- so a slow or
   // failed /plans/ call shows real, correct pricing immediately instead of a
   // "Loading pricing..." placeholder that used to hang forever on failure.
   const [plans, setPlans] = useState<Plan[]>(FALLBACK_PLANS)
+  const { ref, inView } = useInView<HTMLDivElement>()
 
   useEffect(() => {
     getPlans().then(setPlans).catch(() => {})
@@ -22,23 +25,28 @@ export default function PricingSection() {
     <section id="pricing" className="bg-[#F8FAFC] py-16 md:py-24">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-[#0F2356] mb-3 text-balance">
+          <h2 className="font-display text-3xl md:text-4xl font-semibold text-[#0F2356] mb-3 text-balance">
             Simple, Transparent Pricing
           </h2>
           <p className="text-gray-500 text-lg">Start free. Upgrade when you are ready.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[free, basic, pro, elite].filter(Boolean).map((plan) => (
+        <div ref={ref} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[free, basic, pro, elite].filter(Boolean).map((plan, i) => (
             <div
               key={plan!.id}
-              className={`rounded-2xl flex flex-col ${
+              className={`rounded-2xl flex flex-col transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                 plan!.highlight
-                  ? 'bg-white border-2 border-[#10B981] shadow-md'
+                  ? 'bg-white border-2 border-[#10B981] shadow-premium-lg'
                   : plan!.id === 'free'
-                  ? 'bg-[#F8FAFC] border border-gray-200 shadow-sm'
-                  : 'bg-white border border-gray-200 shadow-sm'
+                  ? 'bg-[#F8FAFC] border border-gray-200 shadow-premium'
+                  : 'bg-white border border-gray-200 shadow-premium'
               }`}
+              style={{
+                transitionDelay: `${i * 80}ms`,
+                opacity: inView ? 1 : 0,
+                transform: inView ? 'translateY(0)' : 'translateY(12px)',
+              }}
             >
               {plan!.highlight && (
                 <div className="bg-[#047857] text-white text-center text-xs font-bold px-4 py-1.5 rounded-t-xl">
@@ -61,7 +69,7 @@ export default function PricingSection() {
                 <p className="text-gray-500 text-sm mb-6">{plan!.description}</p>
 
                 <div className="mb-4">
-                  <span className={`text-4xl font-bold ${
+                  <span className={`font-display text-4xl font-semibold ${
                     plan!.id === 'free' ? 'text-gray-500' : 'text-[#0F2356]'
                   }`}>
                     {plan!.price === 0 ? '₹0' : `₹${plan!.price}`}
@@ -75,7 +83,7 @@ export default function PricingSection() {
                   {plan!.features.map((f: string) => (
                     <li key={f} className="flex items-start gap-3">
                       <span className="w-5 h-5 rounded-full bg-emerald-50 flex items-center justify-center shrink-0 mt-0.5">
-                        <span className="text-[#047857] text-xs font-bold">✓</span>
+                        <Check className="w-3 h-3 text-[#047857]" strokeWidth={3} aria-hidden="true" />
                       </span>
                       <span className={`text-sm ${
                         plan!.id === 'free' ? 'text-gray-500' : 'text-gray-600'

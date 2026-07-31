@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo } from 'react'
 import toast from 'react-hot-toast'
+import { Target, Flame, FileText, TrendingUp, Check, Award, type LucideIcon } from 'lucide-react'
 
 const STORAGE_KEY = 'nurseai_unlocked_badges'
 
 interface BadgeDef {
   id: string
-  icon: string
+  icon: LucideIcon
   title: string
   check: (data: BadgeData) => boolean
   progress?: (data: BadgeData) => string | null
@@ -31,69 +32,69 @@ function computeBadges(data: BadgeData): { id: string; unlocked: boolean; progre
 const BADGE_DEFS: BadgeDef[] = [
   {
     id: 'first_session',
-    icon: '🎯',
+    icon: Target,
     title: 'First Session',
     check: (d) => d.totalSessions >= 1,
   },
   {
     id: 'streak_3',
-    icon: '🔥',
+    icon: Flame,
     title: '3-Day Streak',
     check: (d) => d.streak >= 3,
     progress: (d) => d.streak < 3 ? `${d.streak}/3` : null,
   },
   {
     id: 'streak_7',
-    icon: '🔥',
+    icon: Flame,
     title: '7-Day Streak',
     check: (d) => d.streak >= 7,
     progress: (d) => d.streak < 7 ? `${d.streak}/7` : null,
   },
   {
     id: 'streak_14',
-    icon: '🔥',
+    icon: Flame,
     title: '14-Day Streak',
     check: (d) => d.streak >= 14,
     progress: (d) => d.streak < 14 ? `${d.streak}/14` : null,
   },
   {
     id: 'streak_30',
-    icon: '🔥',
+    icon: Flame,
     title: '30-Day Streak',
     check: (d) => d.streak >= 30,
     progress: (d) => d.streak < 30 ? `${d.streak}/30` : null,
   },
   {
     id: 'sessions_5',
-    icon: '📝',
+    icon: FileText,
     title: '5 Sessions',
     check: (d) => d.totalSessions >= 5,
     progress: (d) => d.totalSessions < 5 ? `${d.totalSessions}/5` : null,
   },
   {
     id: 'sessions_10',
-    icon: '📝',
+    icon: FileText,
     title: '10 Sessions',
     check: (d) => d.totalSessions >= 10,
     progress: (d) => d.totalSessions < 10 ? `${d.totalSessions}/10` : null,
   },
   {
     id: 'sessions_25',
-    icon: '📝',
+    icon: FileText,
     title: '25 Sessions',
     check: (d) => d.totalSessions >= 25,
     progress: (d) => d.totalSessions < 25 ? `${d.totalSessions}/25` : null,
   },
   {
     id: 'sessions_50',
-    icon: '📝',
+    icon: FileText,
     title: '50 Sessions',
     check: (d) => d.totalSessions >= 50,
     progress: (d) => d.totalSessions < 50 ? `${d.totalSessions}/50` : null,
   },
   {
     id: 'first_band_up',
-    icon: '📈',
+    icon: TrendingUp,
     title: 'First Band Up',
     check: (d) => d.baselineGradePoints > 0 && d.currentGradePoints > d.baselineGradePoints,
   },
@@ -161,6 +162,7 @@ export function MilestoneBadges({
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
         {badges.map((b) => {
           const def = BADGE_DEFS.find((d) => d.id === b.id)
+          const Icon = def?.icon || Award
           return (
             <div
               key={b.id}
@@ -171,9 +173,10 @@ export function MilestoneBadges({
               }`}
               title={def?.title}
             >
-              <span className={`text-xl ${b.unlocked ? '' : 'grayscale opacity-40'}`}>
-                {def?.icon || '🏅'}
-              </span>
+              <Icon
+                className={`w-5 h-5 ${b.unlocked ? 'text-emerald-600' : 'text-slate-300'}`}
+                aria-hidden="true"
+              />
               <span
                 className={`text-[11px] font-semibold leading-tight ${
                   b.unlocked ? 'text-emerald-700' : 'text-slate-400'
@@ -185,7 +188,7 @@ export function MilestoneBadges({
                 <span className="text-[10px] text-slate-400 font-medium">{b.progress}</span>
               )}
               {b.unlocked && (
-                <span className="text-[10px] text-emerald-500 font-semibold">✓</span>
+                <Check className="w-3 h-3 text-emerald-500" strokeWidth={3} aria-hidden="true" />
               )}
             </div>
           )

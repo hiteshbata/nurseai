@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { Bot } from 'lucide-react'
 import api from '@/lib/api'
 
 export function CoachSummaryCard() {
@@ -37,8 +38,8 @@ export function CoachSummaryCard() {
   return (
     <div className="rounded-2xl bg-white border border-slate-200 p-5">
       <div className="flex items-start gap-3">
-        <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 text-sm">
-          🤖
+        <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+          <Bot className="w-4 h-4 text-indigo-600" aria-hidden="true" />
         </div>
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-0.5">

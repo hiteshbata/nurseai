@@ -171,7 +171,7 @@ export default function DemoSection() {
     <section id="demo" className="bg-[#F8FAFC] py-16 md:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-10">
-          <h2 className="text-3xl md:text-4xl font-bold text-[#0F2356] mb-3 text-balance">
+          <h2 className="font-display text-3xl md:text-4xl font-semibold text-[#0F2356] mb-3 text-balance">
             See What a Practice Session Looks Like
           </h2>
           <p className="text-gray-500 text-lg max-w-2xl mx-auto text-balance">
@@ -217,7 +217,7 @@ export default function DemoSection() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           {/* Left — Transcript. Sticks on desktop so the turns stay visible
               beside the per-criterion feedback that quotes them. */}
-          <div className="rounded-2xl bg-white shadow-sm border border-gray-100 p-6 flex flex-col lg:sticky lg:top-24">
+          <div className="rounded-2xl bg-white shadow-premium border border-gray-100 p-6 flex flex-col lg:sticky lg:top-24">
             <div className="flex items-center justify-between gap-3 mb-1">
               <h3 className="text-lg font-bold text-[#0F2356]">Transcript</h3>
               <span className="bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border border-amber-200">
@@ -291,7 +291,7 @@ export default function DemoSection() {
           </div>
 
           {/* Right — AI feedback */}
-          <div className="rounded-2xl bg-white shadow-sm border border-gray-100 p-6">
+          <div className="rounded-2xl bg-white shadow-premium border border-gray-100 p-6">
             <div className="flex items-center justify-between gap-3 mb-5">
               <h3 className="text-lg font-bold text-[#0F2356]">Your AI Feedback</h3>
               <span className="bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border border-amber-200">
@@ -324,7 +324,7 @@ export default function DemoSection() {
                           aria-hidden="true"
                           className="motion-safe:absolute motion-safe:inset-0 motion-safe:rounded-full motion-safe:bg-emerald-300/50 motion-safe:animate-[band-ring_1s_ease-out_1]"
                         />
-                        <p className="relative text-4xl font-black text-[#0F2356] motion-safe:animate-[band-reveal_0.5s_cubic-bezier(0.34,1.56,0.64,1)_both]">
+                        <p className="font-display relative text-4xl font-bold text-[#0F2356] motion-safe:animate-[band-reveal_0.5s_cubic-bezier(0.16,1,0.3,1)_both]">
                           {oetGrade}
                         </p>
                       </div>

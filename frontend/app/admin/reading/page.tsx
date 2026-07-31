@@ -111,8 +111,15 @@ function mapExtractedQuestions(raw: any[]): DraftQuestion[] {
 
 export default function AdminReadingPage() {
   const [rows, setRows] = useState<PassageRow[]>([])
-  const [file, setFile] = useState<File | null>(null)
+  // Multiple paper PDFs (e.g. Part A in one file, Part B/C in another) get
+  // extracted one at a time and merged -- the OS file picker just needs `multiple`
+  // to let the admin select them all in one go.
+  const [files, setFiles] = useState<File[]>([])
+  // Optional -- if given alongside the paper PDF(s), the same extraction call(s)
+  // read both and fill correct_answer directly, skipping the separate match-answers step.
+  const [extractAnswerKeyFile, setExtractAnswerKeyFile] = useState<File | null>(null)
   const [extracting, setExtracting] = useState(false)
+  const [extractProgress, setExtractProgress] = useState<{ done: number; total: number } | null>(null)
   const [savingIdx, setSavingIdx] = useState<Set<number>>(new Set())
   const [savingAll, setSavingAll] = useState(false)
   // A real OET paper's Part A/B/C each contribute multiple passages -- one
@@ -142,6 +149,10 @@ export default function AdminReadingPage() {
   const [attachingTestId, setAttachingTestId] = useState<number | null>(null)
   // Last match result, kept visible after the run so you can see it worked.
   const [attachTestResult, setAttachTestResult] = useState<{ testId: number; matched: number; total: number } | null>(null)
+
+  // Bulk-select publish/unpublish for the tests list.
+  const [selectedTestIds, setSelectedTestIds] = useState<Set<number>>(new Set())
+  const [bulkTestWorking, setBulkTestWorking] = useState(false)
 
   // Tests: a test groups a paper's passages into one student session.
   const [tests, setTests] = useState<ReadingTest[]>([])
@@ -175,6 +186,33 @@ export default function AdminReadingPage() {
         setNewTestTitle((cur) => cur || `Sample Test ${data.length + 1}`)
       })
       .catch(() => toast.error('Failed to load tests'))
+  }
+
+  const toggleTestSelect = (id: number) =>
+    setSelectedTestIds((s) => {
+      const next = new Set(s)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  const toggleSelectAllTests = () =>
+    setSelectedTestIds((s) => (s.size === tests.length ? new Set() : new Set(tests.map((t) => t.id))))
+
+  const bulkSetTestPublish = async (goLive: boolean) => {
+    const ids = [...selectedTestIds]
+    if (ids.length === 0) return
+    setBulkTestWorking(true)
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => api.post(`/reading/admin/tests/${id}/active`, { is_active: goLive }))
+      )
+      const failed = results.filter((r) => r.status === 'rejected').length
+      if (failed) toast.error(`${failed} of ${ids.length} failed`)
+      else toast.success(`${ids.length} test${ids.length > 1 ? 's' : ''} ${goLive ? 'published' : 'unpublished'}`)
+      setSelectedTestIds(new Set())
+      fetchTests()
+    } finally {
+      setBulkTestWorking(false)
+    }
   }
 
   const toggleTestActive = async (t: ReadingTest) => {
@@ -346,27 +384,40 @@ export default function AdminReadingPage() {
   }
 
   const handleExtract = async () => {
-    if (!file) {
-      toast.error('Choose a PDF first')
+    if (files.length === 0) {
+      toast.error('Choose at least one PDF first')
       return
     }
     setExtracting(true)
+    setExtractProgress({ done: 0, total: files.length })
     try {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await api.post('/reading/admin/extract', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      if (res.data?.error) {
-        toast.error(res.data.error)
+      // One extraction call per file, run in sequence -- each PDF gets its own
+      // OpenRouter call, and running them concurrently would just race the same
+      // rate limiter. Results merge into one draft list.
+      const allPassages: any[] = []
+      const failed: string[] = []
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i]
+        try {
+          const form = new FormData()
+          form.append('file', f)
+          if (extractAnswerKeyFile) form.append('answer_key', extractAnswerKeyFile)
+          const res = await api.post('/reading/admin/extract', form, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          })
+          if (res.data?.error) failed.push(`${f.name}: ${res.data.error}`)
+          else allPassages.push(...(res.data.passages || []))
+        } catch (e: any) {
+          failed.push(`${f.name}: ${errorMessage(e, 'extraction failed')}`)
+        }
+        setExtractProgress({ done: i + 1, total: files.length })
+      }
+
+      if (allPassages.length === 0) {
+        toast.error(failed[0] || 'No extractable passages found')
         return
       }
-      const passages: any[] = res.data.passages || []
-      if (passages.length === 0) {
-        toast.error('No extractable passages found in this PDF')
-        return
-      }
-      const mapped: Draft[] = passages.map((p) => ({
+      const mapped: Draft[] = allPassages.map((p) => ({
         title: p.title || '',
         part: p.part === 'A' ? 'A' : p.part === 'B' ? 'B' : 'C',
         difficulty: p.difficulty || 'intermediate',
@@ -374,15 +425,16 @@ export default function AdminReadingPage() {
         questions: mapExtractedQuestions(p.questions),
       }))
       setDrafts(mapped)
-      setFile(null)
+      setFiles([])
+      setExtractAnswerKeyFile(null)
+      if (failed.length) toast.error(`${failed.length} of ${files.length} file(s) failed: ${failed.join('; ')}`)
       toast.success(`Extracted ${mapped.length} passage${mapped.length === 1 ? '' : 's'} — review each before saving`)
       // Drafts render lower on the page; jump to them so they aren't missed
       // (especially when extraction was kicked off from inside a test panel).
       setTimeout(() => document.getElementById('draft-review')?.scrollIntoView({ behavior: 'smooth' }), 100)
-    } catch (e: any) {
-      toast.error(errorMessage(e, 'Extraction failed'))
     } finally {
       setExtracting(false)
+      setExtractProgress(null)
     }
   }
 
@@ -645,8 +697,28 @@ export default function AdminReadingPage() {
 
       {/* Tests */}
       <div className="bg-white rounded-lg shadow p-6 mb-8">
-        <h2 className="font-bold mb-1">Tests (full papers)</h2>
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+          <h2 className="font-bold">Tests (full papers)</h2>
+          {selectedTestIds.size > 0 && (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-500">{selectedTestIds.size} selected</span>
+              <button onClick={() => bulkSetTestPublish(true)} disabled={bulkTestWorking} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50">
+                {bulkTestWorking ? 'Working…' : 'Publish selected'}
+              </button>
+              <button onClick={() => bulkSetTestPublish(false)} disabled={bulkTestWorking} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-300 disabled:opacity-50">
+                Unpublish selected
+              </button>
+              <button onClick={() => setSelectedTestIds(new Set())} className="text-xs text-gray-500 hover:text-gray-700">Clear</button>
+            </div>
+          )}
+        </div>
         <p className="text-xs text-gray-500 mb-4">A test = one OET paper. Assign each of its passages (Part A, the 6 Part B extracts, the 2 Part C texts) to the same test, then <strong>Preview</strong> it exactly as students see it. New tests start as a <strong>Draft</strong> (hidden); hit <strong>Make live</strong> when it's ready. Students take a live test as one full timed reading session.</p>
+        {tests.length > 1 && (
+          <label className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+            <input type="checkbox" checked={selectedTestIds.size === tests.length} onChange={toggleSelectAllTests} />
+            Select all
+          </label>
+        )}
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <input
             value={newTestTitle}
@@ -667,9 +739,10 @@ export default function AdminReadingPage() {
               const expanded = expandedTestId === t.id
               const ready = t.passage_count > 0 && t.missing_answers === 0 && ALL_PARTS.every((p) => t.parts.includes(p))
               return (
-                <div key={t.id} className="border rounded-lg overflow-hidden">
+                <div key={t.id} className={`border rounded-lg overflow-hidden ${selectedTestIds.has(t.id) ? 'ring-2 ring-blue-200' : ''}`}>
                   {/* Collapsed header row */}
                   <div className="flex items-center justify-between gap-3 p-3 flex-wrap">
+                    <input type="checkbox" checked={selectedTestIds.has(t.id)} onChange={() => toggleTestSelect(t.id)} aria-label={`Select ${t.title}`} className="shrink-0" />
                     <button onClick={() => toggleExpand(t.id)} className="flex items-center gap-2 min-w-0 text-left flex-1">
                       <span className="text-gray-400 w-3 shrink-0">{expanded ? '▾' : '▸'}</span>
                       <span className="font-semibold truncate">{t.title}</span>
@@ -714,14 +787,21 @@ export default function AdminReadingPage() {
                     <div className="border-t bg-gray-50 p-3 text-sm">
                       {/* Add a PDF straight into this test — extract + save land here */}
                       <div className="mb-3 p-2 bg-white border rounded-lg flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-semibold">Add a PDF to this test:</span>
+                        <span className="text-xs font-semibold">Add PDF(s) to this test:</span>
+                        <input type="file" accept="application/pdf" multiple
+                          onChange={(e) => setFiles(Array.from(e.target.files ?? []))} className="text-xs" />
+                        <span className="text-xs text-gray-500">+ answer key (optional):</span>
                         <input type="file" accept="application/pdf"
-                          onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-xs" />
-                        <button onClick={() => extractIntoTest(t.id)} disabled={extracting || !file}
+                          onChange={(e) => setExtractAnswerKeyFile(e.target.files?.[0] ?? null)} className="text-xs" />
+                        <button onClick={() => extractIntoTest(t.id)} disabled={extracting || files.length === 0}
                           className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50">
-                          {extracting ? 'Extracting…' : 'Extract into this test'}
+                          {extracting
+                            ? `Extracting…${extractProgress ? ` (${extractProgress.done}/${extractProgress.total})` : ''}`
+                            : files.length > 1 ? `Extract ${files.length} PDFs into this test` : 'Extract into this test'}
                         </button>
-                        <span className="text-[11px] text-gray-400">Passages appear below to review, then Save.</span>
+                        <span className="text-[11px] text-gray-400">
+                          {files.length > 1 ? `${files.length} files selected — ` : ''}Passages appear below to review, then Save.
+                        </span>
                       </div>
                       {/* Whole-paper answer key: one PDF fills answers across every passage */}
                       <div className="mb-3 p-2 bg-white border rounded-lg flex items-center gap-2 flex-wrap">

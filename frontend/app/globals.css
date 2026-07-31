@@ -32,29 +32,58 @@
   .print-only { display: block !important; }
 }
 
-@keyframes orb-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.06); }
-}
 @keyframes orb-pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.04); }
 }
-@keyframes ripple {
-  0% { transform: scale(1); opacity: 0.6; }
-  100% { transform: scale(2.2); opacity: 0; }
+/* ── Voice orb ──────────────────────────────────────────────────────────
+   Every orb animation is slow and low-amplitude on purpose: the student is
+   mid-conversation and the orb sits in their field of view for minutes at a
+   time. Anything faster or larger reads as urgency rather than presence. */
+
+/* Resting motion for idle/listening. Deliberately shallow (±3%) -- the
+   audio-reactive scale rides on top of this on a nested element. */
+@keyframes orb-breathe-soft {
+  0%, 100% { transform: scale(0.985); }
+  50%      { transform: scale(1.03); }
 }
-@keyframes spin-arc {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+/* Listening halo. Fades out well before the edge so it never reads as a
+   hard ring expanding into the layout. */
+@keyframes orb-ripple-soft {
+  0%   { transform: scale(0.92); opacity: 0.34; }
+  100% { transform: scale(1.85); opacity: 0; }
 }
-@keyframes orb-speak-bar {
-  0%, 100% { transform: scaleY(0.35); }
-  50% { transform: scaleY(1); }
+/* Analysing rings -- two speeds in opposite directions so it reads as
+   "working through something" rather than a generic loading spinner. */
+@keyframes orb-ring-spin     { to { transform: rotate(360deg); } }
+@keyframes orb-ring-spin-rev { to { transform: rotate(-360deg); } }
+/* The blurred colour wash behind the orb, drifting so the glow never sits
+   perfectly still even when there's no audio to react to. */
+@keyframes orb-glow-drift {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.09); }
+}
+@keyframes orb-status-in {
+  0%   { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.orb-status-in {
+  display: inline-block;
+  animation: orb-status-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* The focus-mode orb is ~2x the bar orb, so its motion is far more intense.
+   These animations are set via inline style (colour is dynamic), so
+   Tailwind's motion-safe: variant can't reach them -- kill them here instead.
+   Colour still carries every state change, so nothing is lost. The component
+   also checks this query itself and skips its requestAnimationFrame loop, so
+   audio-reactive scaling stops too, not just the CSS keyframes. */
+@media (prefers-reduced-motion: reduce) {
+  .orb-anim,
+  .orb-status-in { animation: none !important; }
 }
 @keyframes band-reveal {
-  0% { transform: scale(0.4); opacity: 0; }
-  60% { transform: scale(1.15); opacity: 1; }
+  0% { transform: scale(0.7); opacity: 0; }
   100% { transform: scale(1); opacity: 1; }
 }
 @keyframes band-ring {
@@ -68,6 +97,14 @@
 @keyframes panel-slide-in {
   0% { transform: translateY(14px); opacity: 0; }
   100% { transform: translateY(0); opacity: 1; }
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px rgba(249, 250, 251, 0.6) inset;
+  -webkit-text-fill-color: #0f2356;
+  transition: background-color 9999s ease-out;
 }
 
 html:fullscreen #main-navbar {

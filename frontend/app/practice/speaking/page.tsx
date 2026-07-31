@@ -66,8 +66,11 @@ export default function SpeakingPage() {
   // Defaults on (matches the auto-restart behavior this replaces); persisted
   // across sessions since it's a standing preference, not per-scenario state.
   const [autoListen, setAutoListen] = useState(true)
-  // Defaults on -- captions are an accessibility aid, not an opt-in extra.
-  const [captionsOn, setCaptionsOn] = useState(true)
+  // Defaults OFF: the conversation screen is focus-mode first (no scrolling
+  // text to read while you're trying to speak naturally). Captions stay one
+  // tap away in the header for hearing difficulty or preference, and the
+  // choice persists, so anyone who needs them turns them on once.
+  const [captionsOn, setCaptionsOn] = useState(false)
   const [isEnding, setIsEnding] = useState(false)
   const [isScoring, setIsScoring] = useState(false)
   const [conversationError, setConversationError] = useState<string | null>(null)

@@ -1,13 +1,18 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { TrendingUp } from "lucide-react"
+import { TrendingUp, Globe2, Check } from "lucide-react"
 import { getPlans, FALLBACK_PLANS } from "@/lib/api"
 
 const fallbackFreeSessions = FALLBACK_PLANS.find((p) => p.id === 'free')!.sessions_limit
 
 export default function HeroSection() {
   const [freeSessions, setFreeSessions] = useState(fallbackFreeSessions)
+  // Drives the score card's one authored entrance: the progress bar fills to
+  // its real value and the stat pills settle in on load, instead of sitting
+  // static -- the single motion moment on the page, not a scroll-fade
+  // repeated on every section below.
+  const [revealed, setRevealed] = useState(false)
 
   useEffect(() => {
     getPlans()
@@ -18,6 +23,15 @@ export default function HeroSection() {
       .catch(() => {})
   }, [])
 
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setRevealed(true)
+      return
+    }
+    const id = requestAnimationFrame(() => setRevealed(true))
+    return () => cancelAnimationFrame(id)
+  }, [])
+
   return (
     <section className="bg-[#F8FAFC] py-16 md:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -26,13 +40,14 @@ export default function HeroSection() {
           <div className="flex-1 lg:w-[55%] flex flex-col gap-6">
             {/* Badge */}
             <div className="inline-flex">
-              <span className="bg-[#047857] text-white text-sm font-medium px-4 py-1.5 rounded-full">
-                🌏 Built for Indian Nurses
+              <span className="inline-flex items-center gap-1.5 bg-[#047857] text-white text-sm font-medium px-4 py-1.5 rounded-full">
+                <Globe2 className="w-3.5 h-3.5" aria-hidden="true" />
+                Built for Indian Nurses
               </span>
             </div>
 
             {/* Headline */}
-            <h1 className="text-4xl md:text-5xl font-bold text-[#0F2356] leading-tight text-balance">
+            <h1 className="font-display text-4xl md:text-5xl font-semibold text-[#0F2356] leading-tight text-balance">
               Practice OET Speaking
               <br />
               with an AI patient that responds
@@ -64,7 +79,7 @@ export default function HeroSection() {
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-6 mt-2">
               {["No app download", "No credit card", "Web-based, practice anywhere"].map((badge) => (
                 <span key={badge} className="flex items-center gap-1.5 text-sm text-gray-500">
-                  <span className="text-[#047857] font-bold">✓</span>
+                  <Check className="w-4 h-4 text-[#047857]" strokeWidth={3} aria-hidden="true" />
                   {badge}
                 </span>
               ))}
@@ -73,14 +88,14 @@ export default function HeroSection() {
 
           {/* Right Side — Score Card */}
           <div className="w-full lg:w-[45%] max-w-sm mx-auto lg:mx-0">
-            <div className="bg-[#0F2356] rounded-2xl shadow-2xl p-7 text-white">
+            <div className="bg-[#0F2356] rounded-2xl shadow-premium-lg p-7 text-white">
               {/* Top */}
               <div className="flex items-start justify-between mb-2">
                 <span className="text-white/60 text-xs font-medium uppercase tracking-widest">Your OET Band · Illustrative</span>
                 <TrendingUp className="w-5 h-5 text-[#10B981]" />
               </div>
 
-              <div className="text-7xl font-bold mb-6">B</div>
+              <div className="font-display text-7xl font-semibold mb-6">B</div>
 
               {/* Progress */}
               <div className="mb-5">
@@ -91,8 +106,8 @@ export default function HeroSection() {
                 </div>
                 <div className="w-full bg-white/20 rounded-full h-2.5">
                   <div
-                    className="h-2.5 rounded-full bg-[#10B981]"
-                    style={{ width: "70%" }}
+                    className="h-2.5 rounded-full bg-[#10B981] transition-[width] duration-[1100ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
+                    style={{ width: revealed ? "70%" : "0%" }}
                   />
                 </div>
               </div>
@@ -103,8 +118,16 @@ export default function HeroSection() {
                   { label: "Speaking", value: "4.6" },
                   { label: "Writing", value: "4.2" },
                   { label: "Sessions", value: "24" },
-                ].map((stat) => (
-                  <div key={stat.label} className="flex-1 bg-white/10 rounded-xl px-3 py-2 text-center">
+                ].map((stat, i) => (
+                  <div
+                    key={stat.label}
+                    className="flex-1 bg-white/10 rounded-xl px-3 py-2 text-center transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                    style={{
+                      transitionDelay: `${300 + i * 90}ms`,
+                      opacity: revealed ? 1 : 0,
+                      transform: revealed ? "translateY(0)" : "translateY(6px)",
+                    }}
+                  >
                     <div className="text-lg font-bold">{stat.value}</div>
                     <div className="text-white/60 text-xs">{stat.label}</div>
                   </div>

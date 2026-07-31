@@ -1,4 +1,7 @@
+"use client"
+
 import { Search, Mic, BarChart2, RotateCcw } from "lucide-react"
+import { useInView } from "@/app/hooks/useInView"
 
 const steps = [
   {
@@ -32,17 +35,19 @@ const steps = [
 ]
 
 export default function HowItWorks() {
+  const { ref, inView } = useInView<HTMLDivElement>()
+
   return (
     <section id="how-it-works" className="bg-[#F8FAFC] py-16 md:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14">
-          <h2 className="text-3xl md:text-4xl font-bold text-[#0F2356] mb-3 text-balance">
+          <h2 className="font-display text-3xl md:text-4xl font-semibold text-[#0F2356] mb-3 text-balance">
             One 5-Minute Roleplay, Scored End to End
           </h2>
           <p className="text-gray-500 text-lg">The same loop every time — choose, practice, get scored, go again</p>
         </div>
 
-        <div className="relative flex flex-col md:flex-row items-start gap-8 md:gap-0">
+        <div ref={ref} className="relative flex flex-col md:flex-row items-start gap-8 md:gap-0">
           {/* Connecting line on desktop — inset by half a card so it starts and
               ends at the centre of the first and last step circles. */}
           <div className="hidden md:block absolute top-12 h-0.5 bg-gray-200 z-0" style={{ left: "12.5%", right: "12.5%" }} />
@@ -51,10 +56,18 @@ export default function HowItWorks() {
             const Icon = step.icon
             const isEmerald = step.color === "emerald"
             return (
-              <div key={step.number} className="relative flex-1 flex flex-col items-center text-center px-4 z-10">
+              <div
+                key={step.number}
+                className="relative flex-1 flex flex-col items-center text-center px-4 z-10 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                style={{
+                  transitionDelay: `${i * 80}ms`,
+                  opacity: inView ? 1 : 0,
+                  transform: inView ? "translateY(0)" : "translateY(12px)",
+                }}
+              >
                 {/* Circle number */}
                 <div
-                  className={`w-20 h-20 rounded-full flex items-center justify-center text-xl font-bold mb-5 shadow-lg ${
+                  className={`font-display w-20 h-20 rounded-full flex items-center justify-center text-xl font-semibold mb-5 shadow-premium ${
                     isEmerald
                       ? "bg-[#047857] text-white"
                       : "bg-[#0F2356] text-white"

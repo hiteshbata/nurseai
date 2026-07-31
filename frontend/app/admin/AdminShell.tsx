@@ -24,6 +24,7 @@ const NAV_GROUPS = [
       { href: '/admin/reading', label: 'Reading' },
       { href: '/admin/writing', label: 'Writing' },
       { href: '/admin/listening', label: 'Listening' },
+      { href: '/admin/mock-tests', label: 'Mock Tests' },
       { href: '/admin/scenario-generator', label: 'Generator' },
     ],
   },

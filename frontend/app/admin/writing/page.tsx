@@ -5,6 +5,7 @@ import api from '@/lib/api'
 import toast from 'react-hot-toast'
 
 interface Draft {
+  key: string // client-side only, keys the review card -- never sent to the API
   title: string
   difficulty: string
   case_notes: string
@@ -30,10 +31,12 @@ function errorMessage(e: any, fallback: string): string {
 
 export default function AdminWritingPage() {
   const [rows, setRows] = useState<ScenarioRow[]>([])
-  const [file, setFile] = useState<File | null>(null)
+  // Multiple task PDFs get extracted one at a time and reviewed as separate cards.
+  const [files, setFiles] = useState<File[]>([])
   const [extracting, setExtracting] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [draft, setDraft] = useState<Draft | null>(null)
+  const [extractProgress, setExtractProgress] = useState<{ done: number; total: number } | null>(null)
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set())
+  const [drafts, setDrafts] = useState<Draft[]>([])
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [bulkDeleting, setBulkDeleting] = useState(false)
 
@@ -52,40 +55,67 @@ export default function AdminWritingPage() {
   }, [])
 
   const handleExtract = async () => {
-    if (!file) {
-      toast.error('Choose a PDF first')
+    if (files.length === 0) {
+      toast.error('Choose at least one PDF first')
       return
     }
     setExtracting(true)
+    setExtractProgress({ done: 0, total: files.length })
     try {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await api.post('/writing/admin/extract', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      const d = res.data
-      setDraft({
-        title: d.title || '',
-        difficulty: d.difficulty || 'medium',
-        case_notes: d.case_notes || '',
-        task: d.task || '',
-        key_points: (d.key_points && d.key_points.length ? d.key_points : ['']) as string[],
-      })
-      toast.success('Extracted — review and edit before saving')
-    } catch (e: any) {
-      toast.error(errorMessage(e, 'Extraction failed'))
+      // One extraction call per file, run in sequence -- each PDF gets its own
+      // OCR + AI call, and each becomes its own review card below.
+      const newDrafts: Draft[] = []
+      const failed: string[] = []
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i]
+        try {
+          const form = new FormData()
+          form.append('file', f)
+          const res = await api.post('/writing/admin/extract', form, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          })
+          const d = res.data
+          newDrafts.push({
+            key: crypto.randomUUID(),
+            title: d.title || '',
+            difficulty: d.difficulty || 'medium',
+            case_notes: d.case_notes || '',
+            task: d.task || '',
+            key_points: (d.key_points && d.key_points.length ? d.key_points : ['']) as string[],
+          })
+        } catch (e: any) {
+          failed.push(`${f.name}: ${errorMessage(e, 'extraction failed')}`)
+        }
+        setExtractProgress({ done: i + 1, total: files.length })
+      }
+
+      if (newDrafts.length === 0) {
+        toast.error(failed[0] || 'Extraction failed')
+        return
+      }
+      setDrafts((prev) => [...prev, ...newDrafts])
+      setFiles([])
+      if (failed.length) toast.error(`${failed.length} of ${files.length} file(s) failed: ${failed.join('; ')}`)
+      toast.success(`Extracted ${newDrafts.length} task${newDrafts.length === 1 ? '' : 's'} — review each before saving`)
     } finally {
       setExtracting(false)
+      setExtractProgress(null)
     }
   }
 
-  const handleSave = async () => {
+  const updateDraft = (key: string, patch: Partial<Draft>) =>
+    setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)))
+
+  const discardDraft = (key: string) => setDrafts((prev) => prev.filter((d) => d.key !== key))
+
+  const saveDraft = async (key: string) => {
+    const draft = drafts.find((d) => d.key === key)
     if (!draft) return
     if (!draft.title.trim() || !draft.case_notes.trim() || !draft.task.trim()) {
       toast.error('Title, case notes and task are all required')
       return
     }
-    setSaving(true)
+    setSavingKeys((s) => new Set(s).add(key))
     try {
       await api.post('/admin/scenarios', {
         module: 'writing',
@@ -98,21 +128,25 @@ export default function AdminWritingPage() {
         },
       })
       toast.success('Writing scenario saved')
-      setDraft(null)
-      setFile(null)
+      discardDraft(key)
       fetchRows()
     } catch (e: any) {
       toast.error(errorMessage(e, 'Save failed'))
     } finally {
-      setSaving(false)
+      setSavingKeys((s) => {
+        const next = new Set(s)
+        next.delete(key)
+        return next
+      })
     }
   }
 
-  const setKeyPoint = (idx: number, value: string) => {
+  const setKeyPoint = (key: string, idx: number, value: string) => {
+    const draft = drafts.find((d) => d.key === key)
     if (!draft) return
     const kp = [...draft.key_points]
     kp[idx] = value
-    setDraft({ ...draft, key_points: kp })
+    updateDraft(key, { key_points: kp })
   }
 
   const toggleActive = async (r: ScenarioRow) => {
@@ -169,33 +203,39 @@ export default function AdminWritingPage() {
       <div className="max-w-4xl mx-auto space-y-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Writing Scenarios</h1>
-          <p className="text-gray-500 mt-1">Upload a real OET Writing task PDF — the case notes and task are extracted for you to review, then save.</p>
+          <p className="text-gray-500 mt-1">Upload real OET Writing task PDFs — the case notes and task are extracted for you to review, then save. Select multiple PDFs to extract them one by one.</p>
         </div>
 
         {/* Upload */}
         <div className="bg-white p-6 rounded-xl shadow">
-          <h2 className="text-lg font-bold mb-3">Upload OET Writing PDF</h2>
+          <h2 className="text-lg font-bold mb-3">Upload OET Writing PDF(s)</h2>
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
             <input
               type="file"
               accept="application/pdf"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              multiple
+              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
               className="block text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 file:font-semibold hover:file:bg-blue-100"
             />
             <button
               onClick={handleExtract}
-              disabled={extracting || !file}
+              disabled={extracting || files.length === 0}
               className="px-5 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-50 whitespace-nowrap"
             >
-              {extracting ? 'Extracting…' : 'Extract'}
+              {extracting
+                ? `Extracting…${extractProgress ? ` (${extractProgress.done}/${extractProgress.total})` : ''}`
+                : files.length > 1 ? `Extract ${files.length} PDFs` : 'Extract'}
             </button>
           </div>
-          <p className="text-xs text-gray-400 mt-2">PDF up to 10MB. Extraction reads the pages with OCR and can take up to a minute.</p>
+          <p className="text-xs text-gray-400 mt-2">
+            {files.length > 1 ? `${files.length} files selected. ` : ''}
+            PDF up to 10MB each. Extraction reads the pages with OCR and can take up to a minute per file.
+          </p>
         </div>
 
-        {/* Review draft */}
-        {draft && (
-          <div className="bg-white p-6 rounded-xl shadow space-y-5">
+        {/* Review drafts */}
+        {drafts.map((draft) => (
+          <div key={draft.key} className="bg-white p-6 rounded-xl shadow space-y-5">
             <h2 className="text-lg font-bold">Review before saving</h2>
 
             <div className="grid sm:grid-cols-2 gap-4">
@@ -203,7 +243,7 @@ export default function AdminWritingPage() {
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Title</label>
                 <input
                   value={draft.title}
-                  onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                  onChange={(e) => updateDraft(draft.key, { title: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg"
                 />
               </div>
@@ -211,7 +251,7 @@ export default function AdminWritingPage() {
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Difficulty</label>
                 <select
                   value={draft.difficulty}
-                  onChange={(e) => setDraft({ ...draft, difficulty: e.target.value })}
+                  onChange={(e) => updateDraft(draft.key, { difficulty: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg"
                 >
                   <option value="easy">Easy</option>
@@ -225,7 +265,7 @@ export default function AdminWritingPage() {
               <label className="block text-sm font-semibold text-gray-700 mb-1">Case notes (what the student reads)</label>
               <textarea
                 value={draft.case_notes}
-                onChange={(e) => setDraft({ ...draft, case_notes: e.target.value })}
+                onChange={(e) => updateDraft(draft.key, { case_notes: e.target.value })}
                 rows={16}
                 className="w-full px-3 py-2 border rounded-lg font-mono text-sm whitespace-pre"
               />
@@ -235,7 +275,7 @@ export default function AdminWritingPage() {
               <label className="block text-sm font-semibold text-gray-700 mb-1">Writing task (recipient + what to write + word count)</label>
               <textarea
                 value={draft.task}
-                onChange={(e) => setDraft({ ...draft, task: e.target.value })}
+                onChange={(e) => updateDraft(draft.key, { task: e.target.value })}
                 rows={4}
                 className="w-full px-3 py-2 border rounded-lg text-sm"
               />
@@ -249,14 +289,14 @@ export default function AdminWritingPage() {
                 <input
                   key={idx}
                   value={kp}
-                  onChange={(e) => setKeyPoint(idx, e.target.value)}
+                  onChange={(e) => setKeyPoint(draft.key, idx, e.target.value)}
                   className="w-full px-3 py-2 border rounded-lg mb-2 text-sm"
                   placeholder={`Key point ${idx + 1}`}
                 />
               ))}
               <button
                 type="button"
-                onClick={() => setDraft({ ...draft, key_points: [...draft.key_points, ''] })}
+                onClick={() => updateDraft(draft.key, { key_points: [...draft.key_points, ''] })}
                 className="text-blue-600 text-sm font-semibold"
               >
                 + Add key point
@@ -265,21 +305,21 @@ export default function AdminWritingPage() {
 
             <div className="flex gap-3">
               <button
-                onClick={handleSave}
-                disabled={saving}
+                onClick={() => saveDraft(draft.key)}
+                disabled={savingKeys.has(draft.key)}
                 className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
               >
-                {saving ? 'Saving…' : 'Save scenario'}
+                {savingKeys.has(draft.key) ? 'Saving…' : 'Save scenario'}
               </button>
               <button
-                onClick={() => setDraft(null)}
+                onClick={() => discardDraft(draft.key)}
                 className="px-6 py-2 border border-gray-300 text-gray-600 rounded-lg font-semibold hover:bg-gray-50 transition"
               >
                 Discard
               </button>
             </div>
           </div>
-        )}
+        ))}
 
         {/* Existing scenarios */}
         <div className="bg-white p-6 rounded-xl shadow">

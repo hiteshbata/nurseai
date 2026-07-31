@@ -11,6 +11,7 @@ import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { getMockId, finishMockSection } from '@/lib/mock'
+import { WRITING_CRITERIA } from '@/components/SessionFeedback'
 
 interface Scenario {
   id: number
@@ -39,15 +40,9 @@ interface Feedback {
   corrected_version: string
 }
 
-// Official OET Writing ranges: Purpose is scored /3, every other criterion /7.
-const CRITERIA: { key: string; label: string; max: number }[] = [
-  { key: 'purpose', label: 'Purpose', max: 3 },
-  { key: 'content', label: 'Content', max: 7 },
-  { key: 'conciseness', label: 'Conciseness & Clarity', max: 7 },
-  { key: 'genre_style', label: 'Genre & Style', max: 7 },
-  { key: 'organization', label: 'Organisation & Layout', max: 7 },
-  { key: 'language', label: 'Language', max: 7 },
-]
+// Shared with the saved-session view (/sessions/[id]) so the rubric can't drift
+// between the live result screen and a session reopened later.
+const CRITERIA = WRITING_CRITERIA
 
 const WORD_MIN = 120
 

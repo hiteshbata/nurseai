@@ -7,12 +7,14 @@ import { useSupabaseSession } from '@/lib/supabase'
 export function Footer() {
   const currentYear = new Date().getFullYear()
   const { status } = useSupabaseSession()
-  const pricingHref = status === 'authenticated' ? '/upgrade' : '/#pricing'
+  const pricingHref = status === 'authenticated' ? '/upgrade' : '/pricing'
 
   return (
-    <footer style={{ backgroundColor: '#0F2356' }} className="text-white py-12">
+    <footer style={{ backgroundColor: '#0F2356' }} className="text-white pt-16 pb-8">
       <div className="max-w-6xl mx-auto px-4">
-        <div className="grid md:grid-cols-6 gap-8 mb-8">
+        {/* 5 columns, brand spans 2 -- grid-cols-6 left one column empty, so
+            the links stopped two-thirds across and the footer read lopsided. */}
+        <div className="grid md:grid-cols-5 gap-8 mb-10">
           {/* Column 1 — Brand */}
           <div className="md:col-span-2">
             <SpeakOETLogo height={28} variant="full" theme="light" />
@@ -70,21 +72,31 @@ export function Footer() {
 
           {/* Column 2 — Product */}
           <div>
-            <h3 className="text-white font-semibold mb-4">Product</h3>
+            <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-white/50">Product</h3>
             <ul className="text-sm">
               <li>
-                <Link href="/practice/speaking" className="inline-flex items-center min-h-11 text-white/70 hover:text-white transition">
+                <Link href="/practice/speaking" className="inline-flex items-center min-h-11 md:min-h-0 md:py-1.5 text-white/70 hover:text-white transition">
                   Speaking Practice
                 </Link>
               </li>
               <li>
-                <Link href="/#how-it-works" className="inline-flex items-center min-h-11 text-white/70 hover:text-white transition">
+                <Link href="/#how-it-works" className="inline-flex items-center min-h-11 md:min-h-0 md:py-1.5 text-white/70 hover:text-white transition">
                   How It Works
                 </Link>
               </li>
               <li>
-                <Link href={pricingHref} className="inline-flex items-center min-h-11 text-white/70 hover:text-white transition">
+                <Link href={pricingHref} className="inline-flex items-center min-h-11 md:min-h-0 md:py-1.5 text-white/70 hover:text-white transition">
                   Pricing
+                </Link>
+              </li>
+              <li>
+                <Link href="/tools/oet-score-calculator" className="inline-flex items-center min-h-11 md:min-h-0 md:py-1.5 text-white/70 hover:text-white transition">
+                  Score Calculator
+                </Link>
+              </li>
+              <li>
+                <Link href="/tools/ai-study-plan-generator" className="inline-flex items-center min-h-11 md:min-h-0 md:py-1.5 text-white/70 hover:text-white transition">
+                  AI Study Plan Generator
                 </Link>
               </li>
             </ul>
@@ -92,17 +104,17 @@ export function Footer() {
 
           {/* Column 3 — Learn */}
           <div>
-            <h3 className="text-white font-semibold mb-4">Learn</h3>
+            <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-white/50">Learn</h3>
             <ul className="text-sm">
               {[
                 { href: "/learn/what-is-oet-speaking", label: "What is OET Speaking" },
                 { href: "/learn/oet-band-scores", label: "OET Band Scores" },
                 { href: "/learn/oet-vs-ielts", label: "OET vs IELTS" },
                 { href: "/learn/oet-speaking-tips", label: "OET Speaking Tips" },
-                { href: "/learn/oet-for-indian-nurses", label: "OET for Indian Nurses" },
+                { href: "/oet/india", label: "OET for Indian Nurses" },
               ].map(({ href, label }) => (
                 <li key={href}>
-                  <Link href={href} className="inline-flex items-center min-h-11 text-white/70 hover:text-white transition">
+                  <Link href={href} className="inline-flex items-center min-h-11 md:min-h-0 md:py-1.5 text-white/70 hover:text-white transition">
                     {label}
                   </Link>
                 </li>
@@ -112,17 +124,17 @@ export function Footer() {
 
           {/* Column 4 — Company */}
           <div>
-            <h3 className="text-white font-semibold mb-4">Company</h3>
+            <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-white/50">Company</h3>
             <ul className="text-sm">
+              {/* Privacy and Terms moved to the bottom bar -- legal links are
+                  utility, not a marketing column. Leaves 3/5/3 columns. */}
               {[
                 { href: "/about", label: "About" },
                 { href: "/support", label: "Support" },
                 { href: "/blog", label: "Blog" },
-                { href: "/privacy", label: "Privacy" },
-                { href: "/terms", label: "Terms of Service" },
               ].map(({ href, label }) => (
                 <li key={href}>
-                  <Link href={href} className="inline-flex items-center min-h-11 text-white/70 hover:text-white transition">
+                  <Link href={href} className="inline-flex items-center min-h-11 md:min-h-0 md:py-1.5 text-white/70 hover:text-white transition">
                     {label}
                   </Link>
                 </li>
@@ -131,13 +143,24 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-white/10 pt-6 flex flex-col md:flex-row items-center justify-between text-sm text-white/50">
-          <p>&copy; {currentYear} SpeakOET. All rights reserved.</p>
-          <p className="mt-2 md:mt-0">Made for nurses worldwide 🌏</p>
-        </div>
-        <p className="mt-4 text-xs text-white/70 text-center md:text-left">
+        {/* Above the divider, not buried under the copyright -- it is the one
+            legally required line in here. */}
+        <p className="mb-6 max-w-3xl text-xs leading-relaxed text-white/60">
           SpeakOET is an independent preparation platform. OET is a registered trademark of Cambridge Boxhill Language Assessment Pty Ltd. SpeakOET is not affiliated with or endorsed by the official exam board.
         </p>
+
+        <div className="flex flex-col gap-3 border-t border-white/10 pt-6 text-sm text-white/50 md:flex-row md:items-center md:justify-between">
+          <p>&copy; {currentYear} SpeakOET. All rights reserved.</p>
+          <div className="flex items-center gap-3">
+            <Link href="/privacy" className="hover:text-white transition">
+              Privacy
+            </Link>
+            <span aria-hidden="true">&middot;</span>
+            <Link href="/terms" className="hover:text-white transition">
+              Terms
+            </Link>
+          </div>
+        </div>
       </div>
     </footer>
   )

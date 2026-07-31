@@ -5,17 +5,27 @@ import { ImpersonationBanner } from '@/components/ImpersonationBanner'
 import { AnnouncementBanner } from '@/components/AnnouncementBanner'
 import Providers from './providers'
 import type { Metadata } from 'next'
+import { Fraunces } from 'next/font/google'
 import ConditionalLayout from './conditional-layout'
 import { SITE_URL, SITE_NAME, SITE_DESCRIPTION } from '@/lib/site'
+
+// Display serif for landing-page headlines only (font-display utility) --
+// exposed as a CSS variable rather than the body default so the rest of the
+// app (dashboard, practice UI) keeps its plain system sans untouched.
+const fraunces = Fraunces({
+  subsets: ['latin'],
+  axes: ['opsz', 'SOFT', 'WONK'],
+  variable: '--font-display',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: `${SITE_NAME} — OET Speaking Practice for Nurses`,
+    default: `${SITE_NAME} — AI OET Practice for Nurses: Speaking, Writing, Reading & Listening`,
     template: `%s — ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
-  keywords: ['OET speaking', 'OET practice', 'OET for nurses', 'OET AI coach', 'OET band score'],
   alternates: {
     canonical: '/',
   },
@@ -23,12 +33,12 @@ export const metadata: Metadata = {
     type: 'website',
     url: SITE_URL,
     siteName: SITE_NAME,
-    title: `${SITE_NAME} — OET Speaking Practice for Nurses`,
+    title: `${SITE_NAME} — AI OET Practice for Nurses: Speaking, Writing, Reading & Listening`,
     description: SITE_DESCRIPTION,
   },
   twitter: {
     card: 'summary_large_image',
-    title: `${SITE_NAME} — OET Speaking Practice for Nurses`,
+    title: `${SITE_NAME} — AI OET Practice for Nurses: Speaking, Writing, Reading & Listening`,
     description: SITE_DESCRIPTION,
   },
 }
@@ -50,7 +60,7 @@ const organizationJsonLd = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={fraunces.variable}>
       <body className="bg-gray-50 text-gray-900">
         <script
           type="application/ld+json"

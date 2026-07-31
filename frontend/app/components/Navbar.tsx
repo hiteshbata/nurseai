@@ -10,7 +10,7 @@ import api from '@/lib/api'
 
 const publicNavLinks = [
   { href: '/#how-it-works', label: 'How It Works' },
-  { href: '/#pricing', label: 'Pricing' },
+  { href: '/pricing', label: 'Pricing' },
   { href: '/about', label: 'About' },
   { href: '/blog', label: 'Blog' },
 ]
@@ -50,11 +50,12 @@ export function Navbar() {
   const router = useRouter()
   const pathname = usePathname()
   const isLanding = pathname === '/'
-  const publicPaths = ['/', '/about', '/support', '/blog', '/privacy', '/terms']
+  const publicPaths = ['/', '/about', '/support', '/blog', '/privacy', '/terms', '/pricing']
   const isPublicPage =
     publicPaths.includes(pathname || '') ||
     (pathname?.startsWith('/learn') ?? false) ||
-    (pathname?.startsWith('/docs') ?? false)
+    (pathname?.startsWith('/docs') ?? false) ||
+    (pathname?.startsWith('/tools') ?? false)
   const navLinksToShow = !session && isPublicPage ? publicNavLinks : appNavLinks
   const isActiveLink = (href: string) => !href.startsWith('/#') && pathname === href
 

@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { CheckCircle2 } from "lucide-react"
 import api, { getPlans, FALLBACK_PLANS, type Plan } from "@/lib/api"
+import { useInView } from "@/app/hooks/useInView"
 
 const fallbackElite = FALLBACK_PLANS.find((p) => p.id === 'elite')!
 
@@ -69,6 +70,7 @@ export default function InstituteSection() {
   // here is exactly how a feature claim quietly drifts from what Elite
   // actually includes.
   const [elite, setElite] = useState<Plan>(fallbackElite)
+  const { ref, inView } = useInView<HTMLDivElement>()
 
   useEffect(() => {
     getPlans().then((plans: Plan[]) => {
@@ -95,14 +97,21 @@ export default function InstituteSection() {
     // own section. A bordered panel separates on shape, not on shade.
     <section className="bg-white py-16 md:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="rounded-3xl border border-gray-200 shadow-xl bg-[#F8FAFC] p-8 md:p-14 overflow-hidden relative">
+        <div
+          ref={ref}
+          className="rounded-3xl border border-gray-200 shadow-premium-lg bg-[#F8FAFC] p-8 md:p-14 overflow-hidden relative transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+          style={{
+            opacity: inView ? 1 : 0,
+            transform: inView ? "translateY(0)" : "translateY(12px)",
+          }}
+        >
           <div className="absolute top-0 inset-x-0 h-1.5 bg-[#047857]" />
           <div className="flex flex-col lg:flex-row gap-12 lg:gap-16 items-center">
           <div className="flex-1">
             <span className="inline-block bg-[#0F2356]/10 text-[#0F2356] text-xs font-semibold px-4 py-1.5 rounded-full mb-5">
               For OET Coaching Academies
             </span>
-            <h2 className="text-3xl md:text-4xl font-bold text-[#0F2356] mb-4 text-balance">
+            <h2 className="font-display text-3xl md:text-4xl font-semibold text-[#0F2356] mb-4 text-balance">
               Running an OET Coaching Institute?
             </h2>
             <p className="text-gray-500 text-lg leading-relaxed mb-8">
@@ -126,7 +135,7 @@ export default function InstituteSection() {
           </div>
 
           <div className="w-full lg:w-[420px] shrink-0" id="institute-lead-form">
-            <div className="bg-white rounded-2xl p-8 shadow-xl border border-gray-100">
+            <div className="bg-white rounded-2xl p-8 shadow-premium-lg border border-gray-100">
               <h3 className="text-2xl font-bold text-[#0F2356] mb-1">Elite Plan</h3>
               <p className="text-gray-500 text-sm mb-6">For academies — maximum preparation</p>
 
