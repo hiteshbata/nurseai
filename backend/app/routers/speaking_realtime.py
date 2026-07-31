@@ -63,9 +63,16 @@ from app.services.realtime import (
     get_adapter_class,
 )
 from app.services.realtime.gemini_adapter import map_gender_to_gemini_voice
-from app.services.realtime.pricing import estimate_realtime_cost
+from app.services.realtime.pricing import (
+    accumulate_openai_usage,
+    cache_hit_rate,
+    estimate_realtime_cost,
+    new_usage_totals,
+    price_openai_usage,
+)
 from app.services.cost_tracking import increment_session_cost, log_ai_usage
 from app.services.ai_scoring import MEDICAL_JARGON
+from app.services.plan_gating import get_plan_from_profile, get_realtime_model
 from app.core.feature_flags import close_if_disabled
 
 logger = logging.getLogger(__name__)
@@ -102,9 +109,9 @@ def _get_voice_provider() -> str:
     return settings.VOICE_PROVIDER
 
 
-def _provider_credentials(provider: str) -> tuple[str, str]:
+def _provider_credentials(provider: str, plan: str) -> tuple[str, str]:
     if provider == "openai":
-        return settings.OPENAI_API_KEY, settings.OPENAI_REALTIME_MODEL
+        return settings.OPENAI_API_KEY, get_realtime_model(plan)
     if provider == "gemini":
         return settings.GEMINI_API_KEY, settings.GEMINI_LIVE_MODEL
     raise ValueError(f"Unknown VOICE_PROVIDER: {provider!r}")
@@ -175,13 +182,14 @@ class _SessionMetrics:
     comparison view -- adapters never see or touch this."""
 
     __slots__ = (
-        "provider", "session_id", "user_id", "scenario_id", "started_at", "input_bytes", "output_bytes",
+        "provider", "model", "session_id", "user_id", "scenario_id", "started_at", "input_bytes", "output_bytes",
         "interrupted_count", "error_count", "ended_reason", "provider_ready_at",
-        "transcript_turns", "_patient_buffer",
+        "transcript_turns", "_patient_buffer", "usage_totals",
     )
 
-    def __init__(self, provider: str, session_id: int, user_id: str, scenario_id: int):
+    def __init__(self, provider: str, model: str, session_id: int, user_id: str, scenario_id: int):
         self.provider = provider
+        self.model = model
         self.session_id = session_id
         self.user_id = user_id
         self.scenario_id = scenario_id
@@ -194,6 +202,7 @@ class _SessionMetrics:
         self.ended_reason = "unknown"
         self.transcript_turns: list[dict] = []
         self._patient_buffer = ""
+        self.usage_totals = new_usage_totals()
 
     def append_patient_delta(self, delta: str) -> None:
         self._patient_buffer += delta
@@ -212,20 +221,36 @@ async def _persist_realtime_metrics(metrics: _SessionMetrics, capabilities) -> N
     duration_seconds = time.monotonic() - metrics.started_at
     input_seconds = metrics.input_bytes / (capabilities.input_sample_rate * PCM16_BYTES_PER_SAMPLE)
     output_seconds = metrics.output_bytes / (capabilities.output_sample_rate * PCM16_BYTES_PER_SAMPLE)
-    cost = estimate_realtime_cost(metrics.provider, input_seconds, output_seconds)
+    cost = estimate_realtime_cost(metrics.provider, input_seconds, output_seconds, model=metrics.model)
     time_to_ready_ms = (
         round((metrics.provider_ready_at - metrics.started_at) * 1000)
         if metrics.provider_ready_at is not None else None
     )
 
+    # Metered tokens beat the wall-clock estimate whenever the provider
+    # reported them -- the estimate can't see cached input at all, which is
+    # most of what a multi-turn realtime session actually bills for.
+    # Falls back for Gemini (reports no usage) and for connections that
+    # dropped before any response completed.
+    totals = metrics.usage_totals
+    exact_usd = price_openai_usage(metrics.model, totals) if metrics.provider == "openai" else None
+    cost_usd = exact_usd if exact_usd is not None else cost.realtime_usd
+    is_estimate = exact_usd is None
+
     try:
         await run_sync(_insert_realtime_metrics_row_sync, {
             "session_usage_id": metrics.session_id,
             "provider": metrics.provider,
+            "model": metrics.model,
             "duration_seconds": round(duration_seconds, 2),
             "input_audio_seconds": round(input_seconds, 2),
             "output_audio_seconds": round(output_seconds, 2),
-            "realtime_cost_usd": cost.realtime_usd,
+            "realtime_cost_usd": cost_usd,
+            "cost_is_estimate": is_estimate,
+            "input_tokens": totals["input_tokens"],
+            "output_tokens": totals["output_tokens"],
+            "cached_tokens": totals["cached_tokens"],
+            "token_usage": totals,
             "time_to_ready_ms": time_to_ready_ms,
             "interrupted_count": metrics.interrupted_count,
             "error_count": metrics.error_count,
@@ -245,12 +270,18 @@ async def _persist_realtime_metrics(metrics: _SessionMetrics, capabilities) -> N
     # Rolled up onto the umbrella session_usage ledger row too, so cost
     # reporting doesn't require joining realtime_session_metrics for the
     # (much more common) case of a session that never reconnected.
-    await increment_session_cost(metrics.session_id, provider=metrics.provider, realtime_cost_usd=cost.realtime_usd)
+    await increment_session_cost(metrics.session_id, provider=metrics.provider, realtime_cost_usd=cost_usd)
 
     await log_ai_usage(
-        "realtime", metrics.provider, cost.realtime_usd,
-        user_id=metrics.user_id, session_id=metrics.session_id, is_estimate=True,
-        detail={"input_seconds": round(input_seconds, 2), "output_seconds": round(output_seconds, 2)},
+        "realtime", metrics.provider, cost_usd,
+        user_id=metrics.user_id, session_id=metrics.session_id,
+        model=metrics.model, is_estimate=is_estimate,
+        detail={
+            "input_seconds": round(input_seconds, 2),
+            "output_seconds": round(output_seconds, 2),
+            "cache_hit_rate": cache_hit_rate(totals),
+            **totals,
+        },
     )
 
 
@@ -337,7 +368,12 @@ async def realtime_stream(websocket: WebSocket):
         await websocket.close()
         return
 
-    api_key, model = _provider_credentials(provider)
+    profile_data = await run_sync(
+        get_supabase().table("user_profiles").select("plan, plan_expires_at").eq("user_id", user.id).execute
+    )
+    plan = get_plan_from_profile(profile_data.data[0] if profile_data.data else {})
+
+    api_key, model = _provider_credentials(provider, plan)
     if not api_key:
         logger.error("[REALTIME_CONFIG_ERROR] API key not configured for provider=%s", provider)
         await _send_json_safe(websocket, {"type": "error", "error": f"{provider} voice provider not configured"})
@@ -391,7 +427,7 @@ async def realtime_stream(websocket: WebSocket):
         return
 
     adapter = adapter_class(system_prompt=system_prompt, voice=voice, api_key=api_key, model=model)
-    metrics = _SessionMetrics(provider=provider, session_id=session_id, user_id=user.id, scenario_id=scenario_id)
+    metrics = _SessionMetrics(provider=provider, model=model, session_id=session_id, user_id=user.id, scenario_id=scenario_id)
 
     try:
         await adapter.connect()
@@ -477,6 +513,8 @@ async def realtime_stream(websocket: WebSocket):
 
                 elif isinstance(item, ResponseDone):
                     metrics.flush_patient_turn()
+                    if item.usage:
+                        accumulate_openai_usage(metrics.usage_totals, item.usage)
                     if not await _send_json_safe(websocket, {"type": "response.done"}):
                         return
 

@@ -64,7 +64,15 @@ class TranscriptFinal:
 
 @dataclass(frozen=True, slots=True)
 class ResponseDone:
-    """The assistant's turn (audio + transcript) has fully finished."""
+    """The assistant's turn (audio + transcript) has fully finished.
+
+    usage is the provider's raw per-response token accounting when it
+    reports one (OpenAI's response.done carries response.usage, including
+    the cached_tokens that make realtime affordable -- see
+    app.services.realtime.pricing). None for providers that don't report
+    it (Gemini today), which is what makes the router fall back to
+    wall-clock cost estimation instead."""
+    usage: dict | None = None
 
 
 @dataclass(frozen=True, slots=True)

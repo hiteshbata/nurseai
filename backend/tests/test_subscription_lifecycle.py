@@ -22,6 +22,7 @@ from app.services.plan_gating import (
     is_subscription_active,
     get_plan_from_profile,
     get_effective_subscription_status,
+    get_realtime_model,
     compute_renewed_expiry,
     parse_timestamp,
 )
@@ -94,6 +95,19 @@ def test_expired_paid_plan_downgrades_to_free():
 
 def test_missing_plan_defaults_to_free():
     assert get_plan_from_profile({}, now=NOW) == "free"
+
+
+# ── get_realtime_model (free/basic -> mini, pro/elite -> flagship) ───
+
+def test_free_plan_gets_mini_realtime_model():
+    from app.core.config import settings
+    assert get_realtime_model("free") == settings.OPENAI_REALTIME_MODEL_MINI
+
+
+def test_paid_plan_gets_flagship_realtime_model():
+    from app.core.config import settings
+    assert get_realtime_model("elite") == settings.OPENAI_REALTIME_MODEL
+    assert get_realtime_model("pro") == settings.OPENAI_REALTIME_MODEL
 
 
 # ── compute_renewed_expiry ────────────────────────────────────────────

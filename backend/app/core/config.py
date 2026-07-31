@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     OPENAI_REALTIME_MODEL: str = "gpt-realtime"
+    # Free-plan tier for the same adapter -- see get_realtime_model() in
+    # app/services/plan_gating.py for which plans get which model.
+    OPENAI_REALTIME_MODEL_MINI: str = "gpt-realtime-mini"
     GEMINI_API_KEY: str = ""
     AI_PROVIDER: str = "gemini"
 
@@ -58,8 +61,16 @@ class Settings(BaseSettings):
     # and the side-by-side provider comparison have *some* number to show;
     # verify against the OpenAI and Gemini billing consoles periodically
     # and override here (or via env) when they drift.
-    OPENAI_REALTIME_USD_PER_MIN_INPUT: float = 0.0024
-    OPENAI_REALTIME_USD_PER_MIN_OUTPUT: float = 0.0192
+    # Audio-token rates for gpt-realtime (flagship), uncached: $32/$64 per 1M
+    # input/output audio tokens x 600/1200 tokens-per-minute (see
+    # app/services/realtime/pricing.py docstring for the token-rate math).
+    # Mini rates are gpt-realtime-mini's $10/$20 per 1M equivalent. Both
+    # verify against https://developers.openai.com/api/docs/pricing --
+    # these numbers move and this constant will go stale.
+    OPENAI_REALTIME_USD_PER_MIN_INPUT: float = 0.0192
+    OPENAI_REALTIME_USD_PER_MIN_OUTPUT: float = 0.0768
+    OPENAI_REALTIME_USD_PER_MIN_INPUT_MINI: float = 0.006
+    OPENAI_REALTIME_USD_PER_MIN_OUTPUT_MINI: float = 0.024
     GEMINI_LIVE_USD_PER_MIN_INPUT: float = 0.015
     GEMINI_LIVE_USD_PER_MIN_OUTPUT: float = 0.022
     RAZORPAY_KEY_ID: str = ""

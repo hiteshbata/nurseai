@@ -14,15 +14,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/referrals", tags=["referrals"])
 
 _CODE_ALPHABET = string.ascii_uppercase + string.digits
-_CODE_LENGTH = 6
 _MAX_CODE_ATTEMPTS = 5
+_RANDOM_CODE_LENGTH = 6
+_NAME_SUFFIX_LENGTH = 2
 
 
-def _generate_code() -> str:
-    return "".join(secrets.choice(_CODE_ALPHABET) for _ in range(_CODE_LENGTH))
+def _generate_code(name: str) -> str:
+    """Name-based code (e.g. "HITESH42") when we have a usable name, so
+    students can read a friend's code aloud instead of copy-pasting only --
+    falls back to a fully random code for names with no ASCII letters
+    (non-Latin scripts, blank name) rather than emitting an empty base."""
+    first_word = name.split()[0] if name.split() else ""
+    base = "".join(ch for ch in first_word if ch.isalnum() and ch.isascii()).upper()[:8]
+    if not base:
+        return "".join(secrets.choice(_CODE_ALPHABET) for _ in range(_RANDOM_CODE_LENGTH))
+    suffix = "".join(secrets.choice(string.digits) for _ in range(_NAME_SUFFIX_LENGTH))
+    return f"{base}{suffix}"
 
 
-def _get_or_create_referral_code(supabase, user_id: str) -> str:
+def _get_or_create_referral_code(supabase, user_id: str, name: str) -> str:
     supabase.table("user_profiles").upsert(
         {"user_id": user_id}, on_conflict="user_id", ignore_duplicates=True
     ).execute()
@@ -33,7 +43,7 @@ def _get_or_create_referral_code(supabase, user_id: str) -> str:
         return existing
 
     for _ in range(_MAX_CODE_ATTEMPTS):
-        code = _generate_code()
+        code = _generate_code(name)
         try:
             supabase.table("user_profiles").update({"referral_code": code}).eq("user_id", user_id).execute()
             return code
@@ -45,7 +55,7 @@ def _get_or_create_referral_code(supabase, user_id: str) -> str:
 @router.get("/me")
 def get_my_referrals(current_user: UserInfo = Depends(get_current_user)):
     supabase = get_supabase()
-    code = _get_or_create_referral_code(supabase, current_user.id)
+    code = _get_or_create_referral_code(supabase, current_user.id, current_user.name or "")
 
     profile = supabase.table("user_profiles").select("bonus_sessions").eq("user_id", current_user.id).execute()
     bonus_sessions = profile.data[0].get("bonus_sessions", 0) if profile.data else 0

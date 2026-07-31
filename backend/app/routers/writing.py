@@ -31,7 +31,7 @@ SUBMIT_IMAGE_RATE_LIMIT_MAX_CALLS = 10
 SUBMIT_IMAGE_RATE_LIMIT_WINDOW_SECONDS = 600
 _submit_image_rate_limiter = SlidingWindowRateLimiter(SUBMIT_IMAGE_RATE_LIMIT_MAX_CALLS, SUBMIT_IMAGE_RATE_LIMIT_WINDOW_SECONDS, name="writing:submit_image")
 
-_extract_rate_limiter = SlidingWindowRateLimiter(10, 600, name="writing:extract")
+_extract_rate_limiter = SlidingWindowRateLimiter(30, 600, name="writing:extract")
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 # base64 inflates size ~4/3; reject oversized payloads before spending CPU on decode.

@@ -60,6 +60,7 @@ class UserInfo(BaseModel):
     id: str
     email: Optional[str] = None
     name: Optional[str] = None
+    is_anonymous: bool = False
 
 _user_role_cache: dict[str, float] = {}  # local fallback only; used when REDIS_URL is unset
 USER_ROLE_CACHE_TTL = 900  # 15 minutes
@@ -146,6 +147,7 @@ def get_current_user(
             id=user_id,
             email=email,
             name=name,
+            is_anonymous=bool(payload.get("is_anonymous", False)),
         )
     except HTTPException:
         raise

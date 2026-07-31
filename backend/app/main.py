@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.supabase import get_supabase
-from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads, reading, listening, hub, vocab, mock, referrals
+from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads, reading, listening, hub, vocab, mock, referrals, tools
 from app.services.oet_questions import oet_service
 from app.services.seed_scenarios import seed_scenarios
 
@@ -66,14 +66,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.middleware("http")
-async def security_headers(request, call_next):
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
-    return response
+_SECURITY_HEADERS = [
+    (b"x-content-type-options", b"nosniff"),
+    (b"x-frame-options", b"DENY"),
+    (b"referrer-policy", b"strict-origin-when-cross-origin"),
+    (b"strict-transport-security", b"max-age=63072000; includeSubDomains; preload"),
+]
+
+
+class SecurityHeadersMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = list(message.get("headers", [])) + _SECURITY_HEADERS
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(auth.router)
 app.include_router(questions.router)
@@ -99,6 +116,7 @@ app.include_router(hub.router)
 app.include_router(vocab.router)
 app.include_router(mock.router)
 app.include_router(referrals.router)
+app.include_router(tools.router)
 
 @app.get("/")
 def read_root():

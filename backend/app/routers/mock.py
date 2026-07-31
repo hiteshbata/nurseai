@@ -17,14 +17,24 @@ import random
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
-from app.routers.auth import get_current_user, UserInfo
+from app.core.rate_limit import SlidingWindowRateLimiter
+from app.routers.auth import get_current_user, UserInfo, _client_ip
+from app.routers.admin import require_admin
+from app.services.plan_gating import has_mock_test_access, get_plan_from_profile
 
 router = APIRouter(prefix="/mock", tags=["mock"])
+
+# Anonymous free-trial mock starts (see /tools/oet-mock-test-free) -- caps how
+# many distinct anonymous accounts one IP can spin up fresh mocks for per day.
+# The real cap is one lifetime attempt per anonymous user_id (checked in
+# start_mock itself); this is defense-in-depth against a script farming many
+# anonymous accounts from one machine.
+_free_mock_start_limiter = SlidingWindowRateLimiter(3, 86400, name="mock:free_start")
 
 # Fixed sitting order for phase 1. Speaking is appended in phase 2.
 SECTION_ORDER: List[str] = ["listening", "reading", "writing"]
@@ -86,6 +96,42 @@ def _active_speaking_scenario_ids(supabase) -> List[int]:
     return [r["id"] for r in rows]
 
 
+# ── mock test packs (admin-curated, numbered "Mock Test 1/2/3...") ─────
+# Phase 1/2 assembled content randomly per attempt (see git history). That
+# meant slow "assembling your paper..." start-up and no way to guarantee two
+# attempts never draw the same content. Packs are pre-built instead: an admin
+# clicks Generate, content is picked once and frozen into a `mock_tests` row,
+# and a student's /mock/start just points at one (see start_mock below).
+
+def _pick_unused(pool: List[int], used: set, count: int) -> Optional[List[int]]:
+    """Sample `count` ids from `pool` that aren't already in `used`. None if
+    fewer than `count` fresh ones remain -- the caller turns that into a
+    'need more X content' error rather than silently repeating a pack."""
+    fresh = [i for i in pool if i not in used]
+    if len(fresh) < count:
+        return None
+    return random.sample(fresh, count)
+
+
+def _used_pack_content_ids(supabase) -> Dict[str, set]:
+    """Every content id already claimed by an existing pack (active or not --
+    once a pack has shipped, its content stays 'spent' so a later pack can't
+    duplicate it), grouped by pool so generation can subtract them out."""
+    rows = supabase.table("mock_tests").select(
+        "listening_test_id, reading_test_id, writing_scenario_id, "
+        "speaking_scenario_id_1, speaking_scenario_id_2"
+    ).execute().data
+    return {
+        "listening": {r["listening_test_id"] for r in rows if r.get("listening_test_id")},
+        "reading": {r["reading_test_id"] for r in rows if r.get("reading_test_id")},
+        "writing": {r["writing_scenario_id"] for r in rows if r.get("writing_scenario_id")},
+        "speaking": (
+            {r["speaking_scenario_id_1"] for r in rows if r.get("speaking_scenario_id_1")}
+            | {r["speaking_scenario_id_2"] for r in rows if r.get("speaking_scenario_id_2")}
+        ),
+    }
+
+
 # ── session shaping ───────────────────────────────────────────────────
 
 def _client_payload(session: Dict[str, Any]) -> Dict[str, Any]:
@@ -138,6 +184,28 @@ async def _load_owned(supabase, mock_id: str, user_id: str) -> Dict[str, Any]:
     return res.data[0]
 
 
+def has_mock_section_access(supabase, user_id: str, module: str, content_id: int) -> bool:
+    """True if `user_id` has a live mock (the free-trial anonymous flow's one
+    lifetime attempt, or any paid attempt) whose current section/module is
+    `module` and whose frozen content id matches `content_id`. Lets an
+    anonymous free-trial user submit exactly their own mock's section without
+    opening reading/listening's plan-gated endpoints generally -- see
+    reading.py's _require_reading_plan / listening.py's _require_listening_plan."""
+    res = (
+        supabase.table("mock_test_sessions").select("*")
+        .eq("user_id", user_id).in_("status", OPEN_STATUSES)
+        .order("created_at", desc=True).limit(1).execute()
+    )
+    if not res.data:
+        return False
+    session = res.data[0]
+    if module == "speaking":
+        return session["status"] == "awaiting_speaking" and content_id in (
+            session.get("speaking_scenario_id_1"), session.get("speaking_scenario_id_2")
+        )
+    return session["status"] == "in_progress" and session.get("current_section") == module and session.get(CONTENT_KEY.get(module)) == content_id
+
+
 # ── endpoints ─────────────────────────────────────────────────────────
 
 @router.get("/current")
@@ -158,11 +226,52 @@ async def current_mock(current_user: UserInfo = Depends(get_current_user)):
     return {"active": True, **_client_payload(session)}
 
 
-@router.post("/start")
-async def start_mock(current_user: UserInfo = Depends(get_current_user)):
-    """Resume an open mock, or auto-assemble a fresh one: one random active
-    Listening test + Reading test + Writing scenario, frozen for this attempt."""
+@router.get("/tests")
+async def list_mock_tests(current_user: UserInfo = Depends(get_current_user)):
+    """Active Mock Test packs to choose from, flagged with whether this
+    student has already completed each one (picker offers Retake vs Start)."""
     supabase = get_supabase()
+    packs = (await run_sync(
+        supabase.table("mock_tests").select("id, label").eq("is_active", True).order("id").execute
+    )).data
+    if not packs:
+        return []
+    completed_rows = (await run_sync(
+        supabase.table("mock_test_sessions").select("mock_test_id")
+        .eq("user_id", current_user.id).eq("status", "complete")
+        .not_.is_("mock_test_id", "null").execute
+    )).data
+    completed_ids = {r["mock_test_id"] for r in completed_rows}
+    return [{"id": p["id"], "label": p["label"], "completed": p["id"] in completed_ids} for p in packs]
+
+
+class StartMockRequest(BaseModel):
+    mock_test_id: int
+
+
+@router.post("/start")
+async def start_mock(req: StartMockRequest, request: Request, current_user: UserInfo = Depends(get_current_user)):
+    """Resume an open mock, or start a fresh attempt on the given pre-built
+    Mock Test pack -- content was frozen once at generation time (see
+    POST /mock/admin/generate), not re-randomized per attempt."""
+    supabase = get_supabase()
+
+    profile = await run_sync(
+        supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute
+    )
+    plan = get_plan_from_profile(profile.data[0] if profile.data else {})
+    # Anonymous (see /tools/oet-mock-test-free) skips the Elite-only gate here --
+    # eligibility for a free trial is enforced below instead (one lifetime
+    # attempt + an IP rate limit), not by plan.
+    if not has_mock_test_access(plan) and not current_user.is_anonymous:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "Mock Test requires the Elite plan",
+                "upgrade_required": True,
+                "current_plan": plan,
+            },
+        )
 
     # Resume only a written test that's still in progress. A mock parked at
     # awaiting_speaking (LRW done, Speaking pending) must NOT block starting a new
@@ -176,40 +285,144 @@ async def start_mock(current_user: UserInfo = Depends(get_current_user)):
         session = await _ensure_section_started(supabase, existing.data[0])
         return _client_payload(session)
 
-    listening_ids = _active_listening_test_ids(supabase)
-    reading_ids = _active_reading_test_ids(supabase)
-    writing_ids = _active_writing_scenario_ids(supabase)
-    speaking_ids = _active_speaking_scenario_ids(supabase)
-    missing = [
-        name for name, ids, need in
-        [("Listening", listening_ids, 1), ("Reading", reading_ids, 1),
-         ("Writing", writing_ids, 1), ("Speaking", speaking_ids, 2)]
-        if len(ids) < need
-    ]
-    if missing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Not enough content to build a full mock yet (missing: {', '.join(missing)}).",
+    if current_user.is_anonymous:
+        # One lifetime free attempt per anonymous account, regardless of its
+        # status -- a completed or awaiting-speaking mock still counts as used.
+        prior = await run_sync(
+            supabase.table("mock_test_sessions").select("id").eq("user_id", current_user.id).limit(1).execute
         )
+        if prior.data:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "You've already used your free mock test. Create a free account for unlimited mock tests.",
+                    "upgrade_required": True,
+                    "current_plan": plan,
+                },
+            )
+        if _free_mock_start_limiter.is_rate_limited(_client_ip(request)):
+            raise HTTPException(status_code=429, detail="Too many free mock test attempts from this network — please try again later.")
 
-    # Two DISTINCT speaking scenarios -- real OET gives two different role-play
-    # cards, frozen up front like the other picks (scores stay hidden regardless
-    # of when content is chosen).
-    speaking_1, speaking_2 = random.sample(speaking_ids, 2)
+    pack = await run_sync(
+        supabase.table("mock_tests").select("*").eq("id", req.mock_test_id).eq("is_active", True).execute
+    )
+    if not pack.data:
+        raise HTTPException(status_code=404, detail="This mock test pack isn't available.")
+    p = pack.data[0]
+
     row = await run_sync(
         supabase.table("mock_test_sessions").insert({
             "user_id": current_user.id,
-            "listening_test_id": random.choice(listening_ids),
-            "reading_test_id": random.choice(reading_ids),
-            "writing_scenario_id": random.choice(writing_ids),
-            "speaking_scenario_id_1": speaking_1,
-            "speaking_scenario_id_2": speaking_2,
+            "mock_test_id": p["id"],
+            "listening_test_id": p["listening_test_id"],
+            "reading_test_id": p["reading_test_id"],
+            "writing_scenario_id": p["writing_scenario_id"],
+            "speaking_scenario_id_1": p["speaking_scenario_id_1"],
+            "speaking_scenario_id_2": p["speaking_scenario_id_2"],
             "current_section": SECTION_ORDER[0],
             "status": "in_progress",
         }).execute
     )
     session = await _ensure_section_started(supabase, row.data[0])
     return _client_payload(session)
+
+
+# ── ADMIN: build + manage packs ─────────────────────────────────────────
+
+@router.post("/admin/generate")
+async def admin_generate_mock_test(current_user: UserInfo = Depends(require_admin)):
+    """Build the next numbered pack from active content not already claimed
+    by an earlier pack. 409 (naming which pool ran dry) instead of silently
+    repeating content -- add more of that content type and generate again."""
+    supabase = get_supabase()
+    used = _used_pack_content_ids(supabase)
+
+    picks: Dict[str, List[int]] = {}
+    missing: List[str] = []
+    for name, pool, key, need in [
+        ("Listening", _active_listening_test_ids(supabase), "listening", 1),
+        ("Reading", _active_reading_test_ids(supabase), "reading", 1),
+        ("Writing", _active_writing_scenario_ids(supabase), "writing", 1),
+        ("Speaking", _active_speaking_scenario_ids(supabase), "speaking", 2),
+    ]:
+        picked = _pick_unused(pool, used[key], need)
+        if picked is None:
+            missing.append(name)
+        else:
+            picks[key] = picked
+    if missing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Not enough unused content left to build a new pack (need more: {', '.join(missing)}).",
+        )
+
+    count = (await run_sync(supabase.table("mock_tests").select("id", count="exact").execute)).count or 0
+    row = await run_sync(
+        supabase.table("mock_tests").insert({
+            "label": f"Mock Test {count + 1}",
+            "listening_test_id": picks["listening"][0],
+            "reading_test_id": picks["reading"][0],
+            "writing_scenario_id": picks["writing"][0],
+            "speaking_scenario_id_1": picks["speaking"][0],
+            "speaking_scenario_id_2": picks["speaking"][1],
+        }).execute
+    )
+    return row.data[0]
+
+
+@router.get("/admin/tests")
+async def admin_list_mock_tests(current_user: UserInfo = Depends(require_admin)):
+    """Every pack with resolved content titles, for the admin management page."""
+    supabase = get_supabase()
+    packs = (await run_sync(supabase.table("mock_tests").select("*").order("id").execute)).data
+    if not packs:
+        return []
+
+    listening_ids = {p["listening_test_id"] for p in packs if p.get("listening_test_id")}
+    reading_ids = {p["reading_test_id"] for p in packs if p.get("reading_test_id")}
+    scenario_ids = {
+        p[k] for p in packs for k in ("writing_scenario_id", "speaking_scenario_id_1", "speaking_scenario_id_2")
+        if p.get(k)
+    }
+
+    async def _titles(table: str, ids: set) -> Dict[int, str]:
+        if not ids:
+            return {}
+        rows = (await run_sync(supabase.table(table).select("id, title").in_("id", list(ids)).execute)).data
+        return {r["id"]: r["title"] for r in rows}
+
+    listening_titles = await _titles("listening_tests", listening_ids)
+    reading_titles = await _titles("reading_tests", reading_ids)
+    scenario_titles = await _titles("scenarios", scenario_ids)
+
+    return [{
+        **p,
+        "listening_title": listening_titles.get(p.get("listening_test_id")),
+        "reading_title": reading_titles.get(p.get("reading_test_id")),
+        "writing_title": scenario_titles.get(p.get("writing_scenario_id")),
+        "speaking_title_1": scenario_titles.get(p.get("speaking_scenario_id_1")),
+        "speaking_title_2": scenario_titles.get(p.get("speaking_scenario_id_2")),
+    } for p in packs]
+
+
+class MockTestActiveRequest(BaseModel):
+    is_active: bool
+
+
+@router.post("/admin/tests/{mock_test_id}/active")
+async def admin_set_mock_test_active(
+    mock_test_id: int,
+    req: MockTestActiveRequest,
+    current_user: UserInfo = Depends(require_admin),
+):
+    """Show/hide a pack from the student picker. Its content stays counted as
+    'used' either way -- see _used_pack_content_ids -- so re-activating can't
+    reintroduce a pack that shares content with a newer one."""
+    supabase = get_supabase()
+    await run_sync(
+        supabase.table("mock_tests").update({"is_active": req.is_active}).eq("id", mock_test_id).execute
+    )
+    return {"success": True}
 
 
 class SectionDoneRequest(BaseModel):

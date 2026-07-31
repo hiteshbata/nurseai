@@ -5,7 +5,9 @@ from typing import Dict, Any, List, Optional
 from app.core.supabase import get_supabase
 from app.core.config import settings
 from app.core.error_utils import redact_api_keys
+from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.admin import require_admin
+from app.services.ai_scoring import _try_parse_json
 import httpx
 import base64
 import json
@@ -15,6 +17,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/scenario", tags=["admin"])
 
 VISION_MODEL = "google/gemini-2.5-flash"
+MAX_PDF_BYTES = 10 * 1024 * 1024
+_extract_rate_limiter = SlidingWindowRateLimiter(30, 600, name="scenario:extract")
 
 
 async def _call_vision_api(image_base64: str, prompt: str, json_mode: bool = True) -> Dict[str, Any]:
@@ -132,6 +136,114 @@ async def extract_from_image(
         return {
             "error": "Could not extract scenario from image. Please ensure the image is a clear OET roleplay card."
         }
+
+
+PDF_EXTRACT_PROMPT = """You are an OET exam content specialist. The attached PDF contains one or more OET Speaking roleplay cards (each card is a candidate/interlocutor pair for one role-play). Extract EVERY roleplay card you find into a JSON array — one object per card, in the exact structure below. Extract exactly what is written, do not invent or add content that is not visible in the PDF.
+
+Return ONLY this JSON:
+{
+  "scenarios": [
+    {
+      "title": "short descriptive title for this scenario",
+      "setting": "the ward/clinic/location and context paragraph",
+      "difficulty": "beginner|intermediate|advanced",
+      "specialty": "general|surgical|paediatric|aged_care|mental_health|ICU|emergency|community",
+      "patient_details": {
+        "name": "",
+        "age": 0,
+        "occupation": "",
+        "reason_for_admission": "",
+        "emotional_state": "",
+        "background": ""
+      },
+      "nurse_card": {
+        "role": "You are the nurse in charge of this patient",
+        "tasks": ["Task 1 description", "Task 2 description"]
+      },
+      "interlocutor_card": {
+        "persona": "how the patient should behave",
+        "emotional_triggers": ["trigger 1"],
+        "questions_to_ask": ["question 1"],
+        "information_to_withhold": ["info 1"]
+      },
+      "tags": ["tag1"],
+      "is_original": false
+    }
+  ]
+}
+
+If the PDF contains no OET roleplay cards, return {"scenarios": [], "error": "No OET roleplay cards found in this PDF"}."""
+
+
+async def _extract_scenarios_from_pdf(pdf_base64: str) -> List[Dict[str, Any]]:
+    """Send the PDF to OpenRouter (mistral-ocr file-parser reads it as rendered
+    pages, same as the reading/writing admin extractors) and get back one draft
+    scenario per roleplay card found."""
+    key = settings.OPENROUTER_API_KEY
+    if not key:
+        raise HTTPException(status_code=502, detail="AI provider not configured")
+
+    payload = {
+        "model": VISION_MODEL,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": PDF_EXTRACT_PROMPT},
+            {"type": "file", "file": {
+                "filename": "scenarios.pdf",
+                "file_data": f"data:application/pdf;base64,{pdf_base64}",
+            }},
+        ]}],
+        "plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}],
+        "temperature": 0.2,
+        "max_tokens": 8000,
+        "response_format": {"type": "json_object"},
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+    except httpx.TimeoutException:
+        logger.error("[scenario pdf extract] OpenRouter request timed out")
+        raise HTTPException(status_code=504, detail="Extraction took too long. Try again.")
+    if resp.status_code != 200:
+        logger.error(
+            "[scenario pdf extract] OpenRouter HTTP %s: %s",
+            resp.status_code, redact_api_keys(resp.text[:300]),
+        )
+        raise HTTPException(status_code=502, detail="AI extraction failed. Try again.")
+
+    content = resp.json()["choices"][0]["message"]["content"]
+    parsed = _try_parse_json("scenario-pdf-extract", content)
+    if parsed is None:
+        logger.warning("[scenario pdf extract] JSON parse failed, raw head=%s", content[:1000])
+        raise HTTPException(status_code=502, detail="Could not read that PDF. Try a clearer scan or a different file.")
+    if parsed.get("error") and not parsed.get("scenarios"):
+        raise HTTPException(status_code=422, detail=parsed["error"])
+    return parsed.get("scenarios", [])
+
+
+@router.post("/extract-from-pdf")
+async def extract_from_pdf(file: UploadFile = File(...), _admin=Depends(require_admin)):
+    """Upload a PDF containing one or more OET roleplay cards; returns a draft
+    scenario per card, same shape as /extract-from-image, for the admin to
+    review and save one at a time."""
+    if _extract_rate_limiter.is_rate_limited("admin"):
+        raise HTTPException(status_code=429, detail="Too many extractions — please slow down.")
+    if file.content_type not in ("application/pdf", "application/x-pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    contents = await file.read()
+    if len(contents) > MAX_PDF_BYTES:
+        raise HTTPException(status_code=400, detail="PDF must be under 10MB")
+
+    pdf_base64 = base64.b64encode(contents).decode("utf-8")
+    scenarios = await _extract_scenarios_from_pdf(pdf_base64)
+    if not scenarios:
+        return {"scenarios": [], "error": "No OET roleplay cards found in this PDF"}
+    return {"scenarios": scenarios}
 
 
 GENERATE_PROMPT_TEMPLATE = """You are an OET content creator. Based on the structure and format of this OET roleplay card, create a completely ORIGINAL scenario inspired by the same nursing specialty and difficulty level.

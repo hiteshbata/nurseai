@@ -26,19 +26,21 @@ from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo
 from app.routers.admin import require_admin
+from app.routers.mock import has_mock_section_access
 from app.services.ai_scoring import _try_parse_json, _call_ai, GEMINI_SCORING_FREE_MODEL
 from app.services.mcq_grading import grade_exact_match, combine_graded_results, resolve_latest_wrong_answers
 from app.services.open_ended_grading import grade_open_ended_answers
 from app.services.explanations import generate_reading_explanation_with_evidence
 from app.services.skill_graph import record_skill_observations
 from app.services.reading_skills import classify_reading_skill, SKILL_LABELS
+from app.services.plan_gating import has_reading_access, get_plan_from_profile
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/reading", tags=["reading"])
 
 _submit_rate_limiter = SlidingWindowRateLimiter(30, 600, name="reading:submit")
-_extract_rate_limiter = SlidingWindowRateLimiter(10, 600, name="reading:extract")
+_extract_rate_limiter = SlidingWindowRateLimiter(30, 600, name="reading:extract")
 _explanation_rate_limiter = SlidingWindowRateLimiter(30, 600, name="reading:explanation")
 _dictionary_rate_limiter = SlidingWindowRateLimiter(60, 600, name="reading:dictionary")
 _regenerate_rate_limiter = SlidingWindowRateLimiter(15, 600, name="reading:regenerate-text")
@@ -88,6 +90,32 @@ async def _grade_short_answers(items: List[dict], user_id: str = "") -> Optional
 
 # ── STUDENT ──────────────────────────────────────────────────────────
 
+def _require_reading_plan(supabase, current_user: UserInfo, test_id: Optional[int] = None) -> str:
+    """Plan-gate reading access (Basic/Pro/Elite) -- shared by passage/test
+    view and both submit endpoints. List endpoints (titles only, no content)
+    stay open as a teaser.
+
+    An anonymous free-trial user (see /tools/oet-mock-test-free) has no plan
+    but is let through when `test_id` is the exact Reading test their own
+    active mock is currently on -- see has_mock_section_access in mock.py.
+    Callers that don't pass test_id (the passage-level endpoints) never
+    grant this bypass."""
+    profile = supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute()
+    plan = get_plan_from_profile(profile.data[0] if profile.data else {})
+    if has_reading_access(plan):
+        return plan
+    if current_user.is_anonymous and test_id is not None and has_mock_section_access(supabase, current_user.id, "reading", test_id):
+        return plan
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": "Reading practice requires a paid plan",
+            "upgrade_required": True,
+            "current_plan": plan,
+        },
+    )
+
+
 @router.get("/passages")
 def list_passages(current_user: UserInfo = Depends(get_current_user)):
     """List active reading passages (no body/questions — kept light for the grid)."""
@@ -103,6 +131,7 @@ def get_passage(passage_id: int, current_user: UserInfo = Depends(get_current_us
     """Passage body + its MCQs. correct_answer is deliberately NOT selected so the
     answers can't be read before submitting."""
     supabase = get_supabase()
+    _require_reading_plan(supabase, current_user)
     p = supabase.table("reading_passages").select(
         "id, title, part, difficulty, body"
     ).eq("id", passage_id).eq("is_active", True).execute()
@@ -211,6 +240,7 @@ async def submit_reading(
         raise HTTPException(status_code=429, detail="Too many submissions — please slow down.")
 
     supabase = get_supabase()
+    _require_reading_plan(supabase, current_user)
     qids = [a.questionId for a in request.answers]
     qdata = await run_sync(
         supabase.table("questions").select("id, content, correct_answer, type").in_("id", qids).execute
@@ -363,6 +393,7 @@ def list_reading_tests(current_user: UserInfo = Depends(get_current_user)):
 def get_reading_test(test_id: int, current_user: UserInfo = Depends(get_current_user)):
     """Full test for the session player. correct_answer is NOT sent (can't be read
     before submitting). Only active tests/passages are visible to students."""
+    _require_reading_plan(get_supabase(), current_user, test_id)
     return _load_test_payload(test_id, include_inactive=False)
 
 
@@ -383,6 +414,7 @@ async def submit_reading_test(
         raise HTTPException(status_code=429, detail="Too many submissions — please slow down.")
 
     supabase = get_supabase()
+    _require_reading_plan(supabase, current_user, test_id)
     t = await run_sync(
         supabase.table("reading_tests").select("id").eq("id", test_id).eq("is_active", True).execute
     )
@@ -796,17 +828,18 @@ def _salvage_passages(content: str) -> Optional[Dict[str, Any]]:
     return {"passages": passages} if passages else None
 
 
-async def _extract_reading_from_pdf(pdf_base64: str, answer_key_base64: Optional[str] = None) -> Dict[str, Any]:
-    """Send the PDF (and, if provided, a separate answer-key PDF) to OpenRouter
-    (Gemini reads PDFs natively via the file-parser plugin) and get back structured
-    passage + questions JSON. A clean, separate answer key is more reliable than one
-    the model has to locate and cross-reference inside a single messy exam paper."""
+async def _call_reading_extract(
+    pdf_base64: str, answer_key_base64: Optional[str], prompt: str,
+) -> tuple[str, Optional[str]]:
+    """One OpenRouter call for reading extraction with the given prompt. Returns
+    (content, finish_reason). Factored out of _extract_reading_from_pdf so the
+    part-by-part retry fallback can reuse it with a smaller-scope prompt."""
     key = settings.OPENROUTER_API_KEY
     if not key:
         raise HTTPException(status_code=502, detail="AI provider not configured")
 
     message_content: List[Dict[str, Any]] = [
-        {"type": "text", "text": READING_EXTRACT_PROMPT},
+        {"type": "text", "text": prompt},
         {"type": "file", "file": {
             "filename": "reading.pdf",
             "file_data": f"data:application/pdf;base64,{pdf_base64}",
@@ -859,23 +892,85 @@ async def _extract_reading_from_pdf(pdf_base64: str, answer_key_base64: Optional
         raise HTTPException(status_code=502, detail="AI extraction failed. Try again.")
 
     choice = resp.json()["choices"][0]
-    content = choice["message"]["content"]
-    if choice.get("finish_reason") == "length":
-        # The model hit the output cap and the JSON is cut mid-object. Salvage below
-        # can still recover the passages that completed; log it so it's diagnosable.
+    return choice["message"]["content"], choice.get("finish_reason")
+
+
+def _merge_passages(*groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Combine passage lists from the full-paper pass and the per-part retry,
+    dropping duplicates by (part, title) so a part recovered in both isn't doubled."""
+    seen = set()
+    merged: List[Dict[str, Any]] = []
+    for group in groups:
+        for p in group:
+            key = (p.get("part"), (p.get("title") or "").strip().lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(p)
+    return merged
+
+
+async def _extract_reading_by_parts(pdf_base64: str, answer_key_base64: Optional[str]) -> List[Dict[str, Any]]:
+    """Fallback when the full-paper pass truncates or fails to parse: ask for one
+    part at a time so each response is a fraction of the size and comfortably
+    fits under the token ceiling. Costs up to 3x the OCR/API spend of a single
+    pass -- only used as a retry, on this low-volume admin-only path."""
+    passages: List[Dict[str, Any]] = []
+    for part in ("A", "B", "C"):
+        prompt = (
+            READING_EXTRACT_PROMPT
+            + f'\n\nFor this pass, extract ONLY Part {part}. Do not include any other '
+            f'part in the "passages" array.'
+        )
+        try:
+            content, finish_reason = await _call_reading_extract(pdf_base64, answer_key_base64, prompt)
+        except HTTPException:
+            logger.warning("[reading extract] per-part retry request failed for Part %s", part)
+            continue
+        if finish_reason == "length":
+            logger.warning("[reading extract] per-part retry for Part %s still truncated", part)
+        parsed = _try_parse_json(f"reading-extract-part-{part}", content) or _salvage_passages(content)
+        if parsed and parsed.get("passages"):
+            passages.extend(parsed["passages"])
+        elif not (parsed and parsed.get("error")):
+            logger.warning("[reading extract] per-part retry for Part %s: unparseable response", part)
+    return passages
+
+
+async def _extract_reading_from_pdf(pdf_base64: str, answer_key_base64: Optional[str] = None) -> Dict[str, Any]:
+    """Send the PDF (and, if provided, a separate answer-key PDF) to OpenRouter
+    (Gemini reads PDFs natively via the file-parser plugin) and get back structured
+    passage + questions JSON. A clean, separate answer key is more reliable than one
+    the model has to locate and cross-reference inside a single messy exam paper."""
+    content, finish_reason = await _call_reading_extract(pdf_base64, answer_key_base64, READING_EXTRACT_PROMPT)
+    if finish_reason == "length":
+        # The model hit the output cap and the JSON is cut mid-object. Salvage/retry
+        # below can still recover it; log it so it's diagnosable.
         logger.warning("[reading extract] response truncated (finish_reason=length) at max_tokens")
 
     parsed = _try_parse_json("reading-extract", content)
-    if parsed is None:
-        # Most parse failures here are truncation (JSON cut mid-object). Try to recover
-        # every fully-closed passage object rather than losing the whole extraction.
-        salvaged = _salvage_passages(content)
-        if salvaged and salvaged["passages"]:
-            logger.warning(
-                "[reading extract] full JSON parse failed; salvaged %d complete passage(s) from a truncated response",
-                len(salvaged["passages"]),
-            )
-            return salvaged
+    if parsed is not None and finish_reason != "length":
+        if parsed.get("error"):
+            # Model saw the document but decided nothing matched -- log what it actually
+            # received so a repeat failure is diagnosable without re-asking the admin.
+            logger.warning("[reading extract] model returned no passages, raw content head=%s", content[:500])
+        return parsed
+
+    # Full-paper pass either failed to parse or got cut off mid-object. Recover
+    # whatever complete passages salvage can find, then retry part-by-part for the
+    # rest -- a smaller per-call output is far less likely to hit the same ceiling.
+    salvaged = _salvage_passages(content)
+    recovered = salvaged["passages"] if salvaged else []
+    if recovered:
+        logger.warning(
+            "[reading extract] full JSON parse failed; salvaged %d complete passage(s) from a truncated response",
+            len(recovered),
+        )
+    logger.warning("[reading extract] retrying part-by-part (A, B, C)")
+    by_part = await _extract_reading_by_parts(pdf_base64, answer_key_base64)
+    passages = _merge_passages(recovered, by_part)
+
+    if not passages:
         # _try_parse_json's own raw-content log is DEBUG level, and this app never
         # calls logging.basicConfig() -- the root logger defaults to WARNING, so
         # that line is silently dropped in production. Log it again here at WARNING
@@ -883,13 +978,9 @@ async def _extract_reading_from_pdf(pdf_base64: str, answer_key_base64: Optional
         logger.warning("[reading extract] JSON parse failed, raw content head=%s", content[:1000])
         raise HTTPException(
             status_code=502,
-            detail="The paper was too large to extract in one pass. Try uploading one part (A, B or C) at a time.",
+            detail="The paper was too large to extract, even after retrying part by part. Try uploading one part (A, B or C) at a time.",
         )
-    if parsed.get("error"):
-        # Model saw the document but decided nothing matched -- log what it actually
-        # received so a repeat failure is diagnosable without re-asking the admin.
-        logger.warning("[reading extract] model returned no passages, raw content head=%s", content[:500])
-    return parsed
+    return {"passages": passages}
 
 
 @router.post("/admin/extract")

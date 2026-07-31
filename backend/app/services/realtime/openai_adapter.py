@@ -144,7 +144,7 @@ class OpenAIRealtimeAdapter(RealtimeProviderAdapter):
 
                 elif event_type == "response.done":
                     self._response_in_progress = False
-                    yield ResponseDone()
+                    yield ResponseDone(usage=event.get("response", {}).get("usage"))
 
                 elif event_type == "input_audio_buffer.speech_started":
                     yield Interrupted()

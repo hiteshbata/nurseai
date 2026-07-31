@@ -10,6 +10,8 @@ WRITING_PLANS = ["pro", "elite"]
 PRONUNCIATION_PLANS = ["elite"]
 MOCK_TEST_PLANS = ["elite"]
 STUDY_PLAN_PLANS = ["elite"]
+READING_PLANS = ["basic", "pro", "elite"]
+LISTENING_PLANS = ["basic", "pro", "elite"]
 
 
 def parse_timestamp(value) -> Optional[datetime]:
@@ -69,6 +71,16 @@ def get_scoring_model(plan: str) -> str:
     return "google/gemini-2.5-flash"
 
 
+def get_realtime_model(plan: str) -> str:
+    """OpenAI realtime (STS) model tier -- free/basic get the cheaper mini
+    model, Pro/Elite get flagship gpt-realtime. Only applies when
+    VOICE_PROVIDER=openai; Gemini has no mini tier wired up yet."""
+    from app.core.config import settings
+    if plan in PREMIUM_PLANS:
+        return settings.OPENAI_REALTIME_MODEL
+    return settings.OPENAI_REALTIME_MODEL_MINI
+
+
 def get_tts_voice(plan: str, gender: Optional[str] = None) -> str:
     if plan in PREMIUM_PLANS:
         return "en-GB-Chirp3-HD-Charon" if gender == "male" else "en-GB-Chirp3-HD-Aoede"
@@ -83,6 +95,14 @@ def is_premium_voice(voice_name: str) -> bool:
 
 def has_writing_access(plan: str) -> bool:
     return plan in WRITING_PLANS
+
+
+def has_reading_access(plan: str) -> bool:
+    return plan in READING_PLANS
+
+
+def has_listening_access(plan: str) -> bool:
+    return plan in LISTENING_PLANS
 
 
 def has_pronunciation_access(plan: str) -> bool:

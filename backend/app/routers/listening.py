@@ -35,6 +35,7 @@ from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo
 from app.routers.admin import require_admin
+from app.routers.mock import has_mock_section_access
 from app.services.mcq_grading import grade_exact_match, combine_graded_results, resolve_latest_wrong_answers
 from app.services.open_ended_grading import grade_open_ended_answers
 from app.services.explanations import generate_mcq_explanation
@@ -44,6 +45,7 @@ from app.services.listening_audio import (
     TtsError, DEFAULT_TTS_MODEL, OPENAI_VOICES,
 )
 from app.services.ai_scoring import _try_parse_json, _call_ai, GEMINI_SCORING_FREE_MODEL
+from app.services.plan_gating import has_listening_access, get_plan_from_profile
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ router = APIRouter(prefix="/listening", tags=["listening"])
 _submit_rate_limiter = SlidingWindowRateLimiter(30, 600, name="listening:submit")
 _upload_rate_limiter = SlidingWindowRateLimiter(20, 600, name="listening:upload")
 _tts_rate_limiter = SlidingWindowRateLimiter(10, 600, name="listening:tts")
-_extract_rate_limiter = SlidingWindowRateLimiter(10, 600, name="listening:extract")
+_extract_rate_limiter = SlidingWindowRateLimiter(30, 600, name="listening:extract")
 _explanation_rate_limiter = SlidingWindowRateLimiter(30, 600, name="listening:explanation")
 
 AUDIO_BUCKET = "listening-audio"
@@ -85,6 +87,29 @@ def _question_out(q: dict, *, include_answer: bool) -> dict:
 
 
 # ── STUDENT: full-paper test session ─────────────────────────────────
+
+def _require_listening_plan(supabase, current_user: UserInfo, test_id: Optional[int] = None) -> str:
+    """Plan-gate listening access (Basic/Pro/Elite) -- shared by test view and
+    submit. The list endpoint (titles only, no content) stays open as a teaser.
+
+    An anonymous free-trial user (see /tools/oet-mock-test-free) has no plan
+    but is let through when `test_id` is the exact Listening test their own
+    active mock is currently on -- see has_mock_section_access in mock.py."""
+    profile = supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute()
+    plan = get_plan_from_profile(profile.data[0] if profile.data else {})
+    if has_listening_access(plan):
+        return plan
+    if current_user.is_anonymous and test_id is not None and has_mock_section_access(supabase, current_user.id, "listening", test_id):
+        return plan
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": "Listening practice requires a paid plan",
+            "upgrade_required": True,
+            "current_plan": plan,
+        },
+    )
+
 
 def _load_test_payload(test_id: int, include_inactive: bool) -> Dict[str, Any]:
     """Full test for the session player: sections ordered Part A -> B -> C, each
@@ -154,6 +179,7 @@ def list_tests(current_user: UserInfo = Depends(get_current_user)):
 def get_test(test_id: int, current_user: UserInfo = Depends(get_current_user)):
     """Full test for the session player. correct_answer + transcript are NOT sent
     (can't be read before submitting). Only active tests/sections are visible."""
+    _require_listening_plan(get_supabase(), current_user, test_id)
     return _load_test_payload(test_id, include_inactive=False)
 
 
@@ -180,6 +206,7 @@ async def submit_test(
         raise HTTPException(status_code=429, detail="Too many submissions — please slow down.")
 
     supabase = get_supabase()
+    _require_listening_plan(supabase, current_user, test_id)
     t = await run_sync(
         supabase.table("listening_tests").select("id").eq("id", test_id).eq("is_active", True).execute
     )
