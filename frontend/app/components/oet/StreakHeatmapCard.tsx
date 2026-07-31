@@ -51,25 +51,25 @@ export function StreakHeatmapCard({
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 w-full animate-pulse">
-        <div className="h-8 bg-slate-100 rounded w-1/2 mb-4" />
+      <div className="bg-card rounded-2xl border border-border p-6 w-full animate-pulse">
+        <div className="h-8 bg-muted rounded w-1/2 mb-4" />
         <div className="grid grid-cols-7 gap-1.5">
           {Array.from({ length: 28 }, (_, i) => (
-            <div key={i} className="aspect-square rounded-md bg-slate-100" />
+            <div key={i} className="aspect-square rounded-md bg-muted" />
           ))}
         </div>
-        <div className="h-4 bg-slate-100 rounded w-1/3 mt-3" />
+        <div className="h-4 bg-muted rounded w-1/3 mt-3" />
       </div>
     )
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-6 w-full motion-safe:animate-[message-in_0.4s_ease-out_0.48s_both]">
+    <div className="bg-card rounded-2xl border border-border p-6 w-full motion-safe:animate-[message-in_0.4s_ease-out_0.48s_both]">
       <div className="mb-4">
-        <p className="text-2xl font-bold text-slate-800">
+        <p className="text-2xl font-bold text-foreground">
           {streak > 0 ? `🔥 ${streak}-day streak` : 'No active streak'}
         </p>
-        <p className="text-sm text-slate-500 mt-0.5">
+        <p className="text-sm text-muted-foreground mt-0.5">
           {streak > 0 ? 'Practice today to keep it' : 'Start a session to begin your streak'}
         </p>
         {streak === 0 && (
@@ -91,15 +91,15 @@ export function StreakHeatmapCard({
             <div
               key={key}
               className={`aspect-square rounded-md transition-colors ${
-                practiced ? 'bg-accent' : 'bg-slate-100'
-              } ${isToday ? 'ring-2 ring-slate-400 ring-offset-1' : ''}`}
+                practiced ? 'bg-accent' : 'bg-muted'
+              } ${isToday ? 'ring-2 ring-muted-foreground ring-offset-1' : ''}`}
               title={`${key}: ${practiced ? 'practiced' : 'not practiced'}`}
             />
           )
         })}
       </div>
 
-      <p className="text-xs text-slate-400 mt-3">
+      <p className="text-xs text-muted-foreground mt-3">
         Last 28 days · {daysPracticed} day{daysPracticed !== 1 ? 's' : ''} practiced
       </p>
     </div>

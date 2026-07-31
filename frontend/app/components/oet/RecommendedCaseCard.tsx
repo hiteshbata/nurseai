@@ -28,12 +28,12 @@ export function RecommendedCaseCard() {
 
   if (loading) {
     return (
-      <div className="w-full rounded-2xl p-5 animate-pulse bg-gradient-to-r from-slate-50 to-slate-100" style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)' }}>
+      <div className="w-full rounded-2xl p-5 animate-pulse bg-muted" style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)' }}>
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col gap-2 flex-1">
             <div className="h-4 bg-emerald-200 rounded w-1/4" />
-            <div className="h-6 bg-slate-200 rounded w-3/4" />
-            <div className="h-4 bg-slate-200 rounded w-1/2" />
+            <div className="h-6 bg-muted rounded w-3/4" />
+            <div className="h-4 bg-muted rounded w-1/2" />
           </div>
           <div className="w-12 h-12 rounded-full bg-emerald-200 shrink-0" />
         </div>
@@ -43,12 +43,12 @@ export function RecommendedCaseCard() {
 
   if (!rec) {
     return (
-      <div className="w-full rounded-2xl p-5 bg-white border border-dashed border-gray-100 motion-safe:animate-[message-in_0.4s_ease-out_0.24s_both]">
+      <div className="w-full rounded-2xl p-5 bg-card border border-dashed border-border motion-safe:animate-[message-in_0.4s_ease-out_0.24s_both]">
         <div className="flex flex-col gap-1">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Recommended for you
           </span>
-          <p className="text-sm text-slate-400 mb-3">
+          <p className="text-sm text-muted-foreground mb-3">
             Complete a speaking session to get a personalized recommendation.
           </p>
           <Link
@@ -80,10 +80,10 @@ export function RecommendedCaseCard() {
         <span className="text-xs font-semibold uppercase tracking-wide text-emerald-700 flex items-center gap-1">
           <Star className="w-3.5 h-3.5" aria-hidden="true" /> Recommended for you
         </span>
-        <h3 className="text-xl font-bold text-slate-800 text-balance truncate">
+        <h3 className="text-xl font-bold text-foreground text-balance truncate">
           {rec.title}
         </h3>
-        <p className="text-sm text-slate-500 truncate">
+        <p className="text-sm text-muted-foreground truncate">
           {diffLabel} · {rec.reason}
         </p>
       </div>

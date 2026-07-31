@@ -71,20 +71,20 @@ export function HeroCards({
       </div>
 
       {/* Current level — emerald accent */}
-      <div className="flex flex-col justify-between rounded-2xl border border-gray-100 bg-card p-6 shadow-sm">
+      <div className="flex flex-col justify-between rounded-2xl border border-border bg-card p-6 shadow-sm">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-muted-foreground">
             Current Level
           </span>
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-500/10">
             <TrendingUp className="h-5 w-5 text-accent" aria-hidden="true" />
           </span>
         </div>
-        <p className="mt-6 text-5xl font-bold text-emerald-700">{currentGrade}</p>
+        <p className="mt-6 text-5xl font-bold text-emerald-600 dark:text-emerald-400">{currentGrade}</p>
       </div>
 
       {/* Target band — navy accent */}
-      <div className="flex flex-col justify-between rounded-2xl border border-gray-100 bg-card p-6 shadow-sm">
+      <div className="flex flex-col justify-between rounded-2xl border border-border bg-card p-6 shadow-sm">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-muted-foreground">
             Target Band

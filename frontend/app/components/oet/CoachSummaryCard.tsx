@@ -22,13 +22,13 @@ export function CoachSummaryCard() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl bg-white border border-gray-100 p-5 animate-pulse">
+      <div className="rounded-2xl bg-card border border-border p-5 animate-pulse">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-full bg-slate-100 shrink-0" />
+          <div className="w-9 h-9 rounded-full bg-muted shrink-0" />
           <div className="flex-1 space-y-2">
-            <div className="h-3 bg-slate-100 rounded w-1/4" />
-            <div className="h-3 bg-slate-100 rounded w-full" />
-            <div className="h-3 bg-slate-100 rounded w-2/3" />
+            <div className="h-3 bg-muted rounded w-1/4" />
+            <div className="h-3 bg-muted rounded w-full" />
+            <div className="h-3 bg-muted rounded w-2/3" />
           </div>
         </div>
       </div>
@@ -36,7 +36,7 @@ export function CoachSummaryCard() {
   }
 
   return (
-    <div className="rounded-2xl bg-white border border-gray-100 p-5 motion-safe:animate-[message-in_0.4s_ease-out_0.36s_both]">
+    <div className="rounded-2xl bg-card border border-border p-5 motion-safe:animate-[message-in_0.4s_ease-out_0.36s_both]">
       <div className="flex items-start gap-3">
         <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
           <Bot className="w-4 h-4 text-indigo-600" aria-hidden="true" />
@@ -46,9 +46,9 @@ export function CoachSummaryCard() {
             AI Coach
           </p>
           {summary ? (
-            <p className="text-sm text-slate-700 leading-relaxed">{summary}</p>
+            <p className="text-sm text-foreground/90 leading-relaxed">{summary}</p>
           ) : (
-            <p className="text-sm text-slate-400">{message || 'No summary available.'}</p>
+            <p className="text-sm text-muted-foreground">{message || 'No summary available.'}</p>
           )}
         </div>
       </div>

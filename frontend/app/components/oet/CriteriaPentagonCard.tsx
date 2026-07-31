@@ -95,16 +95,16 @@ function ScoreBar({ name, score, allNull, revealed }: { name: string; score: num
   const pct = score !== null ? (score / MAX) * 100 : 0
   return (
     <div className="flex items-center gap-2">
-      <span className={`w-28 text-xs font-medium shrink-0 ${allNull ? 'text-slate-300' : 'text-slate-600'}`}>
+      <span className={`w-28 text-xs font-medium shrink-0 ${allNull ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}>
         {name}
       </span>
-      <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
         <div
-          className={`h-2 rounded-full transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${allNull ? 'bg-slate-200' : score !== null && score >= 4 ? 'bg-emerald-600' : score !== null && score >= 3 ? 'bg-amber-500' : score !== null ? 'bg-red-400' : 'bg-slate-200'}`}
+          className={`h-2 rounded-full transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${allNull ? 'bg-muted' : score !== null && score >= 4 ? 'bg-emerald-600' : score !== null && score >= 3 ? 'bg-amber-500' : score !== null ? 'bg-red-400' : 'bg-muted'}`}
           style={{ width: revealed ? `${pct}%` : '0%' }}
         />
       </div>
-      <span className={`text-xs w-10 text-right shrink-0 ${allNull || score === null ? 'text-slate-300' : 'text-slate-500'}`}>
+      <span className={`text-xs w-10 text-right shrink-0 ${allNull || score === null ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}>
         {score !== null ? `${score}/${MAX}` : '—'}
       </span>
     </div>
@@ -133,14 +133,14 @@ export function CriteriaPentagonCard({
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 w-full animate-pulse">
-        <div className="h-6 bg-slate-100 rounded w-1/3 mb-4" />
+      <div className="bg-card rounded-2xl border border-border p-6 w-full animate-pulse">
+        <div className="h-6 bg-muted rounded w-1/3 mb-4" />
         <div className="flex justify-center mb-4">
-          <div className="w-[300px] h-[300px] bg-slate-100 rounded-full" />
+          <div className="w-[300px] h-[300px] bg-muted rounded-full" />
         </div>
         <div className="flex flex-col gap-2">
           {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="h-4 bg-slate-100 rounded w-full" />
+            <div key={i} className="h-4 bg-muted rounded w-full" />
           ))}
         </div>
       </div>
@@ -148,8 +148,8 @@ export function CriteriaPentagonCard({
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-6 w-full motion-safe:animate-[message-in_0.4s_ease-out_0.48s_both]">
-      <h2 className="text-lg font-bold text-slate-800 mb-2">
+    <div className="bg-card rounded-2xl border border-border p-6 w-full motion-safe:animate-[message-in_0.4s_ease-out_0.48s_both]">
+      <h2 className="text-lg font-bold text-foreground mb-2">
         {totalSessions < 3 && totalSessions > 0
           ? `Your Skills (${totalSessions}/3 sessions)`
           : 'Your Skills'}
@@ -157,7 +157,7 @@ export function CriteriaPentagonCard({
 
       {totalSessions < 3 ? (
         <div className="text-center py-8">
-          <p className="text-sm text-slate-400 mb-3">
+          <p className="text-sm text-muted-foreground mb-3">
             {totalSessions === 0
               ? 'Complete your first speaking session to see your skill breakdown'
               : 'Complete 3 sessions to see your skill breakdown'}

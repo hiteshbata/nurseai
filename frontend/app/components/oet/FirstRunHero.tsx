@@ -8,7 +8,7 @@ function ChecklistDot({ done }: { done: boolean }) {
   return (
     <span
       className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-        done ? "bg-emerald-500 text-white" : "border-2 border-gray-200"
+        done ? "bg-emerald-500 text-white" : "border-2 border-border"
       }`}
     >
       {done && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
@@ -56,13 +56,13 @@ export function FirstRunHero({
         </button>
       </div>
 
-      <div className="rounded-2xl border border-gray-100 bg-card p-6 shadow-sm">
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
         <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-muted-foreground">Get started</h3>
         <ul className="space-y-3">
           <li className="flex items-center gap-3">
             <ChecklistDot done={examDateSet} />
             {examDateSet ? (
-              <span className="text-sm font-medium text-gray-400 line-through">Set your exam date</span>
+              <span className="text-sm font-medium text-muted-foreground line-through">Set your exam date</span>
             ) : isEditingDate ? (
               <div className="flex items-center gap-2">
                 <input
@@ -70,7 +70,7 @@ export function FirstRunHero({
                   autoFocus
                   value={dateValue}
                   onChange={(e) => setDateValue(e.target.value)}
-                  className="rounded-lg border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="rounded-lg border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
                 <button
                   onClick={handleSaveDate}
@@ -83,12 +83,12 @@ export function FirstRunHero({
             ) : onSetExamDate ? (
               <button
                 onClick={() => setIsEditingDate(true)}
-                className="text-sm font-medium text-gray-700 transition hover:text-primary"
+                className="text-sm font-medium text-foreground/80 transition hover:text-primary"
               >
                 Set your exam date
               </button>
             ) : (
-              <a href="/profile" className="text-sm font-medium text-gray-700 transition hover:text-primary">
+              <a href="/profile" className="text-sm font-medium text-foreground/80 transition hover:text-primary">
                 Set your exam date
               </a>
             )}
@@ -97,9 +97,9 @@ export function FirstRunHero({
           <li className="flex items-center gap-3">
             <ChecklistDot done={targetBandSet} />
             {targetBandSet ? (
-              <span className="text-sm font-medium text-gray-400 line-through">Set your target band</span>
+              <span className="text-sm font-medium text-muted-foreground line-through">Set your target band</span>
             ) : (
-              <a href="/profile" className="text-sm font-medium text-gray-700 transition hover:text-primary">
+              <a href="/profile" className="text-sm font-medium text-foreground/80 transition hover:text-primary">
                 Set your target band
               </a>
             )}
@@ -107,14 +107,14 @@ export function FirstRunHero({
 
           <li className="flex items-center gap-3">
             <ChecklistDot done={false} />
-            <a href="/practice/speaking" className="text-sm font-medium text-gray-700 transition hover:text-primary">
+            <a href="/practice/speaking" className="text-sm font-medium text-foreground/80 transition hover:text-primary">
               Do your first 5-minute speaking roleplay
             </a>
           </li>
 
           <li className="flex items-center gap-3">
             <ChecklistDot done={false} />
-            <span className="text-sm font-medium text-gray-700">Get your baseline OET band</span>
+            <span className="text-sm font-medium text-foreground/80">Get your baseline OET band</span>
           </li>
         </ul>
       </div>

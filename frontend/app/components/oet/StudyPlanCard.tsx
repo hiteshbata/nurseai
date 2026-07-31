@@ -47,11 +47,11 @@ export function StudyPlanCard() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl bg-white border border-gray-100 p-5 animate-pulse">
-        <div className="h-3 bg-slate-100 rounded w-1/3 mb-3" />
-        <div className="h-5 bg-slate-100 rounded w-2/3 mb-2" />
-        <div className="h-3 bg-slate-100 rounded w-full mb-1" />
-        <div className="h-3 bg-slate-100 rounded w-5/6" />
+      <div className="rounded-2xl bg-card border border-border p-5 animate-pulse">
+        <div className="h-3 bg-muted rounded w-1/3 mb-3" />
+        <div className="h-5 bg-muted rounded w-2/3 mb-2" />
+        <div className="h-3 bg-muted rounded w-full mb-1" />
+        <div className="h-3 bg-muted rounded w-5/6" />
       </div>
     )
   }
@@ -69,13 +69,13 @@ export function StudyPlanCard() {
             <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-1">
               AI Study Plan
             </p>
-            <p className="text-sm text-slate-600 mb-3">
+            <p className="text-sm text-muted-foreground mb-3">
               Get a personalized weekly plan built from your weakest OET criteria — which scenarios to
               practice next and exactly what to focus on. Elite feature.
             </p>
             <a
               href="/upgrade"
-              className="inline-block bg-[#0F2356] text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-[#0F2356]/90 transition"
+              className="inline-block bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90 transition"
             >
               Upgrade to Elite →
             </a>
@@ -87,11 +87,11 @@ export function StudyPlanCard() {
 
   if (!data.ready) {
     return (
-      <div className="rounded-2xl bg-white border border-dashed border-gray-100 p-5 motion-safe:animate-[message-in_0.4s_ease-out_0.3s_both]">
+      <div className="rounded-2xl bg-card border border-dashed border-border p-5 motion-safe:animate-[message-in_0.4s_ease-out_0.3s_both]">
         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-1">
           AI Study Plan
         </p>
-        <p className="text-sm text-slate-400 mb-3">{data.message}</p>
+        <p className="text-sm text-muted-foreground mb-3">{data.message}</p>
         <Link
           href="/practice/speaking"
           className="inline-block rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary/90"
@@ -103,7 +103,7 @@ export function StudyPlanCard() {
   }
 
   return (
-    <div className="rounded-2xl bg-white border border-gray-100 p-5 motion-safe:animate-[message-in_0.4s_ease-out_0.3s_both]">
+    <div className="rounded-2xl bg-card border border-border p-5 motion-safe:animate-[message-in_0.4s_ease-out_0.3s_both]">
       <div className="flex items-center justify-between gap-2 mb-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
           🎯 Your Weekly Study Plan
@@ -115,9 +115,9 @@ export function StudyPlanCard() {
         )}
       </div>
 
-      <h3 className="text-lg font-bold text-slate-800 mb-1">{data.weekly_focus}</h3>
+      <h3 className="text-lg font-bold text-foreground mb-1">{data.weekly_focus}</h3>
       {data.why_it_matters && (
-        <p className="text-sm text-slate-600 mb-3">{data.why_it_matters}</p>
+        <p className="text-sm text-muted-foreground mb-3">{data.why_it_matters}</p>
       )}
 
       {data.weak_criteria && data.weak_criteria.length > 0 && (
@@ -136,7 +136,7 @@ export function StudyPlanCard() {
       {data.action_steps && data.action_steps.length > 0 && (
         <ul className="space-y-1.5 mb-4">
           {data.action_steps.map((step, i) => (
-            <li key={i} className="flex gap-2 text-sm text-slate-700">
+            <li key={i} className="flex gap-2 text-sm text-foreground/90">
               <Check className="w-4 h-4 shrink-0 text-indigo-500 mt-0.5" strokeWidth={3} aria-hidden="true" />
               <span>{step}</span>
             </li>
@@ -146,7 +146,7 @@ export function StudyPlanCard() {
 
       {data.recommended_scenarios && data.recommended_scenarios.length > 0 && (
         <div className="mb-3">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
             Recommended Scenarios
           </p>
           <div className="flex flex-wrap gap-2">
@@ -164,7 +164,7 @@ export function StudyPlanCard() {
       )}
 
       {data.pacing_note && (
-        <p className="text-xs text-slate-400 italic">{data.pacing_note}</p>
+        <p className="text-xs text-muted-foreground italic">{data.pacing_note}</p>
       )}
     </div>
   )

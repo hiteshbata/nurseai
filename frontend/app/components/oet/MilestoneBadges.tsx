@@ -155,8 +155,8 @@ export function MilestoneBadges({
   if (badges.length === 0) return null
 
   return (
-    <div className="rounded-2xl bg-white border border-gray-100 p-6 motion-safe:animate-[message-in_0.4s_ease-out_0.54s_both]">
-      <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide mb-4">
+    <div className="rounded-2xl bg-card border border-border p-6 motion-safe:animate-[message-in_0.4s_ease-out_0.54s_both]">
+      <h3 className="text-sm font-bold text-foreground uppercase tracking-wide mb-4">
         Milestone Badges
       </h3>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
@@ -168,24 +168,24 @@ export function MilestoneBadges({
               key={b.id}
               className={`flex flex-col items-center gap-1 rounded-xl p-3 text-center transition-colors ${
                 b.unlocked
-                  ? 'bg-emerald-50 border border-emerald-200'
-                  : 'bg-slate-50 border border-slate-100'
+                  ? 'bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30'
+                  : 'bg-muted border border-border'
               }`}
               title={def?.title}
             >
               <Icon
-                className={`w-5 h-5 ${b.unlocked ? 'text-emerald-600' : 'text-slate-300'}`}
+                className={`w-5 h-5 ${b.unlocked ? 'text-emerald-600' : 'text-muted-foreground/60'}`}
                 aria-hidden="true"
               />
               <span
                 className={`text-[11px] font-semibold leading-tight ${
-                  b.unlocked ? 'text-emerald-700' : 'text-slate-400'
+                  b.unlocked ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'
                 }`}
               >
                 {def?.title || b.id}
               </span>
               {!b.unlocked && b.progress && (
-                <span className="text-[10px] text-slate-400 font-medium">{b.progress}</span>
+                <span className="text-[10px] text-muted-foreground font-medium">{b.progress}</span>
               )}
               {b.unlocked && (
                 <Check className="w-3 h-3 text-emerald-500" strokeWidth={3} aria-hidden="true" />

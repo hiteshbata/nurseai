@@ -31,7 +31,7 @@ export function RecentSessions({
   const rows = recentSubmissions.slice(0, 5)
 
   return (
-    <section className="rounded-2xl border border-gray-100 bg-card p-6 shadow-sm motion-safe:animate-[message-in_0.4s_ease-out_0.6s_both]">
+    <section className="rounded-2xl border border-border bg-card p-6 shadow-sm motion-safe:animate-[message-in_0.4s_ease-out_0.6s_both]">
       {/* "View All" removed: it had no onClick and no destination, and there is
           no full-history page to point it at yet. */}
       <h2 className="text-lg font-bold text-primary">Recent Sessions</h2>
@@ -41,7 +41,7 @@ export function RecentSessions({
         {rows.map((row) => (
           <div
             key={row.id}
-            className="rounded-xl border border-gray-100 p-4"
+            className="rounded-xl border border-border p-4"
           >
             <div className="flex items-center justify-between">
               <TypeBadge type={row.type} />
@@ -67,7 +67,7 @@ export function RecentSessions({
       <div className="mt-4 hidden overflow-x-auto sm:block">
         <table className="w-full border-collapse text-left">
           <thead>
-            <tr className="border-b border-gray-100 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <tr className="border-b border-border text-xs font-medium uppercase tracking-wide text-muted-foreground">
               <th className="py-3 pr-4 font-medium">Date</th>
               <th className="py-3 pr-4 font-medium">Type</th>
               <th className="py-3 pr-4 font-medium">Score</th>
@@ -79,7 +79,7 @@ export function RecentSessions({
             {rows.map((row) => (
               <tr
                 key={row.id}
-                className="border-b border-gray-50 last:border-0"
+                className="border-b border-border last:border-0"
               >
                 <td className="whitespace-nowrap py-4 pr-4 text-sm text-muted-foreground">
                   {row.date}
