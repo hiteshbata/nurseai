@@ -169,7 +169,7 @@ export function Navbar() {
                 className={`inline-flex items-center gap-1.5 min-h-11 transition text-sm font-semibold ${
                   isActiveLink(link.href)
                     ? 'text-emerald-700 border-b-2 border-emerald-700'
-                    : 'text-gray-700 hover:text-blue-600'
+                    : 'text-gray-700 hover:text-emerald-700'
                 }`}
               >
                 {link.label}
@@ -276,10 +276,10 @@ export function Navbar() {
             </div>
           ) : (
             <div className="hidden sm:flex items-center gap-3">
-              <Link href="/auth/login" className="text-sm text-blue-600 font-semibold hover:bg-blue-50 px-3 py-2 rounded transition whitespace-nowrap">
+              <Link href="/auth/login" className="text-sm text-[#0F2356] font-semibold hover:bg-gray-50 px-3 py-2 rounded transition whitespace-nowrap">
                 Sign In
               </Link>
-              <Link href="/auth/register" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition whitespace-nowrap">
+              <Link href="/auth/register" className="px-4 py-2 bg-emerald-700 text-white rounded-lg text-sm font-semibold hover:opacity-90 transition whitespace-nowrap">
                 Sign Up
               </Link>
             </div>
@@ -343,7 +343,7 @@ export function Navbar() {
                 onClick={() => setMobileOpen(false)}
                 aria-current={isActiveLink(link.href) ? 'page' : undefined}
                 className={`flex items-center gap-1.5 min-h-11 transition text-sm ${
-                  isActiveLink(link.href) ? 'text-emerald-700 font-semibold' : 'text-gray-700 hover:text-blue-600'
+                  isActiveLink(link.href) ? 'text-emerald-700 font-semibold' : 'text-gray-700 hover:text-emerald-700'
                 }`}
               >
                 {link.label}
@@ -355,10 +355,10 @@ export function Navbar() {
           )}
           {status !== 'loading' && !session && (
             <>
-              <Link href="/auth/login" onClick={() => setMobileOpen(false)} className="flex items-center min-h-11 text-gray-700 hover:text-blue-600 transition text-sm">
+              <Link href="/auth/login" onClick={() => setMobileOpen(false)} className="flex items-center min-h-11 text-gray-700 hover:text-emerald-700 transition text-sm">
                 Sign In
               </Link>
-              <Link href="/auth/register" onClick={() => setMobileOpen(false)} className="flex items-center min-h-11 text-blue-600 font-semibold text-sm">
+              <Link href="/auth/register" onClick={() => setMobileOpen(false)} className="flex items-center min-h-11 text-emerald-700 font-semibold text-sm">
                 Sign Up
               </Link>
             </>

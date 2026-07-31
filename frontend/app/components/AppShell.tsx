@@ -359,7 +359,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               // before the page's own redirect fires.
               <Link
                 href="/auth/login"
-                className="rounded-lg px-4 py-2 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-[#0F2356] transition hover:bg-gray-100"
               >
                 Sign In
               </Link>
