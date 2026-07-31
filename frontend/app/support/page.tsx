@@ -85,8 +85,10 @@ const FAQS: { question: string; answer: ReactNode }[] = [
 ]
 
 export default function SupportPage() {
+  // AppShell already renders <main id="main-content"> and pads/centers the
+  // page -- a second <main> here duplicated that landmark and its id.
   return (
-    <main className="min-h-screen px-4 py-20 max-w-3xl mx-auto">
+    <div className="max-w-3xl mx-auto py-8 lg:py-12">
       <h1 className="text-3xl font-bold text-[#0F2356] mb-4">Support</h1>
       <p className="text-gray-500 text-lg mb-10">
         We&apos;re here to help — before, during, and after your OET prep.
@@ -133,6 +135,6 @@ export default function SupportPage() {
           ))}
         </div>
       </section>
-    </main>
+    </div>
   )
 }

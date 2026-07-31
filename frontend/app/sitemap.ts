@@ -1,23 +1,40 @@
 import type { MetadataRoute } from 'next'
 import { learnArticles } from './learn/articles'
 import { docsGuides } from './docs/guides'
+import { OET_COUNTRY_PAGES } from './oet/countries'
 import { SITE_URL } from '@/lib/site'
+import { sanityClient } from '@/lib/sanity'
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const staticRoutes = ['', '/about', '/learn', '/blog', '/privacy', '/terms', '/support', '/docs'].map((path) => ({
+const BUILD_DATE = new Date()
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const staticRoutes = ['', '/pricing', '/tools/oet-score-calculator', '/tools/oet-mock-test-free', '/tools/ai-study-plan-generator', '/about', '/learn', '/blog', '/privacy', '/terms', '/support', '/docs', '/oet/speaking'].map((path) => ({
     url: `${SITE_URL}${path}`,
-    lastModified: new Date(),
+    lastModified: BUILD_DATE,
   }))
 
   const learnRoutes = learnArticles.map((article) => ({
     url: `${SITE_URL}${article.href}`,
-    lastModified: new Date(),
+    lastModified: BUILD_DATE,
   }))
 
   const docsRoutes = docsGuides.map((guide) => ({
     url: `${SITE_URL}${guide.href}`,
-    lastModified: new Date(),
+    lastModified: BUILD_DATE,
   }))
 
-  return [...staticRoutes, ...learnRoutes, ...docsRoutes]
+  const oetRoutes = OET_COUNTRY_PAGES.map((page) => ({
+    url: `${SITE_URL}/oet/${page.slug}`,
+    lastModified: BUILD_DATE,
+  }))
+
+  const posts: { slug: string; _updatedAt: string }[] = await sanityClient.fetch(
+    `*[_type == "post"]{ "slug": slug.current, _updatedAt }`
+  )
+  const blogRoutes = posts.map((post) => ({
+    url: `${SITE_URL}/blog/${post.slug}`,
+    lastModified: new Date(post._updatedAt),
+  }))
+
+  return [...staticRoutes, ...learnRoutes, ...docsRoutes, ...oetRoutes, ...blogRoutes]
 }

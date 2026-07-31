@@ -71,6 +71,13 @@ export default function OetBandScoresPage() {
         current pass mark on your target regulator&apos;s official website before you sit the
         test — don&apos;t rely solely on this page or on forum posts.
       </p>
+      <p className="text-gray-600 leading-relaxed mb-4">
+        Already have a result? Use the free{' '}
+        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline">
+          OET score calculator
+        </Link>{' '}
+        to check your grades or numeric scores against NMC, Ahpra, and 5 other regulators at once.
+      </p>
 
       <h2 id="why-speaking-is-hardest" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">Why Speaking is often the hardest sub-test</h2>
       <p className="text-gray-600 leading-relaxed mb-4">

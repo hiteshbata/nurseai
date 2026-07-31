@@ -6,6 +6,24 @@ export interface LearnArticle {
 
 export const learnArticles: LearnArticle[] = [
   {
+    href: '/learn/oet-listening',
+    title: 'OET Listening Guide for Nurses',
+    description:
+      'The 3-part format, what each part is really testing, a phase-by-phase strategy for single-listen audio, a full worked example, and 18 mistakes that cost marks.',
+  },
+  {
+    href: '/learn/oet-reading',
+    title: 'OET Reading Guide for Nurses',
+    description:
+      'The 3-part format, what each question type is really testing, a minute-by-minute strategy, a full worked example, and 18 mistakes that cost marks under time pressure.',
+  },
+  {
+    href: '/learn/oet-writing',
+    title: 'OET Writing Guide for Nurses',
+    description:
+      'The format, all 6 assessment criteria with real examples, a minute-by-minute strategy, a full worked example, and 18 mistakes that cap your score.',
+  },
+  {
     href: '/learn/what-is-oet-speaking',
     title: 'What is OET Speaking?',
     description:
@@ -28,11 +46,5 @@ export const learnArticles: LearnArticle[] = [
     title: 'OET Speaking Tips for Nurses',
     description:
       'Practical, criteria-based tips to raise your OET Speaking score — from structuring the consultation to managing nerves.',
-  },
-  {
-    href: '/learn/oet-for-indian-nurses',
-    title: 'OET for Indian Nurses',
-    description:
-      'What Indian nurses need to know about OET: why it’s often preferred over IELTS, common challenges, and how to prepare.',
   },
 ]

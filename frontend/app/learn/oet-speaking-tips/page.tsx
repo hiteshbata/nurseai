@@ -86,7 +86,23 @@ export default function OetSpeakingTipsPage() {
         <Link href="/practice/speaking" className="text-[#0F2356] font-semibold underline">
           SpeakOET&apos;s AI patient
         </Link>{' '}
-        exists specifically to give you that repetition on demand.
+        exists specifically to give you that repetition on demand. See our{' '}
+        <Link href="/oet/speaking" className="text-[#0F2356] font-semibold underline">
+          complete OET Speaking guide
+        </Link>{' '}
+        for all 9 assessment criteria in one place, or our{' '}
+        <Link href="/learn/oet-writing" className="text-[#0F2356] font-semibold underline">
+          OET Writing
+        </Link>
+        ,{' '}
+        <Link href="/learn/oet-reading" className="text-[#0F2356] font-semibold underline">
+          OET Reading
+        </Link>
+        , and{' '}
+        <Link href="/learn/oet-listening" className="text-[#0F2356] font-semibold underline">
+          OET Listening
+        </Link>{' '}
+        guides for the rest of the test.
       </p>
 
       <LearnCTA />

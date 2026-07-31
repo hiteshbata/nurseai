@@ -79,9 +79,30 @@ export default function WhatIsOetSpeakingPage() {
         tested on is reacting in character, in real time.
       </p>
 
-      <p className="text-gray-600 leading-relaxed">
+      <p className="text-gray-600 leading-relaxed mb-4">
         Always check the exact current format and marking guide on the official OET website —
         details like timing and criteria weighting are set by OET, not by us.
+      </p>
+
+      <p className="text-gray-600 leading-relaxed mb-4">
+        For the full breakdown of all 9 assessment criteria and how a roleplay actually plays
+        out, see our{' '}
+        <Link href="/oet/speaking" className="text-[#0F2356] font-semibold underline">
+          complete OET Speaking guide
+        </Link>
+        . If you&apos;re preparing for the other three sub-tests too, see our guides to{' '}
+        <Link href="/learn/oet-writing" className="text-[#0F2356] font-semibold underline">
+          OET Writing
+        </Link>
+        ,{' '}
+        <Link href="/learn/oet-reading" className="text-[#0F2356] font-semibold underline">
+          OET Reading
+        </Link>
+        , and{' '}
+        <Link href="/learn/oet-listening" className="text-[#0F2356] font-semibold underline">
+          OET Listening
+        </Link>
+        .
       </p>
 
       <LearnCTA />
