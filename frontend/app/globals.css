@@ -80,7 +80,15 @@
    audio-reactive scaling stops too, not just the CSS keyframes. */
 @media (prefers-reduced-motion: reduce) {
   .orb-anim,
-  .orb-status-in { animation: none !important; }
+  .orb-status-in,
+  .hero-orb-glow { animation: none !important; }
+}
+/* Same ambient glow-drift as the practice-session orb, borrowed for the
+   landing hero so the first thing a visitor sees already feels like the
+   product rather than a static mockup. Purely decorative, sits behind the
+   score card. */
+.hero-orb-glow {
+  animation: orb-glow-drift 7s ease-in-out infinite;
 }
 @keyframes band-reveal {
   0% { transform: scale(0.7); opacity: 0; }

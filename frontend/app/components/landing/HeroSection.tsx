@@ -87,7 +87,14 @@ export default function HeroSection() {
           </div>
 
           {/* Right Side — Score Card */}
-          <div className="w-full lg:w-[45%] max-w-sm mx-auto lg:mx-0">
+          <div className="relative w-full lg:w-[45%] max-w-sm mx-auto lg:mx-0">
+            {/* Ambient glow borrowed from the practice-session orb (same
+                keyframe, same easing) -- ties the first thing a visitor sees
+                to what the product actually feels like mid-session. */}
+            <div
+              aria-hidden="true"
+              className="hero-orb-glow pointer-events-none absolute -inset-8 -z-10 rounded-full bg-[#10B981]/25 blur-3xl"
+            />
             <div className="bg-[#0F2356] rounded-2xl shadow-premium-lg p-7 text-white">
               {/* Top */}
               <div className="flex items-start justify-between mb-2">
