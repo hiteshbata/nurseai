@@ -1,7 +1,30 @@
+// THESIS: a pricing page for a clinical exam product reads like a lab report,
+// not a checkout page — restrained navy/ink, generous white space, Fraunces
+// display serif carrying every number and headline, no gamified badges.
+// OWN-WORLD: inherits the site's established system — navy #0F2356 + emerald
+// #047857 accent, Fraunces display / Inter body, tinted "premium" shadows
+// already defined in tailwind.config.ts. Nothing new invented here.
+// STORY: a nurse compares four tiers, understands the outcome each buys
+// (not a session count), and trusts the claims because none are invented.
+// FIRST VIEWPORT: headline + one-line honest subhead, four cards below with
+// Pro raised and softly lit — no hero metric, no fake stat band.
+// FORM: extend of the existing pricing page; established world, not a new one.
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Check, Minus, Mic, Sparkles, TrendingUp, LifeBuoy } from 'lucide-react'
-import { FALLBACK_PLANS } from '@/lib/plans'
+import {
+  Check,
+  Minus,
+  Mic,
+  Sparkles,
+  Wand2,
+  TrendingUp,
+  Trophy,
+  LifeBuoy,
+  Stethoscope,
+  ClipboardCheck,
+  GraduationCap,
+} from 'lucide-react'
+import { FALLBACK_PLANS, type Plan } from '@/lib/plans'
 import { SITE_URL, SITE_NAME } from '@/lib/site'
 
 export const metadata: Metadata = {
@@ -15,10 +38,78 @@ export const metadata: Metadata = {
 // rate already used in FAQSection.tsx and page.tsx so numbers agree site-wide.
 const INR_TO_USD = 83
 
+// Marketing framing for this page only -- outcome-led headline/subtitle and a
+// short, curated feature list. Deliberately NOT stored on the shared Plan
+// record in lib/plans.ts, because that record is also read by /upgrade (an
+// in-app, already-a-user screen where "Explore SpeakOET" would read oddly)
+// and by the homepage teaser. Facts (price, session count, gating) still
+// come from FALLBACK_PLANS -- this only adds the sales voice on top.
+interface PlanMarketing {
+  headline: string
+  subtitle: string
+  includesNote?: string
+  highlights: string[]
+}
+
+const PLAN_MARKETING: Record<string, PlanMarketing> = {
+  free: {
+    headline: 'Explore SpeakOET',
+    subtitle: 'Experience AI-powered OET preparation before you upgrade.',
+    highlights: [
+      '3 AI speaking sessions / month',
+      'Full 9-criteria AI scoring',
+      'Realistic patient simulation',
+      'Standard British voice',
+    ],
+  },
+  basic: {
+    headline: 'Build Strong Foundations',
+    subtitle: 'Master Speaking, Reading and Listening with AI guidance.',
+    includesNote: 'Everything in Free, plus:',
+    highlights: [
+      '20 Premium AI speaking sessions',
+      'Reading & Listening practice',
+      'Full 9-criteria AI scoring',
+      'Track your progress — last 10 attempts',
+    ],
+  },
+  pro: {
+    headline: 'Complete OET Preparation',
+    subtitle: 'Everything you need to prepare confidently for your exam.',
+    includesNote: 'Everything in Basic, plus:',
+    highlights: [
+      '40 Premium AI speaking sessions',
+      'AI Writing Evaluation',
+      'Advanced AI Feedback',
+      'Natural British Voice',
+      'Unlimited progress history',
+    ],
+  },
+  elite: {
+    headline: 'Exam-Day Mastery',
+    subtitle: 'The complete OET experience, with mock exams and pronunciation coaching.',
+    highlights: [
+      '80 Premium AI speaking sessions',
+      'Full OET Exam Simulation',
+      'Pronunciation Analysis',
+      'AI Study Plan',
+      'Everything in Pro',
+    ],
+  },
+}
+
+const PLAN_CTA: Record<string, string> = {
+  free: 'Start Free',
+  basic: 'Start Practicing',
+  pro: 'Start Preparing',
+  elite: 'Become Exam Ready',
+}
+
 // Mirrors backend/app/services/plan_gating.py (PREMIUM_PLANS, WRITING_PLANS,
 // READING_PLANS, LISTENING_PLANS, MOCK_TEST_PLANS, PRONUNCIATION_PLANS,
 // STUDY_PLAN_PLANS, get_history_limit) -- the actual gating source of truth.
-// Update this table if that file changes.
+// Update this table if that file changes. Grouped Practice / AI Feedback /
+// Learning / Exam Readiness / Support, not one flat checklist.
 type Cell = string | boolean
 interface FeatureRow {
   label: string
@@ -38,55 +129,80 @@ const FEATURE_SECTIONS: FeatureSection[] = [
     title: 'Practice',
     icon: Mic,
     rows: [
-      { label: 'Speaking sessions per month', free: '3', basic: '20', pro: '40', elite: '80' },
+      { label: 'Premium AI speaking sessions / month', free: '3', basic: '20', pro: '40', elite: '80' },
       { label: 'Reading practice', free: false, basic: true, pro: true, elite: true },
       { label: 'Listening practice', free: false, basic: true, pro: true, elite: true },
-      { label: 'Writing practice', free: false, basic: false, pro: true, elite: true },
-      { label: 'Full Mock Test (all 4 parts)', free: false, basic: false, pro: false, elite: true },
+      { label: 'AI Writing Evaluation (typed or handwritten)', free: false, basic: false, pro: true, elite: true },
     ],
   },
   {
     title: 'AI Feedback',
-    icon: Sparkles,
+    icon: Wand2,
     rows: [
       { label: 'Full 9-criteria OET score', free: true, basic: true, pro: true, elite: true },
-      { label: 'Advanced AI feedback', free: false, basic: false, pro: true, elite: true },
-      { label: 'Premium AI conversation partner', free: false, basic: false, pro: true, elite: true },
+      { label: 'Advanced AI Feedback', free: false, basic: false, pro: true, elite: true },
+      { label: 'Premium AI Conversation partner', free: false, basic: false, pro: true, elite: true },
       { label: 'Patient voice', free: 'Standard', basic: 'Standard', pro: 'Natural British', elite: 'Natural British' },
-      { label: 'Handwriting OCR for Writing', free: false, basic: false, pro: true, elite: true },
-      { label: 'Pronunciation analysis', free: false, basic: false, pro: false, elite: true },
-      { label: 'AI-generated study plan', free: false, basic: false, pro: false, elite: true },
     ],
   },
   {
-    title: 'Progress',
+    title: 'Exam Readiness',
+    icon: Trophy,
+    rows: [
+      { label: 'Full OET Exam Simulation (all 4 parts)', free: false, basic: false, pro: false, elite: true },
+      { label: 'Pronunciation Analysis', free: false, basic: false, pro: false, elite: true },
+      { label: 'AI Study Plan', free: false, basic: false, pro: false, elite: true },
+    ],
+  },
+  {
+    title: 'Learning',
     icon: TrendingUp,
     rows: [
       { label: 'Progress tracking dashboard', free: true, basic: true, pro: true, elite: true },
-      { label: 'Attempt history', free: 'Last 3', basic: 'Last 10', pro: 'Unlimited', elite: 'Unlimited' },
+      { label: 'Track your progress (attempt history)', free: 'Last 3', basic: 'Last 10', pro: 'Unlimited', elite: 'Unlimited' },
     ],
   },
   {
     title: 'Support',
     icon: LifeBuoy,
-    rows: [
-      { label: 'Support channel', free: 'Community', basic: 'Email', pro: 'Priority email', elite: 'WhatsApp priority' },
-    ],
+    rows: [{ label: 'Support channel', free: 'Community', basic: 'Email', pro: 'Priority email', elite: 'WhatsApp priority' }],
+  },
+]
+
+const TRUST_POINTS = [
+  {
+    icon: Stethoscope,
+    title: 'Built specifically for OET',
+    body: 'Not a general English app — every scenario, rubric, and voice is built around the OET Speaking, Writing, Reading and Listening sub-tests nurses actually sit.',
+  },
+  {
+    icon: ClipboardCheck,
+    title: 'Scored against the real rubric',
+    body: "Speaking is scored on the same 9 criteria OET examiners use — Empathy, Fluency, Grammar & Expression, and the rest — not an app-invented scale.",
+  },
+  {
+    icon: GraduationCap,
+    title: 'No classroom required',
+    body: 'A self-serve alternative to human tutors and coaching classes — practice on your own schedule, around shift work, from your phone or laptop.',
   },
 ]
 
 const PRICING_FAQS = [
   {
-    q: 'How much does SpeakOET cost?',
-    a: `SpeakOET has a free plan with ${FALLBACK_PLANS.find((p) => p.id === 'free')!.sessions_limit} speaking sessions a month. Paid plans start at ₹${FALLBACK_PLANS.find((p) => p.id === 'basic')!.price} (about $${Math.round(FALLBACK_PLANS.find((p) => p.id === 'basic')!.price / INR_TO_USD)}) per month, up to Elite at ₹${FALLBACK_PLANS.find((p) => p.id === 'elite')!.price} (about $${Math.round(FALLBACK_PLANS.find((p) => p.id === 'elite')!.price / INR_TO_USD)}) per month. All prices are billed monthly with no lock-in contract.`,
+    q: 'Which plan should I choose?',
+    a: 'If you only need Speaking practice, start Free. If OET requires all four sub-tests for you, Basic covers Speaking, Reading and Listening. Pro adds Writing — the plan most candidates sitting the full exam choose. Elite adds the full Mock Test, Pronunciation Analysis and an AI Study Plan for the final weeks before your test date.',
   },
   {
-    q: 'Is there a free trial?',
-    a: 'Yes. The free plan gives you 3 speaking sessions a month with the full 9-criteria examiner report. No credit card is required to start.',
+    q: 'How does AI scoring work?',
+    a: 'Speaking responses are scored against the same 9-criteria OET Speaking rubric examiners use (Empathy, Patient’s Perspective, Providing Structure, Information Gathering, Information Giving, Intelligibility, Fluency, Appropriateness of Language, and Grammar & Expression). Pro and Elite use a stronger AI model for richer, more detailed feedback on top of the same rubric.',
   },
   {
-    q: 'What is the difference between Basic, Pro, and Elite?',
-    a: 'Basic adds Reading and Listening practice on top of Speaking. Pro adds Writing practice and scoring, a premium scoring model, and the premium British patient voice. Elite adds the full 4-part Mock Test, phoneme-level pronunciation scoring, and an AI-generated study plan.',
+    q: 'How accurate is the scoring?',
+    a: "SpeakOET is a preparation tool, not the official exam — your real OET result is always set by a human examiner. Our scoring is built to closely track the published rubric so the feedback is genuinely useful practice, but treat your band score here as strong guidance, not a guaranteed outcome.",
+  },
+  {
+    q: 'Is my progress saved?',
+    a: 'Yes. Every attempt, score, and piece of feedback is saved to your account and shown on your progress dashboard, up to your plan’s history limit — Last 3 on Free, Last 10 on Basic, and unlimited on Pro and Elite.',
   },
   {
     q: 'Can I cancel anytime?',
@@ -103,10 +219,6 @@ const PRICING_FAQS = [
   {
     q: 'Do you offer discounts for coaching institutes or academies?',
     a: 'Yes. Contact support@speakoet.com for academy and bulk pricing — each student gets the full Elite plan.',
-  },
-  {
-    q: 'Is pricing different for nurses outside India?',
-    a: "Prices are billed in Indian Rupees (INR) regardless of where you're practicing from. The USD amounts shown are an approximate conversion so international users can compare cost at a glance.",
   },
 ]
 
@@ -141,7 +253,7 @@ const softwareApplicationJsonLd = {
 function FeatureCell({ value }: { value: Cell }) {
   if (value === true) {
     return (
-      <td className="px-4 py-3 text-center">
+      <td className="px-5 py-3.5 text-center">
         <Check className="w-4 h-4 text-emerald-600 mx-auto" strokeWidth={3} aria-hidden="true" />
         <span className="sr-only">Included</span>
       </td>
@@ -149,18 +261,29 @@ function FeatureCell({ value }: { value: Cell }) {
   }
   if (value === false) {
     return (
-      <td className="px-4 py-3 text-center">
-        <Minus className="w-4 h-4 text-gray-300 mx-auto" aria-hidden="true" />
+      <td className="px-5 py-3.5 text-center">
+        <Minus className="w-4 h-4 text-gray-300 mx-auto" strokeWidth={3} aria-hidden="true" />
         <span className="sr-only">Not included</span>
       </td>
     )
   }
-  return <td className="px-4 py-3 text-center text-gray-600">{value}</td>
+  return <td className="px-5 py-3.5 text-center text-gray-600">{value}</td>
+}
+
+function PriceTag({ plan }: { plan: Plan }) {
+  return (
+    <div className="mb-1 flex items-baseline gap-1.5">
+      <span className="font-display text-4xl font-semibold text-[#0F2356] tracking-tight">
+        {plan.price === 0 ? 'Free' : `₹${plan.price}`}
+      </span>
+      {plan.price > 0 && <span className="text-gray-600 text-sm">/{plan.period}</span>}
+    </div>
+  )
 }
 
 export default function PricingPage() {
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-white">
       <script
         type="application/ld+json"
         // eslint-disable-next-line react/no-danger
@@ -172,88 +295,135 @@ export default function PricingPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationJsonLd) }}
       />
 
-      <div className="max-w-6xl mx-auto px-4 py-16">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold text-[#0F2356] text-balance">
-            Pricing that grows with your OET prep
-          </h1>
-          <p className="text-gray-500 mt-4 text-lg max-w-2xl mx-auto">
-            Start free with 3 speaking sessions a month. Paid plans from ₹
-            {FALLBACK_PLANS.find((p) => p.id === 'basic')!.price} (~$
-            {Math.round(FALLBACK_PLANS.find((p) => p.id === 'basic')!.price / INR_TO_USD)}) a
-            month unlock Reading, Listening, Writing, and the full Mock Test — no lock-in
-            contract, cancel anytime.
-          </p>
-        </div>
+      {/* Hero */}
+      <div className="max-w-3xl mx-auto px-4 pt-20 pb-14 text-center">
+        <h1 className="font-display text-4xl md:text-6xl font-semibold text-[#0F2356] text-balance leading-[1.05]">
+          Pricing built for how you actually prepare
+        </h1>
+        <p className="text-gray-500 mt-5 text-lg leading-relaxed text-balance">
+          Start free with 3 speaking sessions a month. Paid plans from ₹
+          {FALLBACK_PLANS.find((p) => p.id === 'basic')!.price} (~$
+          {Math.round(FALLBACK_PLANS.find((p) => p.id === 'basic')!.price / INR_TO_USD)}) a month unlock Reading,
+          Listening, Writing, and the full OET Exam Simulation — no lock-in contract, cancel anytime.
+        </p>
+      </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16 items-start">
-          {FALLBACK_PLANS.map((plan) => (
-            <div
-              key={plan.id}
-              className={`rounded-2xl bg-white flex flex-col ${
-                plan.highlight
-                  ? 'border-2 border-[#0F2356] shadow-xl md:-translate-y-2'
-                  : 'border border-gray-200 shadow-sm'
-              }`}
-            >
-              {plan.highlight && (
-                <div className="bg-[#0F2356] text-white text-center text-xs font-semibold uppercase tracking-wider py-2 rounded-t-2xl">
-                  Most Popular
-                </div>
-              )}
-              <div className="p-6 flex flex-col flex-1">
-                <h2 className="text-xl font-bold text-[#0F2356] mb-1">{plan.name}</h2>
-                <p className="text-sm text-gray-500 mb-4 min-h-[2.5rem]">{plan.description}</p>
-                <div className="mb-1">
-                  <span className="text-3xl font-black text-[#0F2356]">
-                    {plan.price === 0 ? 'Free' : `₹${plan.price}`}
+      {/* Plan cards */}
+      <div className="max-w-6xl mx-auto px-4 pb-24">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {FALLBACK_PLANS.map((plan) => {
+            const marketing = PLAN_MARKETING[plan.id]
+            return (
+              <div
+                key={plan.id}
+                className={`relative rounded-3xl bg-white flex flex-col h-full transition-transform duration-300 ${
+                  plan.highlight
+                    ? 'border border-emerald-200 md:-translate-y-3'
+                    : 'border border-gray-200 shadow-premium hover:-translate-y-1 hover:shadow-premium-lg'
+                }`}
+                style={
+                  plan.highlight
+                    ? {
+                        boxShadow:
+                          '0 2px 8px rgba(15,35,86,0.06), 0 32px 56px -16px rgba(4,120,87,0.28), 0 0 0 1px rgba(4,120,87,0.08)',
+                      }
+                    : undefined
+                }
+              >
+                {plan.highlight && (
+                  <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 bg-[#0F2356] text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-premium">
+                    <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+                    Most Popular
                   </span>
-                  {plan.price > 0 && <span className="text-gray-400 text-sm ml-1">/{plan.period}</span>}
-                </div>
-                {plan.price > 0 && (
-                  <p className="text-xs text-gray-400 mb-4">
-                    ≈ ${Math.round(plan.price / INR_TO_USD)} USD/{plan.period}
-                  </p>
                 )}
-                {plan.price === 0 && <p className="text-xs text-gray-400 mb-4">No credit card required</p>}
+                <div className="p-8 flex flex-col flex-1">
+                  <p className="text-sm font-semibold text-gray-500 mb-2">{plan.name}</p>
+                  <h2 className="font-display text-xl font-semibold text-[#0F2356] mb-2 text-balance leading-snug min-h-[3.5rem]">
+                    {marketing.headline}
+                  </h2>
+                  <p className="text-sm text-gray-500 mb-6 leading-relaxed min-h-[2.75rem]">{marketing.subtitle}</p>
 
-                <ul className="flex flex-col gap-2.5 mb-6 flex-1">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2.5 text-sm text-gray-600">
-                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" strokeWidth={3} aria-hidden="true" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
+                  <PriceTag plan={plan} />
+                  {plan.price > 0 ? (
+                    <p className="text-xs text-gray-600 mb-7">
+                      ≈ ${Math.round(plan.price / INR_TO_USD)} USD/{plan.period}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-600 mb-7">No credit card required</p>
+                  )}
 
-                <Link
-                  href="/auth/register"
-                  className={`mt-auto block w-full text-center font-semibold px-6 py-3 rounded-xl transition-colors ${
-                    plan.highlight
-                      ? 'bg-[#0F2356] text-white hover:bg-[#0F2356]/90'
-                      : 'bg-gray-50 text-[#0F2356] border border-gray-200 hover:bg-gray-100'
-                  }`}
-                >
-                  {plan.cta}
-                </Link>
+                  {marketing.includesNote && (
+                    <p className="text-xs font-semibold text-gray-600 mb-3 uppercase tracking-wide">
+                      {marketing.includesNote}
+                    </p>
+                  )}
+                  <ul className="flex flex-col gap-3 mb-8 flex-1">
+                    {marketing.highlights.map((f) => (
+                      <li key={f} className="flex items-start gap-2.5 text-sm text-gray-600 leading-snug">
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" strokeWidth={3} aria-hidden="true" />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <Link
+                    href="/auth/register"
+                    className={`block w-full text-center text-sm font-semibold px-6 py-3.5 rounded-xl transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2 ${
+                      plan.highlight
+                        ? 'bg-[#047857] text-white hover:bg-[#036546] hover:shadow-premium-lg'
+                        : 'bg-transparent text-[#0F2356] border border-gray-200 hover:border-[#0F2356]/30 hover:bg-[#0F2356]/[0.03]'
+                    }`}
+                  >
+                    {PLAN_CTA[plan.id]}
+                  </Link>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
+      </div>
 
-        <div className="mb-16">
-          <h2 className="text-2xl md:text-3xl font-bold text-[#0F2356] text-center mb-8">
-            Compare Every Feature
+      {/* Trust */}
+      <div className="border-y border-gray-100 bg-[#F8FAFC]">
+        <div className="max-w-5xl mx-auto px-4 py-16">
+          <div className="grid sm:grid-cols-3 gap-10">
+            {TRUST_POINTS.map(({ icon: Icon, title, body }) => (
+              <div key={title}>
+                <Icon className="w-6 h-6 text-[#047857] mb-4" strokeWidth={1.75} aria-hidden="true" />
+                <h3 className="font-display text-base font-semibold text-[#0F2356] mb-2">{title}</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">{body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-4 py-24">
+        {/* Comparison table */}
+        <div className="mb-24">
+          <h2 className="font-display text-2xl md:text-3xl font-semibold text-[#0F2356] text-center mb-3">
+            Compare every plan
           </h2>
-          <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-sm bg-white">
-            <table className="w-full text-sm">
+          <p className="text-gray-500 text-center mb-10 max-w-xl mx-auto">
+            Every plan scores against the same real OET rubric — higher tiers unlock more sub-tests, deeper
+            feedback, and exam-day simulation.
+          </p>
+          <div className="relative rounded-3xl border border-gray-200 shadow-premium bg-white">
+            <div className="overflow-x-auto rounded-3xl">
+            <table className="w-full text-sm min-w-[640px]">
               <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th scope="col" className="px-4 py-3 text-left font-bold text-[#0F2356]">
+                <tr className="border-b border-gray-200">
+                  <th scope="col" className="px-5 py-4 text-left font-semibold text-[#0F2356] w-[38%]">
                     Feature
                   </th>
                   {FALLBACK_PLANS.map((plan) => (
-                    <th key={plan.id} scope="col" className="px-4 py-3 text-center font-bold text-[#0F2356]">
+                    <th
+                      key={plan.id}
+                      scope="col"
+                      className={`px-5 py-4 text-center font-semibold ${
+                        plan.highlight ? 'text-[#047857]' : 'text-[#0F2356]'
+                      }`}
+                    >
                       {plan.name}
                     </th>
                   ))}
@@ -261,11 +431,11 @@ export default function PricingPage() {
               </thead>
               {FEATURE_SECTIONS.map((section) => (
                 <tbody key={section.title}>
-                  <tr className="bg-[#0F2356]/5">
+                  <tr className="bg-[#0F2356]/[0.04]">
                     <th
                       colSpan={5}
                       scope="colgroup"
-                      className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-[#0F2356]"
+                      className="px-5 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-[#0F2356]"
                     >
                       <span className="inline-flex items-center gap-2">
                         <section.icon className="w-3.5 h-3.5" aria-hidden="true" />
@@ -273,9 +443,9 @@ export default function PricingPage() {
                       </span>
                     </th>
                   </tr>
-                  {section.rows.map((row, i) => (
-                    <tr key={row.label} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}>
-                      <th scope="row" className="px-4 py-3 text-left font-medium text-gray-700">
+                  {section.rows.map((row) => (
+                    <tr key={row.label} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors">
+                      <th scope="row" className="px-5 py-3.5 text-left font-medium text-gray-700">
                         {row.label}
                       </th>
                       <FeatureCell value={row.free} />
@@ -287,26 +457,51 @@ export default function PricingPage() {
                 </tbody>
               ))}
             </table>
+            </div>
+            <div
+              aria-hidden="true"
+              className="absolute top-0 right-0 bottom-0 w-10 bg-gradient-to-l from-white to-transparent pointer-events-none rounded-r-3xl sm:hidden"
+            />
           </div>
         </div>
 
+        {/* FAQ */}
         <div className="max-w-3xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-[#0F2356] text-center mb-8">
-            Pricing Questions
+          <h2 className="font-display text-2xl md:text-3xl font-semibold text-[#0F2356] text-center mb-10">
+            Pricing questions
           </h2>
-          <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-white">
-            {PRICING_FAQS.map((faq, i) => (
-              <div key={faq.q} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                <div className="px-6 py-5">
-                  <h3 className="text-[#0F2356] font-semibold text-sm md:text-base leading-snug mb-2">
-                    {faq.q}
-                  </h3>
-                  <p className="text-gray-600 text-sm leading-relaxed">{faq.a}</p>
-                </div>
-                {i < PRICING_FAQS.length - 1 && <div className="border-b border-gray-100" />}
-              </div>
+          <div className="flex flex-col gap-3">
+            {PRICING_FAQS.map((faq) => (
+              <details
+                key={faq.q}
+                className="group rounded-2xl border border-gray-200 bg-white open:shadow-premium open:border-[#0F2356]/15 transition-shadow"
+              >
+                <summary className="cursor-pointer list-none flex items-center justify-between gap-4 px-6 py-5 font-semibold text-[#0F2356] rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
+                  {faq.q}
+                  <span className="shrink-0 text-gray-400 transition-transform duration-200 group-open:rotate-45 text-xl leading-none">
+                    +
+                  </span>
+                </summary>
+                <p className="px-6 pb-5 text-gray-600 text-sm leading-relaxed">{faq.a}</p>
+              </details>
             ))}
           </div>
+        </div>
+
+        {/* Closing CTA */}
+        <div className="max-w-3xl mx-auto mt-24 text-center rounded-3xl bg-[#0F2356] px-8 py-14">
+          <h2 className="font-display text-2xl md:text-3xl font-semibold text-white mb-3 text-balance">
+            Start preparing with confidence
+          </h2>
+          <p className="text-white/70 mb-8 max-w-md mx-auto">
+            Free to start, no credit card required. Upgrade whenever you're ready for the full syllabus.
+          </p>
+          <Link
+            href="/auth/register"
+            className="inline-block bg-[#047857] text-white font-semibold px-8 py-3.5 rounded-xl hover:bg-[#036546] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0F2356]"
+          >
+            Start Free
+          </Link>
         </div>
       </div>
     </main>

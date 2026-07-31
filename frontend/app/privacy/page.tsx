@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { ShieldCheck } from 'lucide-react'
+import { LegalLayout } from '@/components/legal/LegalLayout'
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
@@ -115,22 +117,11 @@ We aim to review and respond to all inquiries as quickly as possible.`,
 
 export default function PrivacyPage() {
   return (
-    <main className="min-h-screen px-4 py-20 max-w-3xl mx-auto">
-      <h1 className="text-3xl font-bold text-[#0F2356] mb-2">Privacy Policy</h1>
-      <p className="text-gray-500 text-sm mb-10">Effective Date: July 21, 2026</p>
-
-      <div className="space-y-10">
-        {SECTIONS.map(({ heading, body }) => (
-          <section key={heading}>
-            <h2 className="text-xl font-bold text-[#0F2356] mb-3">{heading}</h2>
-            {body.split('\n\n').map((paragraph, i) => (
-              <p key={i} className="text-gray-600 leading-relaxed mb-3 last:mb-0 whitespace-pre-line">
-                {paragraph}
-              </p>
-            ))}
-          </section>
-        ))}
-      </div>
-    </main>
+    <LegalLayout
+      icon={ShieldCheck}
+      title="Privacy Policy"
+      effectiveDate="July 21, 2026"
+      sections={SECTIONS}
+    />
   )
 }

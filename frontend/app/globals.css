@@ -132,6 +132,13 @@
   0% { transform: translateY(14px); opacity: 0; }
   100% { transform: translateY(0); opacity: 1; }
 }
+/* Generic entrance for static content sections (About/Privacy/Terms/Pricing
+   style pages) -- one shared keyframe instead of a per-page reimplementation.
+   Always paired with the motion-safe: variant at the call site. */
+@keyframes fade-up-in {
+  0% { transform: translateY(10px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
 
 input:-webkit-autofill,
 input:-webkit-autofill:hover,

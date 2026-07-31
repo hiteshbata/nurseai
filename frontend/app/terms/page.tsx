@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { Scale } from 'lucide-react'
+import { LegalLayout } from '@/components/legal/LegalLayout'
 
 export const metadata: Metadata = {
   title: 'Terms & Conditions',
@@ -143,22 +145,11 @@ We will do our best to address your concerns promptly and professionally.`,
 
 export default function TermsPage() {
   return (
-    <main className="min-h-screen px-4 py-20 max-w-3xl mx-auto">
-      <h1 className="text-3xl font-bold text-[#0F2356] mb-2">Terms &amp; Conditions</h1>
-      <p className="text-gray-500 text-sm mb-10">Effective Date: July 12, 2026</p>
-
-      <div className="space-y-10">
-        {SECTIONS.map(({ heading, body }) => (
-          <section key={heading}>
-            <h2 className="text-xl font-bold text-[#0F2356] mb-3">{heading}</h2>
-            {body.split('\n\n').map((paragraph, i) => (
-              <p key={i} className="text-gray-600 leading-relaxed mb-3 last:mb-0 whitespace-pre-line">
-                {paragraph}
-              </p>
-            ))}
-          </section>
-        ))}
-      </div>
-    </main>
+    <LegalLayout
+      icon={Scale}
+      title="Terms & Conditions"
+      effectiveDate="July 12, 2026"
+      sections={SECTIONS}
+    />
   )
 }
