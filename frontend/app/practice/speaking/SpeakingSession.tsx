@@ -602,7 +602,7 @@ export default function SpeakingSession({
                 aria-checked={autoListen}
                 title="When on, the mic reopens automatically once the patient finishes speaking"
                 className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition ${
-                  autoListen ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'
+                  autoListen ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-600'
                 }`}
               >
                 <span
@@ -624,7 +624,7 @@ export default function SpeakingSession({
                 aria-checked={captionsOn}
                 title="Show a large live caption of what's being said"
                 className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition ${
-                  captionsOn ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'
+                  captionsOn ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-600'
                 }`}
               >
                 <Captions className="size-3.5" />
@@ -636,7 +636,7 @@ export default function SpeakingSession({
                 aria-checked={showTranscript}
                 title="Show the running text of the conversation. Off by default so you can focus on speaking."
                 className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition ${
-                  showTranscript ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'
+                  showTranscript ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-600'
                 }`}
               >
                 <MessageSquareText className="size-3.5" />

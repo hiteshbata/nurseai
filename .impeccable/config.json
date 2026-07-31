@@ -1,0 +1,38 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "bounce-easing",
+        "value": "animate-bounce",
+        "createdAt": "2026-07-31T11:12:33.313Z",
+        "reason": "Typing indicator dots (SpeakingSession.tsx L771) — standard 3-dot staggered-bounce pattern for a live chat 'patient is responding' cue, matches iMessage/Slack convention. User confirmed intentional 2026-07-31."
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+        "createdAt": "2026-07-31T11:12:40.540Z",
+        "reason": "band-reveal grade-result animation (SpeakingSession.tsx L1022) — deliberate overshoot easing for the celebratory OET-band reveal moment, previously identified as the reference pattern worth copying to other test modules. User confirmed intentional 2026-07-31."
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "frontend/app/practice/speaking/SpeakingSession.tsx"
+        ],
+        "createdAt": "2026-07-31T11:13:14.806Z",
+        "reason": "L1124 is a rounded-full animate-spin loading spinner (border-b-2 on one side is how a spinner ring works), not a decorative accent border on a card. User confirmed intentional 2026-07-31."
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "*",
+        "files": [
+          "frontend/app/practice/speaking/SpeakingSession.tsx"
+        ],
+        "createdAt": "2026-07-31T11:13:57.699Z",
+        "reason": "L605/627/639: detector flattens a ternary className and cross-pairs text-gray-600 (unselected-state) with bg-emerald-50 (selected-state) — that pairing never coexists in the rendered DOM (real pairs are emerald-50/emerald-600 or gray-100/gray-600, bumped from gray-500 for AA contrast on 2026-07-31). No code fix possible for a pairing that doesn't render. User confirmed 2026-07-31."
+      }
+    ]
+  }
+}
