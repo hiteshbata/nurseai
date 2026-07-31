@@ -219,8 +219,8 @@ export default function LoginPage() {
                   aria-describedby={fieldErrors.email ? 'email-error' : undefined}
                   className={`h-11 w-full rounded-xl border bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:bg-white hover:border-gray-300 ${
                     fieldErrors.email
-                      ? 'border-red-300 focus:border-red-400 focus:ring-3 focus:ring-red-100'
-                      : 'border-gray-200 focus:border-[#0F2356]/40 focus:ring-3 focus:ring-[#0F2356]/8'
+                      ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100'
+                      : 'border-gray-200 focus:border-[#0F2356]/40 focus:ring-2 focus:ring-[#0F2356]/8'
                   }`}
                 />
                 {fieldErrors.email && (
@@ -250,8 +250,8 @@ export default function LoginPage() {
                     aria-describedby={fieldErrors.password ? 'password-error' : undefined}
                     className={`h-11 w-full rounded-xl border bg-gray-50/60 px-3.5 pr-11 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:bg-white hover:border-gray-300 ${
                       fieldErrors.password
-                        ? 'border-red-300 focus:border-red-400 focus:ring-3 focus:ring-red-100'
-                        : 'border-gray-200 focus:border-[#0F2356]/40 focus:ring-3 focus:ring-[#0F2356]/8'
+                        ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100'
+                        : 'border-gray-200 focus:border-[#0F2356]/40 focus:ring-2 focus:ring-[#0F2356]/8'
                     }`}
                   />
                   <button

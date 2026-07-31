@@ -138,7 +138,7 @@ export default function RegisterPage() {
                   onChange={handleChange}
                   placeholder="Your full name"
                   required
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-3 focus:ring-[#0F2356]/8 hover:border-gray-300"
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-2 focus:ring-[#0F2356]/8 hover:border-gray-300"
                 />
               </div>
 
@@ -155,7 +155,7 @@ export default function RegisterPage() {
                   placeholder="you@example.com"
                   autoComplete="email"
                   required
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-3 focus:ring-[#0F2356]/8 hover:border-gray-300"
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-2 focus:ring-[#0F2356]/8 hover:border-gray-300"
                 />
               </div>
 
@@ -173,7 +173,7 @@ export default function RegisterPage() {
                     placeholder="Create a password"
                     autoComplete="new-password"
                     required
-                    className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 pr-11 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-3 focus:ring-[#0F2356]/8 hover:border-gray-300"
+                    className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 pr-11 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-2 focus:ring-[#0F2356]/8 hover:border-gray-300"
                   />
                   <button
                     type="button"
@@ -200,7 +200,7 @@ export default function RegisterPage() {
                   placeholder="Confirm your password"
                   autoComplete="new-password"
                   required
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-3 focus:ring-[#0F2356]/8 hover:border-gray-300"
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-2 focus:ring-[#0F2356]/8 hover:border-gray-300"
                 />
               </div>
 
