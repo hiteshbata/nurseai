@@ -55,14 +55,18 @@ export default function HowItWorks() {
           {steps.map((step, i) => {
             const Icon = step.icon
             const isEmerald = step.color === "emerald"
+            // Alternating vertical offset on desktop -- a plain 4-up row of
+            // identical cards is the single most template-y shape on the
+            // page; this keeps the same content but breaks the dead-even rhythm.
+            const staggerClass = i % 2 === 1 ? "md:translate-y-6" : ""
             return (
               <div
                 key={step.number}
-                className="relative flex-1 flex flex-col items-center text-center px-4 z-10 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                className={`relative flex-1 flex flex-col items-center text-center px-4 z-10 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${staggerClass}`}
                 style={{
                   transitionDelay: `${i * 80}ms`,
                   opacity: inView ? 1 : 0,
-                  transform: inView ? "translateY(0)" : "translateY(12px)",
+                  transform: inView ? undefined : "translateY(12px)",
                 }}
               >
                 {/* Circle number */}
@@ -78,7 +82,7 @@ export default function HowItWorks() {
 
                 <div
                   className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${
-                    isEmerald ? "bg-emerald-50" : "bg-blue-50"
+                    isEmerald ? "bg-emerald-50" : "bg-[#0F2356]/5"
                   }`}
                 >
                   <Icon className={`w-6 h-6 ${isEmerald ? "text-[#10B981]" : "text-[#0F2356]"}`} />
