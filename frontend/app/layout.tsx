@@ -5,17 +5,22 @@ import { ImpersonationBanner } from '@/components/ImpersonationBanner'
 import { AnnouncementBanner } from '@/components/AnnouncementBanner'
 import Providers from './providers'
 import type { Metadata } from 'next'
-import { Fraunces } from 'next/font/google'
+import { Fraunces, Inter } from 'next/font/google'
 import ConditionalLayout from './conditional-layout'
 import { SITE_URL, SITE_NAME, SITE_DESCRIPTION } from '@/lib/site'
 
-// Display serif for landing-page headlines only (font-display utility) --
-// exposed as a CSS variable rather than the body default so the rest of the
-// app (dashboard, practice UI) keeps its plain system sans untouched.
+// Display serif for landing-page headlines only (font-display utility).
 const fraunces = Fraunces({
   subsets: ['latin'],
   axes: ['opsz', 'SOFT', 'WONK'],
   variable: '--font-display',
+  display: 'swap',
+})
+
+// Body/UI sans everywhere else -- replaces the browser default system font.
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-sans',
   display: 'swap',
 })
 
@@ -60,8 +65,8 @@ const organizationJsonLd = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={fraunces.variable}>
-      <body className="bg-gray-50 text-gray-900">
+    <html lang="en" className={`${fraunces.variable} ${inter.variable}`}>
+      <body className="bg-gray-50 text-gray-900 font-sans">
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
