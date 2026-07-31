@@ -220,13 +220,13 @@ export default function MockTestPage() {
             <Button onClick={begin} disabled={starting} className="mt-6 w-full h-12 text-base">
               {starting ? 'Assembling your paper…' : 'Begin Full Mock Test'}
             </Button>
-            <p className="mt-3 text-center text-xs text-gray-400">
+            <p className="mt-3 text-center text-xs text-muted-foreground">
               Starting begins the timer. Treat it like the real exam.
             </p>
           </div>
         </div>
 
-        <button onClick={() => router.push('/dashboard')} className="mt-6 block w-full text-center text-sm text-gray-400 hover:text-gray-600 transition">
+        <button onClick={() => router.push('/dashboard')} className="mt-6 block w-full text-center text-sm text-muted-foreground hover:text-gray-600 transition">
           Not now — back to dashboard
         </button>
       </div>
@@ -292,7 +292,7 @@ function PickerScreen({
           </div>
         </div>
 
-        <button onClick={onDashboard} className="mt-6 block w-full text-center text-sm text-gray-400 hover:text-gray-600 transition">
+        <button onClick={onDashboard} className="mt-6 block w-full text-center text-sm text-muted-foreground hover:text-gray-600 transition">
           Not now — back to dashboard
         </button>
       </div>
@@ -353,7 +353,7 @@ function SealedScreen({
             <Button onClick={onStartNew} disabled={starting} variant="outline" className="mt-6 w-full">
               {starting ? 'Assembling your paper…' : 'Start another mock test'}
             </Button>
-            <button onClick={onDashboard} className="mt-4 text-sm text-gray-400 hover:text-gray-600 transition">
+            <button onClick={onDashboard} className="mt-4 text-sm text-muted-foreground hover:text-gray-600 transition">
               Back to dashboard
             </button>
           </div>
@@ -439,7 +439,7 @@ function ReportView({
                 <div key={c.label} className="rounded-xl bg-gray-50 px-4 py-5 text-center">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{c.label}</p>
                   <p className="mt-1.5 text-xl font-bold text-[#0F2356]">{c.value}</p>
-                  {c.sub && <p className="mt-1 text-[11px] text-gray-400">{c.sub}</p>}
+                  {c.sub && <p className="mt-1 text-[11px] text-muted-foreground">{c.sub}</p>}
                 </div>
               ))}
             </div>
@@ -449,7 +449,7 @@ function ReportView({
             <Button onClick={onStartNew} disabled={starting} className="mt-6 w-full">
               {starting ? 'Assembling your paper…' : 'Start another mock test'}
             </Button>
-            <button onClick={onDashboard} className="mt-4 block w-full text-center text-sm text-gray-400 hover:text-gray-600 transition">
+            <button onClick={onDashboard} className="mt-4 block w-full text-center text-sm text-muted-foreground hover:text-gray-600 transition">
               Back to dashboard
             </button>
           </div>

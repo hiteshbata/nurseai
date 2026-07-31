@@ -471,7 +471,12 @@ export default function SpeakingSession({
             </div>
 
             <div className="mb-6">
-              <p className="text-center text-sm text-gray-500 mb-2">
+              <p
+                role="timer"
+                aria-live="off"
+                aria-atomic="true"
+                className="text-center text-sm text-gray-500 mb-2"
+              >
                 Reading time remaining:{' '}
                 <span className="font-semibold text-gray-700">{formatTime(readingTime)}</span>
               </p>
@@ -572,7 +577,7 @@ export default function SpeakingSession({
                   </span>
                 ) : (
                   <span
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-400"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
                     title={
                       convHistory.some((m) => m.role === 'nurse')
                         ? autoListen && session.isSpeaking
@@ -639,7 +644,12 @@ export default function SpeakingSession({
               </button>
               {/* Focus mode shows the clock large under the orb instead. */}
               {showTranscript && (
-                <p className="font-mono text-base font-bold tabular-nums text-[#0F2356]">
+                <p
+                  role="timer"
+                  aria-live="off"
+                  aria-atomic="true"
+                  className="font-mono text-base font-bold tabular-nums text-[#0F2356]"
+                >
                   {elapsedLabel}
                 </p>
               )}
@@ -672,10 +682,15 @@ export default function SpeakingSession({
                   onEndSession={handleEndConversation}
                 >
                   <div className="flex flex-col items-center gap-1">
-                    <p className="font-mono text-4xl font-bold tabular-nums text-[#0F2356]">
+                    <p
+                      role="timer"
+                      aria-live="off"
+                      aria-atomic="true"
+                      className="font-mono text-4xl font-bold tabular-nums text-[#0F2356]"
+                    >
                       {elapsedLabel}
                     </p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       {nurseTurnCount === 0
                         ? 'Tap the orb to start speaking'
                         : `${nurseTurnCount} response${nurseTurnCount === 1 ? '' : 's'} so far`}
@@ -687,7 +702,7 @@ export default function SpeakingSession({
                   {captionsOn && (
                     <div className="flex min-h-[64px] w-full max-w-md items-center">
                       {captionNode ?? (
-                        <p className="w-full text-center text-xs text-gray-300">
+                        <p className="w-full text-center text-xs text-muted-foreground">
                           Captions will appear here as you speak
                         </p>
                       )}
@@ -706,7 +721,7 @@ export default function SpeakingSession({
                   <Mic className="size-7 text-[#0F2356]/60" />
                 </div>
                 <p className="font-semibold text-gray-700">Ready to begin</p>
-                <p className="text-sm text-gray-400 max-w-xs">
+                <p className="text-sm text-muted-foreground max-w-xs">
                   Tap the orb below to speak to your patient
                 </p>
               </div>
@@ -720,7 +735,7 @@ export default function SpeakingSession({
                       </AvatarFallback>
                     </Avatar>
                     <div className={`flex flex-col gap-1 max-w-[70%] ${msg.role === 'nurse' ? 'items-end' : 'items-start'}`}>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-muted-foreground">
                         {msg.role === 'nurse' ? 'You (Nurse)' : 'Patient'}
                       </span>
                       <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
@@ -737,7 +752,7 @@ export default function SpeakingSession({
                       <AvatarFallback className="text-xs font-bold text-white bg-[#0F2356]">N</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col gap-1 items-end max-w-[70%]">
-                      <span className="text-xs text-gray-400">You (Nurse)</span>
+                      <span className="text-xs text-muted-foreground">You (Nurse)</span>
                       <div className="rounded-2xl px-4 py-2.5 text-sm leading-relaxed bg-[#0F2356]/80 text-white/80">
                         {session.interimText}...
                       </div>
@@ -750,7 +765,7 @@ export default function SpeakingSession({
                       <AvatarFallback className="text-xs font-bold text-white bg-gray-400">P</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col gap-1 items-start max-w-[70%]">
-                      <span className="text-xs text-gray-400">Patient</span>
+                      <span className="text-xs text-muted-foreground">Patient</span>
                       <div className="rounded-2xl px-4 py-3 bg-gray-100">
                         <div className="flex gap-1">
                           <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -797,7 +812,7 @@ export default function SpeakingSession({
               </button>
             </div>
             {(isProcessing || isEnding) && (
-              <p className="mx-auto mt-1.5 max-w-3xl text-xs text-gray-400">
+              <p className="mx-auto mt-1.5 max-w-3xl text-xs text-muted-foreground">
                 {isEnding ? 'Ending session…' : "Waiting for the patient's reply…"}
               </p>
             )}
@@ -907,7 +922,7 @@ export default function SpeakingSession({
                 </AvatarFallback>
               </Avatar>
               <div className={`flex flex-col gap-1 max-w-[75%] ${msg.role === 'nurse' ? 'items-end' : 'items-start'}`}>
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-muted-foreground">
                   {msg.role === 'nurse' ? 'You (Nurse)' : 'Patient'}
                 </span>
                 <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
@@ -994,7 +1009,7 @@ export default function SpeakingSession({
                   <div className="flex flex-col items-center gap-1 pr-4">
                     <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Clinical Score</p>
                     <p className="text-2xl font-bold text-[#0F2356]">
-                      {clinicalAverage}<span className="text-base font-normal text-gray-400">/6</span>
+                      {clinicalAverage}<span className="text-base font-normal text-muted-foreground">/6</span>
                     </p>
                   </div>
                   <div className="flex flex-col items-center gap-1 px-4">
@@ -1012,7 +1027,7 @@ export default function SpeakingSession({
                   <div className="flex flex-col items-center gap-1 pl-4">
                     <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Linguistic Score</p>
                     <p className="text-2xl font-bold text-[#0F2356]">
-                      {linguisticAverage}<span className="text-base font-normal text-gray-400">/6</span>
+                      {linguisticAverage}<span className="text-base font-normal text-muted-foreground">/6</span>
                     </p>
                   </div>
                 </div>
@@ -1244,7 +1259,7 @@ export default function SpeakingSession({
                       {/* Neutral fallback (unconfigured, no speech detected, or a typed turn) — never a fabricated positive result */}
                       {!pronunciationResult.plan_limited &&
                        !(pronunciationResult.has_azure && pronunciationResult.azure?.available) && (
-                        <p className="text-xs text-gray-400 mt-4">
+                        <p className="text-xs text-muted-foreground mt-4">
                           Pronunciation analysis is currently unavailable for this session.
                         </p>
                       )}

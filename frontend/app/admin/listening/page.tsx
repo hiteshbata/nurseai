@@ -179,7 +179,7 @@ function SectionFields({ value, onChange }: { value: SectionForm; onChange: (nex
         {value.questions.map((q, qi) => (
           <div key={qi} className="border rounded-lg p-4 space-y-3">
             <div className="flex items-start gap-2">
-              <span className="font-bold text-gray-400 mt-2">{qi + 1}.</span>
+              <span className="font-bold text-muted-foreground mt-2">{qi + 1}.</span>
               <textarea value={q.content} onChange={(e) => setQ(qi, { content: e.target.value })} rows={2}
                 placeholder="Question stem (or Part A blank label, e.g. '(1) lifting ___')" className="flex-1 px-3 py-2 border rounded-lg text-sm" />
               <button onClick={() => toggleType(qi)} className="text-xs font-semibold text-gray-500 hover:text-gray-700 border rounded-lg px-2 py-1.5 mt-1 shrink-0">
@@ -538,8 +538,8 @@ export default function AdminListeningPage() {
             <h3 className="font-bold mb-1">Attach answers (this section)</h3>
             <p className="text-xs text-gray-500 mb-2">Upload an answer-key PDF; AI fills the correct answers for this section's questions.</p>
             <input type="file" accept="application/pdf" onChange={(e) => attachAnswers(`/listening/admin/sections/${editor.id}/attach-answers`, e.target.files?.[0] ?? null, () => openEditor(editor.id!))} disabled={attaching} className="text-sm" />
-            {attaching && <p className="text-xs text-gray-400 mt-1">Matching…</p>}
-            <p className="text-xs text-gray-400 mt-3">Attach this extract's audio with the “Upload audio” button on its row in the Sections list.</p>
+            {attaching && <p className="text-xs text-muted-foreground mt-1">Matching…</p>}
+            <p className="text-xs text-muted-foreground mt-3">Attach this extract's audio with the “Upload audio” button on its row in the Sections list.</p>
           </div>
         ) : (
           <p className="text-sm text-gray-500 mb-6">Save this section first, then reopen it to attach answers.</p>
@@ -602,7 +602,7 @@ export default function AdminListeningPage() {
           <h3 className="font-bold mb-1">Attach answers to the whole test</h3>
           <p className="text-xs text-gray-500 mb-2">One answer-key PDF fills answers across every section (Part A→B→C order).</p>
           <input type="file" accept="application/pdf" onChange={(e) => attachAnswers(`/listening/admin/tests/${activeTest.id}/attach-answers`, e.target.files?.[0] ?? null, () => loadDetail(activeTest.id))} disabled={attaching} className="text-sm" />
-          {attaching && <p className="text-xs text-gray-400 mt-1">Matching…</p>}
+          {attaching && <p className="text-xs text-muted-foreground mt-1">Matching…</p>}
         </div>
 
         {/* Drafts pending save */}
@@ -618,7 +618,7 @@ export default function AdminListeningPage() {
           <div key={i} className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-amber-800">Draft section {i + 1} — not saved yet</h3>
-              <button onClick={() => setDrafts((prev) => prev.filter((_, j) => j !== i))} className="text-sm text-gray-400 hover:text-gray-600">Discard</button>
+              <button onClick={() => setDrafts((prev) => prev.filter((_, j) => j !== i))} className="text-sm text-muted-foreground hover:text-gray-600">Discard</button>
             </div>
             <SectionFields value={d} onChange={(next) => setDrafts((prev) => prev.map((x, j) => (j === i ? next : x)))} />
             <button onClick={() => saveDraft(i)} disabled={savingDraft === i} className="px-5 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">
@@ -640,14 +640,14 @@ export default function AdminListeningPage() {
                 <button onClick={handleDetect} disabled={detecting} className="px-4 py-2 border border-primary text-primary rounded-lg text-sm font-semibold hover:bg-primary/5 disabled:opacity-50">
                   {detecting ? 'Detecting…' : '✨ Auto-detect cuts with AI'}
                 </button>
-                <p className="text-[11px] text-gray-400 mt-1">Transcribes with Deepgram and fills every time below (intros + extracts). Review before cutting.</p>
+                <p className="text-[11px] text-muted-foreground mt-1">Transcribes with Deepgram and fills every time below (intros + extracts). Review before cutting.</p>
               </div>
             )}
 
             <div className="mt-4 space-y-3">
               {detail.groups.map((g) => (
                 <div key={g.part}>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Part {g.part}</p>
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1">Part {g.part}</p>
                   {/* part intro row */}
                   <div className="flex items-center gap-2 text-sm py-1">
                     <span className="flex-1 min-w-0 truncate italic text-gray-600">Part {g.part} — instructions
@@ -689,11 +689,11 @@ export default function AdminListeningPage() {
         {/* Existing sections */}
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="font-bold mb-4">Sections</h3>
-          {loadingDetail ? <p className="text-gray-400 text-sm">Loading…</p>
-            : !detail || detail.groups.length === 0 ? <p className="text-gray-400 text-sm">No sections yet. Add some above.</p>
+          {loadingDetail ? <p className="text-muted-foreground text-sm">Loading…</p>
+            : !detail || detail.groups.length === 0 ? <p className="text-muted-foreground text-sm">No sections yet. Add some above.</p>
             : detail.groups.map((g) => (
               <div key={g.part} className="mb-5">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Part {g.part}</p>
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Part {g.part}</p>
                 <div className="space-y-2">
                   {g.sections.map((s) => (
                     <div key={s.id} className="flex items-center justify-between gap-3 border rounded-lg px-3 py-2">
@@ -705,7 +705,7 @@ export default function AdminListeningPage() {
                           {s.has_audio
                             ? <span className="text-emerald-600"> · 🔊 {s.audio_start != null && s.audio_end != null ? `${fmtTime(s.audio_start)}–${fmtTime(s.audio_end)}` : 'audio set'}</span>
                             : <span className="text-amber-600"> · no audio</span>}
-                          {!s.is_active && <span className="text-gray-400"> · hidden</span>}
+                          {!s.is_active && <span className="text-muted-foreground"> · hidden</span>}
                         </p>
                       </div>
                       <div className="flex gap-3 shrink-0 text-sm items-center">
@@ -755,7 +755,7 @@ export default function AdminListeningPage() {
             </div>
           )}
         </div>
-        {tests.length === 0 ? <p className="text-gray-400 text-sm">None yet — create one above.</p> : (
+        {tests.length === 0 ? <p className="text-muted-foreground text-sm">None yet — create one above.</p> : (
           <div className="space-y-2">
             {tests.length > 1 && (
               <label className="flex items-center gap-2 text-xs text-gray-500 px-1">
@@ -768,7 +768,7 @@ export default function AdminListeningPage() {
                 <div className="flex items-center gap-3 min-w-0">
                   <input type="checkbox" checked={selectedTestIds.has(t.id)} onChange={() => toggleTestSelect(t.id)} aria-label={`Select ${t.title}`} />
                   <div className="min-w-0">
-                    <p className="font-semibold truncate">{t.title} {t.is_active ? <span className="text-xs text-emerald-600">● live</span> : <span className="text-xs text-gray-400">draft</span>}</p>
+                    <p className="font-semibold truncate">{t.title} {t.is_active ? <span className="text-xs text-emerald-600">● live</span> : <span className="text-xs text-muted-foreground">draft</span>}</p>
                     <p className="text-xs text-gray-500">
                       {t.section_count} sections · Parts {t.parts.join('/') || '—'} · {t.question_count} Q
                       {t.missing_answers > 0 && <span className="text-red-500"> · {t.missing_answers} missing answers</span>}

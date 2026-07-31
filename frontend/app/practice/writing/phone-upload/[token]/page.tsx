@@ -123,7 +123,7 @@ export default function PhoneUploadPage() {
                   >
                     ◀
                   </button>
-                  <span className="text-xs text-gray-400">Page {i + 1}</span>
+                  <span className="text-xs text-muted-foreground">Page {i + 1}</span>
                   <button
                     onClick={() => movePhoto(i, 1)}
                     disabled={i === photos.length - 1}
@@ -137,7 +137,7 @@ export default function PhoneUploadPage() {
             </div>
           ))}
           {photos.length < 3 && (
-            <label className="h-32 w-24 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 active:border-blue-500 active:text-blue-500 text-sm text-center cursor-pointer">
+            <label className="h-32 w-24 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-muted-foreground active:border-blue-500 active:text-blue-500 text-sm text-center cursor-pointer">
               <span className="text-2xl">＋</span>
               Photo
               <input
@@ -150,7 +150,7 @@ export default function PhoneUploadPage() {
             </label>
           )}
         </div>
-        <p className="text-xs text-gray-400 mb-6">Up to 3 pages. Lay the letter flat, fill the frame, avoid shadows.</p>
+        <p className="text-xs text-muted-foreground mb-6">Up to 3 pages. Lay the letter flat, fill the frame, avoid shadows.</p>
 
         <button
           onClick={send}

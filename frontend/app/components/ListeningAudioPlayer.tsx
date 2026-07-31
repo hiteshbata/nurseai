@@ -75,7 +75,7 @@ export default function ListeningAudioPlayer({ srcs, allowReplay = false }: Prop
 
   if (total === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-400">
+      <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-muted-foreground">
         No audio for this part yet.
       </div>
     )
@@ -116,13 +116,13 @@ export default function ListeningAudioPlayer({ srcs, allowReplay = false }: Prop
           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
             <div className="h-full bg-primary transition-all duration-200" style={{ width: `${pct}%` }} />
           </div>
-          <div className="flex justify-between text-[11px] text-gray-400 mt-1 tabular-nums">
+          <div className="flex justify-between text-[11px] text-muted-foreground mt-1 tabular-nums">
             <span>{total > 1 ? `Extract ${idx + 1} of ${total}` : fmt(cur)}</span>
             <span>{fmt(dur)}</span>
           </div>
         </div>
       </div>
-      <p className={`text-xs mt-2 ${err ? 'text-red-600' : 'text-gray-400'}`}>
+      <p className={`text-xs mt-2 ${err ? 'text-red-600' : 'text-muted-foreground'}`}>
         {err
           ? `⚠ ${err}`
           : locked

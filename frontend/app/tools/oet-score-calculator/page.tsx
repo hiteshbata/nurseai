@@ -127,7 +127,7 @@ export default function OetScoreCalculatorPage() {
           </p>
         </div>
 
-        <Suspense fallback={<div className="text-center text-gray-400">Loading calculator…</div>}>
+        <Suspense fallback={<div className="text-center text-muted-foreground">Loading calculator…</div>}>
           <ScoreCalculator />
         </Suspense>
 

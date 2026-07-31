@@ -254,8 +254,9 @@ export default function ProfilePage() {
               {changingPassword ? (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Current password</label>
+                    <label htmlFor="currentPassword" className="block text-sm font-semibold text-gray-700 mb-2">Current password</label>
                     <Input
+                      id="currentPassword"
                       type="password"
                       autoComplete="current-password"
                       value={currentPassword}
@@ -263,8 +264,9 @@ export default function ProfilePage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">New password</label>
+                    <label htmlFor="newPassword" className="block text-sm font-semibold text-gray-700 mb-2">New password</label>
                     <Input
+                      id="newPassword"
                       type="password"
                       autoComplete="new-password"
                       value={newPassword}
@@ -272,8 +274,9 @@ export default function ProfilePage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Confirm new password</label>
+                    <label htmlFor="confirmNewPassword" className="block text-sm font-semibold text-gray-700 mb-2">Confirm new password</label>
                     <Input
+                      id="confirmNewPassword"
                       type="password"
                       autoComplete="new-password"
                       value={confirmNewPassword}
@@ -319,7 +322,7 @@ export default function ProfilePage() {
                 <p className="text-sm font-semibold text-gray-800">
                   {planLabel}
                   {sessionUsage && (
-                    <span className="text-gray-400 font-normal">
+                    <span className="text-muted-foreground font-normal">
                       {' '}— {sessionUsage.sessions_used} / {sessionUsage.sessions_limit} sessions used
                     </span>
                   )}
@@ -337,7 +340,7 @@ export default function ProfilePage() {
                     <p className="text-sm font-semibold text-gray-800">
                       {formatDisplayDate(sessionUsage?.plan_expires_at ?? null)}
                       {!sessionUsage?.auto_renew_enabled && sessionUsage?.plan_expires_at && (
-                        <span className="text-gray-400 font-normal"> — then drops to Free</span>
+                        <span className="text-muted-foreground font-normal"> — then drops to Free</span>
                       )}
                     </p>
                   </div>
@@ -381,10 +384,11 @@ export default function ProfilePage() {
           {editing ? (
             <div className="space-y-5">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label htmlFor="editTargetBand" className="block text-sm font-semibold text-gray-700 mb-2">
                   Target Band
                 </label>
                 <Select
+                  id="editTargetBand"
                   value={editTargetBand}
                   onChange={(e) => setEditTargetBand(e.target.value)}
                 >
@@ -396,10 +400,11 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Exam Date <span className="text-gray-400 font-normal">(optional)</span>
+                <label htmlFor="editExamDate" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Exam Date <span className="text-muted-foreground font-normal">(optional)</span>
                 </label>
                 <Input
+                  id="editExamDate"
                   type="date"
                   value={editExamDate}
                   onChange={(e) => setEditExamDate(e.target.value)}
@@ -415,14 +420,15 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <span id="editDaysPerWeekLabel" className="block text-sm font-semibold text-gray-700 mb-2">
                   Practice days per week
-                </label>
-                <div className="flex gap-2">
+                </span>
+                <div role="group" aria-labelledby="editDaysPerWeekLabel" className="flex gap-2">
                   {[2, 3, 4, 5, 6, 7].map((d) => (
                     <button
                       key={d}
                       onClick={() => setEditDaysPerWeek(d)}
+                      aria-pressed={editDaysPerWeek === d}
                       className={`flex-1 py-3 rounded-xl font-semibold border-2 transition ${
                         editDaysPerWeek === d
                           ? 'border-blue-600 bg-blue-50 text-blue-700'

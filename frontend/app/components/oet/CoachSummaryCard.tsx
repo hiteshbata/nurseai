@@ -42,9 +42,9 @@ export function CoachSummaryCard() {
           <Bot className="w-4 h-4 text-indigo-600" aria-hidden="true" />
         </div>
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-0.5">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-0.5">
             AI Coach
-          </p>
+          </h2>
           {summary ? (
             <p className="text-sm text-foreground/90 leading-relaxed">{summary}</p>
           ) : (

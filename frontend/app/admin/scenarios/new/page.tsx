@@ -68,8 +68,9 @@ export default function NewScenarioPage() {
             <h2 className="text-xl font-bold mb-4">Basic Information</h2>
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <label className="block font-semibold mb-2">Module</label>
+                <label htmlFor="scenarioModule" className="block font-semibold mb-2">Module</label>
                 <select
+                  id="scenarioModule"
                   value={formData.module}
                   onChange={(e) => setFormData({ ...formData, module: e.target.value })}
                   className="w-full px-4 py-2 border rounded-lg"
@@ -81,8 +82,9 @@ export default function NewScenarioPage() {
                 </select>
               </div>
               <div>
-                <label className="block font-semibold mb-2">Title</label>
+                <label htmlFor="scenarioTitle" className="block font-semibold mb-2">Title</label>
                 <input
+                  id="scenarioTitle"
                   type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
@@ -92,8 +94,9 @@ export default function NewScenarioPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-2">Setting</label>
+                <label htmlFor="scenarioSetting" className="block font-semibold mb-2">Setting</label>
                 <input
+                  id="scenarioSetting"
                   type="text"
                   value={formData.setting}
                   onChange={(e) => setFormData({ ...formData, setting: e.target.value })}
@@ -102,8 +105,9 @@ export default function NewScenarioPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-2">Difficulty</label>
+                <label htmlFor="scenarioDifficulty" className="block font-semibold mb-2">Difficulty</label>
                   <select
+                    id="scenarioDifficulty"
                     value={formData.difficulty}
                     onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
                     className="w-full px-4 py-2 border rounded-lg"
@@ -123,8 +127,9 @@ export default function NewScenarioPage() {
             
             <div className="space-y-4">
               <div>
-                <label className="block font-semibold mb-2">Patient Name</label>
+                <label htmlFor="patientName" className="block font-semibold mb-2">Patient Name</label>
                 <input
+                  id="patientName"
                   type="text"
                   value={formData.interlocutor_card.patient_name}
                   onChange={(e) => setFormData({
@@ -139,8 +144,9 @@ export default function NewScenarioPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-2">Age</label>
+                <label htmlFor="patientAge" className="block font-semibold mb-2">Age</label>
                 <input
+                  id="patientAge"
                   type="text"
                   value={formData.interlocutor_card.age}
                   onChange={(e) => setFormData({
@@ -155,8 +161,9 @@ export default function NewScenarioPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-2">Condition</label>
+                <label htmlFor="patientCondition" className="block font-semibold mb-2">Condition</label>
                 <input
+                  id="patientCondition"
                   type="text"
                   value={formData.interlocutor_card.condition}
                   onChange={(e) => setFormData({
@@ -171,8 +178,9 @@ export default function NewScenarioPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-2">Mood</label>
+                <label htmlFor="patientMood" className="block font-semibold mb-2">Mood</label>
                 <input
+                  id="patientMood"
                   type="text"
                   value={formData.interlocutor_card.mood}
                   onChange={(e) => setFormData({
@@ -187,8 +195,9 @@ export default function NewScenarioPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-2">Background</label>
+                <label htmlFor="patientBackground" className="block font-semibold mb-2">Background</label>
                 <textarea
+                  id="patientBackground"
                   value={formData.interlocutor_card.background}
                   onChange={(e) => setFormData({
                     ...formData,
@@ -203,40 +212,42 @@ export default function NewScenarioPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-2">Concerns (one per line)</label>
-                {formData.interlocutor_card.concerns.map((concern: string, idx: number) => (
-                  <input
-                    key={idx}
-                    type="text"
-                    value={concern}
-                    onChange={(e) => {
-                      const newConcerns = [...formData.interlocutor_card.concerns]
-                      newConcerns[idx] = e.target.value
-                      setFormData({
-                        ...formData,
-                        interlocutor_card: {
-                          ...formData.interlocutor_card,
-                          concerns: newConcerns,
-                        },
-                      })
-                    }}
-                    className="w-full px-4 py-2 border rounded-lg mb-2"
-                    placeholder={`Concern ${idx + 1}`}
-                  />
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setFormData({
-                    ...formData,
-                    interlocutor_card: {
-                      ...formData.interlocutor_card,
-                      concerns: [...formData.interlocutor_card.concerns, ''],
-                    },
-                  })}
-                  className="text-blue-600 text-sm"
-                >
-                  + Add concern
-                </button>
+                <span id="concernsLabel" className="block font-semibold mb-2">Concerns (one per line)</span>
+                <div role="group" aria-labelledby="concernsLabel">
+                  {formData.interlocutor_card.concerns.map((concern: string, idx: number) => (
+                    <input
+                      key={idx}
+                      type="text"
+                      value={concern}
+                      onChange={(e) => {
+                        const newConcerns = [...formData.interlocutor_card.concerns]
+                        newConcerns[idx] = e.target.value
+                        setFormData({
+                          ...formData,
+                          interlocutor_card: {
+                            ...formData.interlocutor_card,
+                            concerns: newConcerns,
+                          },
+                        })
+                      }}
+                      className="w-full px-4 py-2 border rounded-lg mb-2"
+                      placeholder={`Concern ${idx + 1}`}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setFormData({
+                      ...formData,
+                      interlocutor_card: {
+                        ...formData.interlocutor_card,
+                        concerns: [...formData.interlocutor_card.concerns, ''],
+                      },
+                    })}
+                    className="text-blue-600 text-sm"
+                  >
+                    + Add concern
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -248,49 +259,52 @@ export default function NewScenarioPage() {
             
             <div className="space-y-4">
               <div>
-                <label className="block font-semibold mb-2">Tasks (one per line)</label>
-                {formData.nurse_card.tasks.map((task: string, idx: number) => (
-                  <input
-                    key={idx}
-                    type="text"
-                    value={task}
-                    onChange={(e) => {
-                      const newTasks = [...formData.nurse_card.tasks]
-                      newTasks[idx] = e.target.value
-                      setFormData({
-                        ...formData,
-                        nurse_card: {
-                          ...formData.nurse_card,
-                          tasks: newTasks,
-                        },
-                      })
-                    }}
-                    className="w-full px-4 py-2 border rounded-lg mb-2"
-                    placeholder={`Task ${idx + 1} - what should student do`}
-                  />
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setFormData({
-                    ...formData,
-                    nurse_card: {
-                      ...formData.nurse_card,
-                      tasks: [...formData.nurse_card.tasks, ''],
-                    },
-                  })}
-                  className="text-green-600 text-sm"
-                >
-                  + Add task
-                </button>
+                <span id="tasksLabel" className="block font-semibold mb-2">Tasks (one per line)</span>
+                <div role="group" aria-labelledby="tasksLabel">
+                  {formData.nurse_card.tasks.map((task: string, idx: number) => (
+                    <input
+                      key={idx}
+                      type="text"
+                      value={task}
+                      onChange={(e) => {
+                        const newTasks = [...formData.nurse_card.tasks]
+                        newTasks[idx] = e.target.value
+                        setFormData({
+                          ...formData,
+                          nurse_card: {
+                            ...formData.nurse_card,
+                            tasks: newTasks,
+                          },
+                        })
+                      }}
+                      className="w-full px-4 py-2 border rounded-lg mb-2"
+                      placeholder={`Task ${idx + 1} - what should student do`}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setFormData({
+                      ...formData,
+                      nurse_card: {
+                        ...formData.nurse_card,
+                        tasks: [...formData.nurse_card.tasks, ''],
+                      },
+                    })}
+                    className="text-green-600 text-sm"
+                  >
+                    + Add task
+                  </button>
+                </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="nurseRoleDescription" className="block text-sm font-medium text-gray-700 mb-1">
                   Nurse Role Description
                 </label>
                 <p className="text-xs text-red-500 mb-2">
                   This is the NURSE row on the OET card — e.g. "You are speaking to a 25-year-old man who has presented to the Emergency Room. He looks very uncomfortable."
                 </p>
                 <textarea
+                  id="nurseRoleDescription"
                   value={formData.nurse_card.role}
                   onChange={e => setFormData({
                     ...formData,
@@ -304,8 +318,9 @@ export default function NewScenarioPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-2">Setting Description</label>
+                <label htmlFor="nurseSettingDescription" className="block font-semibold mb-2">Setting Description</label>
                 <textarea
+                  id="nurseSettingDescription"
                   value={formData.nurse_card.setting_description}
                   onChange={(e) => setFormData({
                     ...formData,
@@ -319,8 +334,9 @@ export default function NewScenarioPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-2">Patient Summary</label>
+                <label htmlFor="patientSummary" className="block font-semibold mb-2">Patient Summary</label>
                 <textarea
+                  id="patientSummary"
                   value={formData.nurse_card.patient_summary}
                   onChange={(e) => setFormData({
                     ...formData,

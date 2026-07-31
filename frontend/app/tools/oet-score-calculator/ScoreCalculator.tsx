@@ -249,7 +249,7 @@ export function ScoreCalculator() {
                   <tr key={reg.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}>
                     <th scope="row" className="px-4 py-3 text-left font-medium text-gray-700">
                       {reg.name}
-                      <span className="block text-xs text-gray-400 font-normal">{reg.country}</span>
+                      <span className="block text-xs text-muted-foreground font-normal">{reg.country}</span>
                     </th>
                     {MODULES.map((m) => (
                       <td key={m} className="px-4 py-3 text-center">
@@ -296,7 +296,7 @@ export function ScoreCalculator() {
         </div>
       )}
 
-      <p className="text-xs text-gray-400 mt-6 text-center">
+      <p className="text-xs text-muted-foreground mt-6 text-center">
         Grade input uses the low end of each grade&apos;s numeric band ({scoreToGrade(350)} = 350+), so a
         result marked <span className="text-amber-500 font-bold">?</span> means enter your exact number
         for a precise check. Regulator requirements change — always confirm on the regulator&apos;s own

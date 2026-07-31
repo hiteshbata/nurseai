@@ -58,7 +58,7 @@ export default function ListeningPracticePage() {
         {tests.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-lg shadow mt-8">
             <p className="text-xl text-gray-500 mb-2">No listening tests available yet</p>
-            <p className="text-gray-400">Check back soon — new tests are added regularly.</p>
+            <p className="text-muted-foreground">Check back soon — new tests are added regularly.</p>
           </div>
         ) : (
           <div className="mt-8">

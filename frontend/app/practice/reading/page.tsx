@@ -249,7 +249,7 @@ export default function ReadingPracticePage() {
           {tests.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-lg shadow mt-8">
               <p className="text-xl text-gray-500 mb-2">No reading tests available yet</p>
-              <p className="text-gray-400">Check back soon — new tests are added regularly.</p>
+              <p className="text-muted-foreground">Check back soon — new tests are added regularly.</p>
             </div>
           ) : (
             <div className="mt-8">
@@ -309,7 +309,7 @@ export default function ReadingPracticePage() {
                 )}
               </div>
             </DictionaryLookup>
-            <p className="text-xs text-gray-400 mt-3">Double-click a word for a definition. Select a phrase to highlight it — click a highlight to remove it.</p>
+            <p className="text-xs text-muted-foreground mt-3">Double-click a word for a definition. Select a phrase to highlight it — click a highlight to remove it.</p>
           </Card>
 
           <Card className="p-8 mb-6">
@@ -322,7 +322,7 @@ export default function ReadingPracticePage() {
               rows={3}
               className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-sm"
             />
-            {savingNotes && <p className="text-xs text-gray-400 mt-1">Saving…</p>}
+            {savingNotes && <p className="text-xs text-muted-foreground mt-1">Saving…</p>}
           </Card>
 
           <Card className="p-8">
@@ -407,7 +407,7 @@ export default function ReadingPracticePage() {
                 {result.correct} of {result.total} correct
               </div>
               {result.words_per_minute && (
-                <div className="text-sm text-gray-400 mt-1">Reading speed: {result.words_per_minute} words/minute</div>
+                <div className="text-sm text-muted-foreground mt-1">Reading speed: {result.words_per_minute} words/minute</div>
               )}
             </div>
 

@@ -41,7 +41,7 @@ function InstituteLeadForm() {
   }
 
   const inputClass =
-    "w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#10B981] focus:border-transparent"
+    "w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-800 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#10B981] focus:border-transparent"
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">

@@ -99,7 +99,7 @@ function SelectPhase({
         {scenarios.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-xl shadow">
             <p className="text-xl text-gray-500 mb-2">No scenarios available</p>
-            <p className="text-gray-400">Ask an admin to create speaking scenarios</p>
+            <p className="text-muted-foreground">Ask an admin to create speaking scenarios</p>
           </div>
         ) : (
           <>
@@ -213,7 +213,7 @@ function SelectPhase({
             {filteredScenarios.length === 0 ? (
               <div className="text-center py-16 bg-white rounded-xl shadow">
                 <p className="text-lg font-semibold text-gray-500 mb-1">No scenarios match your filters</p>
-                <p className="text-gray-400 text-sm">Try a different search term or clear a filter</p>
+                <p className="text-muted-foreground text-sm">Try a different search term or clear a filter</p>
               </div>
             ) : (
               <div className="grid md:grid-cols-2 gap-6">

@@ -732,7 +732,7 @@ export default function AdminReadingPage() {
           </button>
         </div>
         {tests.length === 0 ? (
-          <p className="text-gray-400 text-sm">No tests yet.</p>
+          <p className="text-muted-foreground text-sm">No tests yet.</p>
         ) : (
           <div className="space-y-3">
             {tests.map((t) => {
@@ -752,12 +752,12 @@ export default function AdminReadingPage() {
                       <span className="flex gap-1 shrink-0">
                         {ALL_PARTS.map((p) => (
                           <span key={p} title={t.parts.includes(p) ? `Part ${p} present` : `No Part ${p} yet`}
-                            className={`text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded ${t.parts.includes(p) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-400'}`}>
+                            className={`text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded ${t.parts.includes(p) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-muted-foreground'}`}>
                             {p}
                           </span>
                         ))}
                       </span>
-                      <span className="text-gray-400 text-xs shrink-0">{t.passage_count}p · {t.question_count}Q</span>
+                      <span className="text-muted-foreground text-xs shrink-0">{t.passage_count}p · {t.question_count}Q</span>
                       {t.question_count > 0 && (
                         <span className={`text-xs font-semibold shrink-0 ${t.missing_answers === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
                           {t.missing_answers === 0 ? '✓' : '⚠'} answers {t.question_count - t.missing_answers}/{t.question_count}
@@ -799,7 +799,7 @@ export default function AdminReadingPage() {
                             ? `Extracting…${extractProgress ? ` (${extractProgress.done}/${extractProgress.total})` : ''}`
                             : files.length > 1 ? `Extract ${files.length} PDFs into this test` : 'Extract into this test'}
                         </button>
-                        <span className="text-[11px] text-gray-400">
+                        <span className="text-[11px] text-muted-foreground">
                           {files.length > 1 ? `${files.length} files selected — ` : ''}Passages appear below to review, then Save.
                         </span>
                       </div>
@@ -813,7 +813,7 @@ export default function AdminReadingPage() {
                           {attachingTestId === t.id ? 'Matching…' : 'Match answers'}
                         </button>
                         {!(attachTestResult && attachTestResult.testId === t.id) && (
-                          <span className="text-[11px] text-gray-400">Fills every blank answer in this test at once.</span>
+                          <span className="text-[11px] text-muted-foreground">Fills every blank answer in this test at once.</span>
                         )}
                         {attachTestResult && attachTestResult.testId === t.id && (
                           <span className={`text-xs font-semibold ${attachTestResult.matched > 0 ? 'text-emerald-700' : 'text-amber-600'}`}>
@@ -828,9 +828,9 @@ export default function AdminReadingPage() {
                         )}
                       </div>
                       {loadingDetailId === t.id && !testDetail[t.id] ? (
-                        <p className="text-gray-400 text-xs py-2">Loading contents…</p>
+                        <p className="text-muted-foreground text-xs py-2">Loading contents…</p>
                       ) : !testDetail[t.id] || testDetail[t.id].groups.length === 0 ? (
-                        <p className="text-gray-400 text-xs py-2">No passages assigned yet. Extract a PDF into this test, or assign existing passages below.</p>
+                        <p className="text-muted-foreground text-xs py-2">No passages assigned yet. Extract a PDF into this test, or assign existing passages below.</p>
                       ) : (
                         testDetail[t.id].groups.map((g) => (
                           <div key={g.part} className="mb-3 last:mb-0">
@@ -846,7 +846,7 @@ export default function AdminReadingPage() {
                                         <span className="text-gray-400 w-3 shrink-0">{pExpanded ? '▾' : '▸'}</span>
                                         <span className="font-medium truncate">{p.title || '(untitled)'}</span>
                                         {!p.is_active && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-500 shrink-0">Hidden</span>}
-                                        <span className="text-gray-400 text-xs shrink-0">{p.question_count}Q</span>
+                                        <span className="text-muted-foreground text-xs shrink-0">{p.question_count}Q</span>
                                         {p.question_count > 0 && (p.missing_answers > 0
                                           ? <span className="text-amber-600 text-xs font-semibold shrink-0">⚠ {p.missing_answers} no answer</span>
                                           : <span className="text-emerald-600 text-xs font-semibold shrink-0">✓ answers</span>)}
@@ -860,7 +860,7 @@ export default function AdminReadingPage() {
                                     {pExpanded && (
                                       <div className="border-t px-3 py-2 space-y-2">
                                         {p.questions.length === 0 ? (
-                                          <p className="text-gray-400 text-xs">No questions.</p>
+                                          <p className="text-muted-foreground text-xs">No questions.</p>
                                         ) : p.questions.map((q, qi) => {
                                           const noAnswer = !(q.correct_answer || '').trim()
                                           return (
@@ -934,7 +934,7 @@ export default function AdminReadingPage() {
         <div key={pi} className="bg-white rounded-lg shadow p-6 mb-8 space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-lg">Review & Edit ({pi + 1} of {drafts.length})</h2>
-            <button onClick={() => discard(pi)} className="text-sm text-gray-400 hover:text-gray-600">Discard</button>
+            <button onClick={() => discard(pi)} className="text-sm text-muted-foreground hover:text-gray-600">Discard</button>
           </div>
 
           <div className="grid md:grid-cols-3 gap-4">
@@ -983,7 +983,7 @@ export default function AdminReadingPage() {
             {draft.questions.map((q, qi) => (
               <div key={qi} className="border rounded-lg p-4 space-y-3">
                 <div className="flex items-start gap-2">
-                  <span className="font-bold text-gray-400 mt-2">{qi + 1}.</span>
+                  <span className="font-bold text-muted-foreground mt-2">{qi + 1}.</span>
                   <textarea value={q.content} onChange={(e) => setQ(pi, qi, { content: e.target.value })}
                     rows={2} placeholder="Question stem" className="flex-1 px-3 py-2 border rounded-lg text-sm" />
                   <button onClick={() => toggleQType(pi, qi)}
@@ -1040,7 +1040,7 @@ export default function AdminReadingPage() {
         <div id="passage-editor" className="bg-white rounded-lg shadow p-6 mb-8 space-y-6 border-2 border-blue-200">
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-lg">Editing: {editingPassage.title}</h2>
-            <button onClick={closeEdit} className="text-sm text-gray-400 hover:text-gray-600">Close</button>
+            <button onClick={closeEdit} className="text-sm text-muted-foreground hover:text-gray-600">Close</button>
           </div>
 
           <div className="grid md:grid-cols-3 gap-4">
@@ -1110,7 +1110,7 @@ export default function AdminReadingPage() {
                   disabled={uploadingImage}
                   onChange={(e) => { handleUploadImage(e.target.files?.[0] ?? null); e.target.value = '' }} />
               </label>
-              <span className="text-[11px] text-gray-400">Inserts an <code>![figure](…)</code> line at the end — move it to where the figure should sit. Shows as a real image to students. Also renders tables written as Markdown pipe tables.</span>
+              <span className="text-[11px] text-muted-foreground">Inserts an <code>![figure](…)</code> line at the end — move it to where the figure should sit. Shows as a real image to students. Also renders tables written as Markdown pipe tables.</span>
             </div>
           </div>
 
@@ -1131,7 +1131,7 @@ export default function AdminReadingPage() {
             {editingPassage.questions.map((q, qi) => (
               <div key={q.id ?? `new-${qi}`} className="border rounded-lg p-4 space-y-3">
                 <div className="flex items-start gap-2">
-                  <span className="font-bold text-gray-400 mt-2">{qi + 1}.</span>
+                  <span className="font-bold text-muted-foreground mt-2">{qi + 1}.</span>
                   <textarea value={q.content} onChange={(e) => setEditQ(qi, { content: e.target.value })}
                     rows={2} placeholder="Question stem" className="flex-1 px-3 py-2 border rounded-lg text-sm" />
                   <button onClick={() => toggleEditQType(qi)}
@@ -1202,7 +1202,7 @@ export default function AdminReadingPage() {
         </div>
         <p className="text-xs text-gray-500 mb-4">These belong to no test yet — assign each into a test (so students get it), or delete it. Passages already in a test are managed in the drill-down above.</p>
         {unassignedRows.length === 0 ? (
-          <p className="text-gray-400 text-sm">Nothing here — every passage is in a test. 🎉</p>
+          <p className="text-muted-foreground text-sm">Nothing here — every passage is in a test. 🎉</p>
         ) : (
           <table className="w-full text-sm">
             <thead>

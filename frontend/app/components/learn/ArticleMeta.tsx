@@ -5,5 +5,5 @@ export function ArticleMeta({ date }: { date: string }) {
     day: 'numeric',
   })
 
-  return <p className="text-sm text-gray-400 mb-8">By SpeakOET Team · {formatted}</p>
+  return <p className="text-sm text-muted-foreground mb-8">By SpeakOET Team · {formatted}</p>
 }

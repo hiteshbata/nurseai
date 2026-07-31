@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useSupabaseSession } from '@/lib/supabase'
@@ -60,6 +60,43 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [unresolvedCount, setUnresolvedCount] = useState(0)
   const [roleStatus, setRoleStatus] = useState<'checking' | 'staff' | 'denied'>('checking')
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const mobileNavPanelRef = useRef<HTMLDivElement>(null)
+  const mobileNavTriggerRef = useRef<HTMLButtonElement>(null)
+
+  // Dialog semantics for the mobile drawer: trap focus inside it, close on
+  // Escape, and hand focus back to the trigger button when it closes.
+  useEffect(() => {
+    if (!mobileNavOpen) return
+
+    const panel = mobileNavPanelRef.current
+    const focusable = panel?.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+    focusable?.[0]?.focus()
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMobileNavOpen(false)
+        return
+      }
+      if (e.key !== 'Tab' || !focusable || focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      mobileNavTriggerRef.current?.focus()
+    }
+  }, [mobileNavOpen])
 
   useEffect(() => {
     // Hide main site navbar on admin pages
@@ -131,7 +168,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const renderNavGroups = (onNavigate?: () => void) =>
     NAV_GROUPS.map((group) => (
       <div key={group.label} className="mb-6">
-        <div className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
+        <div className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {group.label}
         </div>
         {group.items.map((item) => {
@@ -169,6 +206,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           SpeakOET Admin
         </Link>
         <button
+          ref={mobileNavTriggerRef}
           onClick={() => setMobileNavOpen(true)}
           aria-label="Open admin menu"
           className="text-gray-600 border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium"
@@ -184,7 +222,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             className="fixed inset-0 bg-black/40"
             onClick={() => setMobileNavOpen(false)}
           />
-          <div className="relative w-64 bg-white shadow-xl h-full overflow-y-auto p-4">
+          <div
+            ref={mobileNavPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Admin menu"
+            className="relative w-64 bg-white shadow-xl h-full overflow-y-auto p-4"
+          >
             <div className="flex items-center justify-between mb-4">
               <Link href="/admin" className="text-lg font-bold text-blue-600" onClick={() => setMobileNavOpen(false)}>
                 SpeakOET Admin
@@ -200,7 +244,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             {renderNavGroups(() => setMobileNavOpen(false))}
             <Link
               href="/"
-              className="block px-3 py-2 text-sm text-gray-400 hover:text-gray-600 transition"
+              className="block px-3 py-2 text-sm text-muted-foreground hover:text-gray-600 transition"
             >
               Back to Site
             </Link>
@@ -217,7 +261,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         <div className="mt-auto pt-4 border-t border-gray-100">
           <Link
             href="/"
-            className="block px-3 py-2 text-sm text-gray-400 hover:text-gray-600 transition"
+            className="block px-3 py-2 text-sm text-muted-foreground hover:text-gray-600 transition"
           >
             Back to Site
           </Link>

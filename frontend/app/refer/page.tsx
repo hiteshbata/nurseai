@@ -49,7 +49,7 @@ export default function ReferPage() {
         <h1 className="text-3xl font-bold text-[#0F2356] mb-8">Refer &amp; Earn</h1>
 
         {loading || !info ? (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center text-sm text-gray-400">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center text-sm text-muted-foreground">
             Loading your referral link…
           </div>
         ) : (

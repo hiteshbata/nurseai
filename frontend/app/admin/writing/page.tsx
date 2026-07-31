@@ -227,7 +227,7 @@ export default function AdminWritingPage() {
                 : files.length > 1 ? `Extract ${files.length} PDFs` : 'Extract'}
             </button>
           </div>
-          <p className="text-xs text-gray-400 mt-2">
+          <p className="text-xs text-muted-foreground mt-2">
             {files.length > 1 ? `${files.length} files selected. ` : ''}
             PDF up to 10MB each. Extraction reads the pages with OCR and can take up to a minute per file.
           </p>
@@ -240,16 +240,18 @@ export default function AdminWritingPage() {
 
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Title</label>
+                <label htmlFor={`draftTitle-${draft.key}`} className="block text-sm font-semibold text-gray-700 mb-1">Title</label>
                 <input
+                  id={`draftTitle-${draft.key}`}
                   value={draft.title}
                   onChange={(e) => updateDraft(draft.key, { title: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg"
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Difficulty</label>
+                <label htmlFor={`draftDifficulty-${draft.key}`} className="block text-sm font-semibold text-gray-700 mb-1">Difficulty</label>
                 <select
+                  id={`draftDifficulty-${draft.key}`}
                   value={draft.difficulty}
                   onChange={(e) => updateDraft(draft.key, { difficulty: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg"
@@ -262,8 +264,9 @@ export default function AdminWritingPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Case notes (what the student reads)</label>
+              <label htmlFor={`draftCaseNotes-${draft.key}`} className="block text-sm font-semibold text-gray-700 mb-1">Case notes (what the student reads)</label>
               <textarea
+                id={`draftCaseNotes-${draft.key}`}
                 value={draft.case_notes}
                 onChange={(e) => updateDraft(draft.key, { case_notes: e.target.value })}
                 rows={16}
@@ -272,8 +275,9 @@ export default function AdminWritingPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Writing task (recipient + what to write + word count)</label>
+              <label htmlFor={`draftTask-${draft.key}`} className="block text-sm font-semibold text-gray-700 mb-1">Writing task (recipient + what to write + word count)</label>
               <textarea
+                id={`draftTask-${draft.key}`}
                 value={draft.task}
                 onChange={(e) => updateDraft(draft.key, { task: e.target.value })}
                 rows={4}
@@ -282,25 +286,27 @@ export default function AdminWritingPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Key points for scoring <span className="font-normal text-gray-400">(not shown to the student)</span>
-              </label>
-              {draft.key_points.map((kp, idx) => (
-                <input
-                  key={idx}
-                  value={kp}
-                  onChange={(e) => setKeyPoint(draft.key, idx, e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg mb-2 text-sm"
-                  placeholder={`Key point ${idx + 1}`}
-                />
-              ))}
-              <button
-                type="button"
-                onClick={() => updateDraft(draft.key, { key_points: [...draft.key_points, ''] })}
-                className="text-blue-600 text-sm font-semibold"
-              >
-                + Add key point
-              </button>
+              <span id={`draftKeyPoints-${draft.key}`} className="block text-sm font-semibold text-gray-700 mb-1">
+                Key points for scoring <span className="font-normal text-muted-foreground">(not shown to the student)</span>
+              </span>
+              <div role="group" aria-labelledby={`draftKeyPoints-${draft.key}`}>
+                {draft.key_points.map((kp, idx) => (
+                  <input
+                    key={idx}
+                    value={kp}
+                    onChange={(e) => setKeyPoint(draft.key, idx, e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg mb-2 text-sm"
+                    placeholder={`Key point ${idx + 1}`}
+                  />
+                ))}
+                <button
+                  type="button"
+                  onClick={() => updateDraft(draft.key, { key_points: [...draft.key_points, ''] })}
+                  className="text-blue-600 text-sm font-semibold"
+                >
+                  + Add key point
+                </button>
+              </div>
             </div>
 
             <div className="flex gap-3">
@@ -336,7 +342,7 @@ export default function AdminWritingPage() {
             )}
           </div>
           {rows.length === 0 ? (
-            <p className="text-gray-400 text-sm">None yet — extract one above.</p>
+            <p className="text-muted-foreground text-sm">None yet — extract one above.</p>
           ) : (
             <ul className="divide-y">
               <li className="py-2 flex items-center gap-3">

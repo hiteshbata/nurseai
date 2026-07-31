@@ -54,7 +54,7 @@ export default function DictionaryLookup({ children, className }: Props) {
           >
             <div className="flex items-start justify-between gap-2">
               <span className="font-semibold text-gray-900 capitalize">{popup.term}</span>
-              <button onClick={() => setPopup(null)} className="text-gray-400 hover:text-gray-600 leading-none text-lg">×</button>
+              <button onClick={() => setPopup(null)} className="text-muted-foreground hover:text-gray-600 leading-none text-lg">×</button>
             </div>
             <p className="text-gray-600 mt-1">{popup.loading ? 'Looking up…' : popup.definition}</p>
           </div>

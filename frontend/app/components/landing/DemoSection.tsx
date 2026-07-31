@@ -224,13 +224,13 @@ export default function DemoSection() {
                 Demo Session
               </span>
             </div>
-            <p className="text-xs text-gray-400 mb-5">{DEMO_SCENARIO}</p>
+            <p className="text-xs text-muted-foreground mb-5">{DEMO_SCENARIO}</p>
 
             <div className="flex flex-col gap-4 min-h-[20rem]" aria-live="polite" aria-atomic="false">
               {!started && (
                 <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center py-12">
                   <p className="font-semibold text-gray-700">Ready to begin</p>
-                  <p className="text-sm text-gray-400 max-w-xs">
+                  <p className="text-sm text-muted-foreground max-w-xs">
                     Press Play Demo to watch a role-play unfold turn by turn
                   </p>
                 </div>
@@ -257,7 +257,7 @@ export default function DemoSection() {
                       msg.role === 'nurse' ? 'items-end' : 'items-start'
                     }`}
                   >
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-muted-foreground">
                       {msg.role === 'nurse' ? 'You (Nurse)' : 'Patient'}
                     </span>
                     <div
@@ -302,7 +302,7 @@ export default function DemoSection() {
             {!showScores ? (
               <div className="min-h-[20rem] flex flex-col items-center justify-center gap-2 text-center rounded-xl border border-dashed border-gray-200 bg-[#F8FAFC] py-12 px-6">
                 <p className="font-semibold text-gray-700">Your report appears here</p>
-                <p className="text-sm text-gray-400 max-w-xs">
+                <p className="text-sm text-muted-foreground max-w-xs">
                   All 9 criteria are scored as soon as the role-play ends
                 </p>
               </div>
@@ -314,7 +314,7 @@ export default function DemoSection() {
                       <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Clinical</p>
                       <p className="text-2xl font-bold text-[#0F2356]">
                         {clinicalAverage.toFixed(1)}
-                        <span className="text-base font-normal text-gray-400">/6</span>
+                        <span className="text-base font-normal text-muted-foreground">/6</span>
                       </p>
                     </div>
                     <div className="flex flex-col items-center gap-1 px-4">
@@ -333,7 +333,7 @@ export default function DemoSection() {
                       <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Linguistic</p>
                       <p className="text-2xl font-bold text-[#0F2356]">
                         {linguisticAverage.toFixed(1)}
-                        <span className="text-base font-normal text-gray-400">/6</span>
+                        <span className="text-base font-normal text-muted-foreground">/6</span>
                       </p>
                     </div>
                   </div>

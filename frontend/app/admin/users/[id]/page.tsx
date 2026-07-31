@@ -287,7 +287,7 @@ export default function AdminUserDetailPage() {
           <div>
             <h1 className="text-2xl font-bold">{user.name || '(no name)'}</h1>
             <p className="text-gray-500">{user.email}</p>
-            <p className="text-xs text-gray-400 font-mono mt-1">{user.user_id}</p>
+            <p className="text-xs text-muted-foreground font-mono mt-1">{user.user_id}</p>
             <div className="flex gap-4 mt-3 text-sm text-gray-500">
               <span>Joined {new Date(user.created_at).toLocaleDateString()}</span>
               <span>
@@ -353,18 +353,20 @@ export default function AdminUserDetailPage() {
             {showBonusForm && (
               <div className="mt-4 pt-4 border-t space-y-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Sessions to grant</label>
+                  <label htmlFor="bonusAmount" className="block text-xs text-gray-500 mb-1">Sessions to grant</label>
                   <input
+                    id="bonusAmount"
                     type="number"
                     value={bonusAmount}
                     onChange={(e) => setBonusAmount(Number(e.target.value))}
                     className="w-full border rounded px-3 py-2 text-sm"
                   />
-                  <p className="text-xs text-gray-400 mt-1">Use a negative number to correct an over-grant.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Use a negative number to correct an over-grant.</p>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Reason</label>
+                  <label htmlFor="bonusReason" className="block text-xs text-gray-500 mb-1">Reason</label>
                   <input
+                    id="bonusReason"
                     type="text"
                     value={bonusReason}
                     onChange={(e) => setBonusReason(e.target.value)}
@@ -395,8 +397,9 @@ export default function AdminUserDetailPage() {
             {showPlanForm && (
               <div className="mt-4 pt-4 border-t space-y-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Plan</label>
+                  <label htmlFor="planChoice" className="block text-xs text-gray-500 mb-1">Plan</label>
                   <select
+                    id="planChoice"
                     value={planChoice}
                     onChange={(e) => setPlanChoice(e.target.value)}
                     className="w-full border rounded px-3 py-2 text-sm"
@@ -409,15 +412,16 @@ export default function AdminUserDetailPage() {
                 </div>
                 {planChoice !== 'free' && (
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Days to grant</label>
+                    <label htmlFor="periodDays" className="block text-xs text-gray-500 mb-1">Days to grant</label>
                     <input
+                      id="periodDays"
                       type="number"
                       min={1}
                       value={periodDays}
                       onChange={(e) => setPeriodDays(Number(e.target.value))}
                       className="w-full border rounded px-3 py-2 text-sm"
                     />
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Extends from today, or from the current expiry if this is the same plan and it hasn&apos;t lapsed.
                     </p>
                   </div>
@@ -482,7 +486,7 @@ export default function AdminUserDetailPage() {
         {/* Voice session transcripts */}
         <div className="bg-white rounded-lg shadow overflow-hidden mt-6">
           <h2 className="text-lg font-bold p-6 pb-0">Voice Session Transcripts</h2>
-          <p className="text-xs text-gray-400 px-6 pt-1">Retained 90 days, admin-only. For background-check/account-safety review.</p>
+          <p className="text-xs text-muted-foreground px-6 pt-1">Retained 90 days, admin-only. For background-check/account-safety review.</p>
           <div className="divide-y mt-4">
             {transcripts.map((t) => (
               <div key={t.id} className="p-6">
@@ -547,7 +551,7 @@ export default function AdminUserDetailPage() {
                       {pay.status}
                     </span>
                   </td>
-                  <td className="py-3 px-6 text-xs font-mono text-gray-400">{pay.payment_id || '—'}</td>
+                  <td className="py-3 px-6 text-xs font-mono text-muted-foreground">{pay.payment_id || '—'}</td>
                 </tr>
               ))}
             </tbody>

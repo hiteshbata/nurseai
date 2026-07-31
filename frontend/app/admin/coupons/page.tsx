@@ -113,8 +113,9 @@ export default function AdminCouponsPage() {
 
         <form onSubmit={createCoupon} className="bg-white p-6 rounded-lg shadow mb-8 flex flex-wrap gap-3 items-end">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Code</label>
+            <label htmlFor="couponCode" className="block text-xs font-semibold text-gray-500 mb-1">Code</label>
             <input
+              id="couponCode"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               placeholder="LAUNCH20"
@@ -123,8 +124,9 @@ export default function AdminCouponsPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Type</label>
+            <label htmlFor="couponType" className="block text-xs font-semibold text-gray-500 mb-1">Type</label>
             <select
+              id="couponType"
               value={discountType}
               onChange={(e) => setDiscountType(e.target.value as 'percent' | 'flat_paise')}
               className="px-3 py-2 border rounded-lg"
@@ -134,10 +136,11 @@ export default function AdminCouponsPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">
+            <label htmlFor="couponDiscountValue" className="block text-xs font-semibold text-gray-500 mb-1">
               {discountType === 'percent' ? 'Percent' : 'Amount (₹)'}
             </label>
             <input
+              id="couponDiscountValue"
               type="number"
               value={discountValue}
               onChange={(e) => setDiscountValue(e.target.value)}
@@ -149,8 +152,9 @@ export default function AdminCouponsPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Max uses</label>
+            <label htmlFor="couponMaxUses" className="block text-xs font-semibold text-gray-500 mb-1">Max uses</label>
             <input
+              id="couponMaxUses"
               type="number"
               value={maxRedemptions}
               onChange={(e) => setMaxRedemptions(e.target.value)}
@@ -160,8 +164,9 @@ export default function AdminCouponsPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Expires</label>
+            <label htmlFor="couponExpiresAt" className="block text-xs font-semibold text-gray-500 mb-1">Expires</label>
             <input
+              id="couponExpiresAt"
               type="date"
               value={expiresAt}
               onChange={(e) => setExpiresAt(e.target.value)}
@@ -169,8 +174,9 @@ export default function AdminCouponsPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Razorpay Offer ID (monthly)</label>
+            <label htmlFor="couponOfferId" className="block text-xs font-semibold text-gray-500 mb-1">Razorpay Offer ID (monthly)</label>
             <input
+              id="couponOfferId"
               value={offerId}
               onChange={(e) => setOfferId(e.target.value)}
               placeholder="offer_..."
@@ -217,7 +223,7 @@ export default function AdminCouponsPage() {
                         {c.razorpay_offer_id ? (
                           <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-semibold">Linked</span>
                         ) : (
-                          <span className="text-gray-400 text-xs">Annual only</span>
+                          <span className="text-muted-foreground text-xs">Annual only</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">

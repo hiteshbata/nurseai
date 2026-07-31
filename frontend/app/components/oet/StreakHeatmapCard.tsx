@@ -66,9 +66,9 @@ export function StreakHeatmapCard({
   return (
     <div className="bg-card rounded-2xl border border-border p-6 w-full motion-safe:animate-[message-in_0.4s_ease-out_0.48s_both]">
       <div className="mb-4">
-        <p className="text-2xl font-bold text-foreground">
+        <h2 className="text-2xl font-bold text-foreground">
           {streak > 0 ? `🔥 ${streak}-day streak` : 'No active streak'}
-        </p>
+        </h2>
         <p className="text-sm text-muted-foreground mt-0.5">
           {streak > 0 ? 'Practice today to keep it' : 'Start a session to begin your streak'}
         </p>

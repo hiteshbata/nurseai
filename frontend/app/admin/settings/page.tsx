@@ -131,6 +131,8 @@ export default function AdminSettingsPage() {
                     <button
                       onClick={() => toggleFlag(flag.key, !flag.enabled)}
                       disabled={togglingFlag === flag.key}
+                      role="switch"
+                      aria-checked={flag.enabled}
                       className={`relative w-12 h-6 rounded-full transition-colors ${
                         flag.enabled ? 'bg-green-500' : 'bg-gray-300'
                       } disabled:opacity-50`}
@@ -163,6 +165,8 @@ export default function AdminSettingsPage() {
                   updateSetting('announcement_banner_enabled', String(next))
                 }}
                 disabled={saving === 'announcement_banner_enabled'}
+                role="switch"
+                aria-checked={settings.announcement_banner_enabled === 'true'}
                 className={`relative w-12 h-6 rounded-full transition-colors shrink-0 mt-1 ${
                   settings.announcement_banner_enabled === 'true' ? 'bg-green-500' : 'bg-gray-300'
                 } disabled:opacity-50`}
@@ -175,10 +179,11 @@ export default function AdminSettingsPage() {
                 />
               </button>
               <div className="flex-1">
-                <label className="block text-sm font-semibold mb-2">
+                <label htmlFor="announcementBannerText" className="block text-sm font-semibold mb-2">
                   {SETTINGS_SCHEMA.announcement_banner_text}
                 </label>
                 <textarea
+                  id="announcementBannerText"
                   value={settings.announcement_banner_text || ''}
                   onChange={(e) => setSettings({ ...settings, announcement_banner_text: e.target.value })}
                   onBlur={(e) => updateSetting('announcement_banner_text', e.target.value)}
@@ -198,10 +203,11 @@ export default function AdminSettingsPage() {
             <div className="space-y-4">
               {['ai_model', 'ai_patient_model'].map((key) => (
                 <div key={key}>
-                  <label className="block text-sm font-semibold mb-2">
+                  <label htmlFor={`setting-${key}`} className="block text-sm font-semibold mb-2">
                     {SETTINGS_SCHEMA[key]}
                   </label>
                   <select
+                    id={`setting-${key}`}
                     value={settings[key] || ''}
                     onChange={(e) => {
                       setSettings({ ...settings, [key]: e.target.value })
@@ -224,10 +230,11 @@ export default function AdminSettingsPage() {
             <h2 className="text-xl font-bold mb-4 text-blue-700">Voice</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold mb-2">
+                <label htmlFor="voiceProvider" className="block text-sm font-semibold mb-2">
                   {SETTINGS_SCHEMA.voice_provider}
                 </label>
                 <select
+                  id="voiceProvider"
                   value={settings.voice_provider || ''}
                   onChange={(e) => {
                     setSettings({ ...settings, voice_provider: e.target.value })
@@ -248,10 +255,11 @@ export default function AdminSettingsPage() {
             <div className="space-y-4">
               {['speaking_price_monthly'].map((key) => (
                 <div key={key}>
-                  <label className="block text-sm font-semibold mb-2">
+                  <label htmlFor={`setting-${key}`} className="block text-sm font-semibold mb-2">
                     {SETTINGS_SCHEMA[key]}
                   </label>
                   <input
+                    id={`setting-${key}`}
                     type={key.includes('price') ? 'number' : 'number'}
                     value={settings[key] || ''}
                     onChange={(e) => {

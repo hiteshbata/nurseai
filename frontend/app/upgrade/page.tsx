@@ -64,7 +64,7 @@ export default function UpgradePage() {
         )}
 
         <div className="flex items-center justify-center gap-3 mb-8">
-          <span className={`text-sm font-medium ${billingCycle === 'monthly' ? 'text-[#0F2356]' : 'text-gray-400'}`}>
+          <span className={`text-sm font-medium ${billingCycle === 'monthly' ? 'text-[#0F2356]' : 'text-muted-foreground'}`}>
             Monthly
           </span>
           <button
@@ -79,7 +79,7 @@ export default function UpgradePage() {
               }`}
             />
           </button>
-          <span className={`text-sm font-medium ${billingCycle === 'annual' ? 'text-[#0F2356]' : 'text-gray-400'}`}>
+          <span className={`text-sm font-medium ${billingCycle === 'annual' ? 'text-[#0F2356]' : 'text-muted-foreground'}`}>
             Annual
           </span>
           <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full">
@@ -124,7 +124,7 @@ export default function UpgradePage() {
                   <p className="text-sm text-gray-500 mb-4">{plan.description}</p>
                   <div className="mb-3">
                     {isAnnual && (
-                      <span className="text-gray-400 text-sm line-through mr-2">
+                      <span className="text-muted-foreground text-sm line-through mr-2">
                         {'\u20B9'}{plan.price * 12}
                       </span>
                     )}
@@ -132,7 +132,7 @@ export default function UpgradePage() {
                       {plan.price === 0 ? 'Free' : `\u20B9${displayPrice}`}
                     </span>
                     {plan.price > 0 && (
-                      <span className="text-gray-400 text-sm ml-1">/{displayPeriod}</span>
+                      <span className="text-muted-foreground text-sm ml-1">/{displayPeriod}</span>
                     )}
                   </div>
                   {plan.badge && !plan.highlight && (
@@ -172,7 +172,7 @@ export default function UpgradePage() {
                         billingCycle={isAnnual ? 'annual' : 'monthly'}
                         couponCode={couponCode}
                       />
-                      <p className="text-xs text-gray-400 text-center mt-2">
+                      <p className="text-xs text-muted-foreground text-center mt-2">
                         {isAnnual
                           ? 'One-time annual payment \u00B7 does not auto-renew'
                           : 'Auto-renews monthly \u00B7 Cancel anytime in Settings'}

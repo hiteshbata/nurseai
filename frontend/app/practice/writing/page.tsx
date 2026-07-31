@@ -62,7 +62,7 @@ function fmtClock(sec: number) {
 }
 
 function scoreColor(score: number | null, max: number) {
-  if (score === null) return 'text-gray-400'
+  if (score === null) return 'text-muted-foreground'
   const ratio = score / max
   if (ratio >= 0.66) return 'text-emerald-600'
   if (ratio >= 0.5) return 'text-amber-500'
@@ -397,7 +397,7 @@ export default function WritingPracticePage() {
           {scenarios.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-lg shadow mt-8">
               <p className="text-xl text-gray-500 mb-2">No writing scenarios available</p>
-              <p className="text-gray-400">Ask an admin to create writing scenarios</p>
+              <p className="text-muted-foreground">Ask an admin to create writing scenarios</p>
             </div>
           ) : (
             <div className="grid md:grid-cols-2 gap-6 mt-8">
@@ -438,7 +438,7 @@ export default function WritingPracticePage() {
   if (phase === 'write' && selectedScenario) {
     const task = selectedScenario.nurse_card?.role || ''
     const words = countWords(writingText)
-    const wordTone = words === 0 ? 'text-gray-400' : words < WORD_MIN ? 'text-amber-600' : words > 200 ? 'text-amber-600' : 'text-emerald-600'
+    const wordTone = words === 0 ? 'text-muted-foreground' : words < WORD_MIN ? 'text-amber-600' : words > 200 ? 'text-amber-600' : 'text-emerald-600'
     return (
       <div className="min-h-screen bg-gray-50 py-8 px-4">
         <div className="max-w-6xl mx-auto">
@@ -456,7 +456,12 @@ export default function WritingPracticePage() {
               <p className="text-sm text-gray-500 mt-1">Reading time 5 minutes · Writing time 40 minutes · Body approximately 180–200 words</p>
             </div>
             {mockId && secondsLeft !== null && (
-              <div className={`px-4 py-2 rounded-xl font-bold tabular-nums flex items-center gap-2 shrink-0 ${
+              <div
+                role="timer"
+                aria-live="off"
+                aria-atomic="true"
+                aria-label={`${writeLocked ? 'Reading' : 'Writing'} time remaining: ${fmtClock(secondsLeft)}`}
+                className={`px-4 py-2 rounded-xl font-bold tabular-nums flex items-center gap-2 shrink-0 ${
                 secondsLeft <= 0 ? 'bg-red-100 text-red-700'
                 : secondsLeft <= 300 ? 'bg-amber-100 text-amber-700'
                 : 'bg-[#0F2356]/5 text-[#0F2356]'}`}>
@@ -537,7 +542,7 @@ export default function WritingPracticePage() {
                               >
                                 ◀
                               </button>
-                              <span className="text-[10px] text-gray-400">Page {i + 1}</span>
+                              <span className="text-[10px] text-muted-foreground">Page {i + 1}</span>
                               <button
                                 onClick={() => movePhoto(i, 1)}
                                 disabled={i === photos.length - 1}
@@ -551,7 +556,7 @@ export default function WritingPracticePage() {
                         </div>
                       ))}
                       {photos.length < 3 && (
-                        <label className="h-24 w-20 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 cursor-pointer hover:border-primary hover:text-primary text-xs text-center">
+                        <label className="h-24 w-20 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-muted-foreground cursor-pointer hover:border-primary hover:text-primary text-xs text-center">
                           + Photo
                           <input
                             type="file"
@@ -563,7 +568,7 @@ export default function WritingPracticePage() {
                         </label>
                       )}
                     </div>
-                    <p className="text-xs text-gray-400 mb-3">Photograph your handwritten letter — up to 3 pages, clear and well-lit.</p>
+                    <p className="text-xs text-muted-foreground mb-3">Photograph your handwritten letter — up to 3 pages, clear and well-lit.</p>
                     <div className="flex gap-2">
                       <Button onClick={handleReadPhotos} disabled={ocrLoading || photos.length === 0} className="flex-1">
                         {ocrLoading ? 'Reading…' : `Read my handwriting${photos.length ? ` (${photos.length})` : ''}`}
@@ -620,7 +625,7 @@ export default function WritingPracticePage() {
                     <QRCodeSVG value={phoneUrl} size={200} />
                   </div>
                 </div>
-                <p className="text-xs text-gray-400 mb-6 flex items-center justify-center gap-2">
+                <p className="text-xs text-muted-foreground mb-6 flex items-center justify-center gap-2">
                   <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   Waiting for your phone — the text will appear here automatically.
                 </p>
@@ -662,7 +667,7 @@ export default function WritingPracticePage() {
               <div className="text-lg font-semibold text-emerald-700 mt-2">
                 Estimated OET score: {feedback.overall_score}/500
               </div>
-              <div className="text-xs text-gray-400 mt-1">Approximate — for practice guidance only</div>
+              <div className="text-xs text-muted-foreground mt-1">Approximate — for practice guidance only</div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4 mb-8">

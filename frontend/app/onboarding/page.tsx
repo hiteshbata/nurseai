@@ -390,10 +390,11 @@ export default function OnboardingPage() {
               <h2 className="text-2xl font-bold mb-6">About You</h2>
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label htmlFor="destinationCountry" className="block text-sm font-semibold text-gray-700 mb-2">
                     Which country are you planning to work in?
                   </label>
                   <Select
+                    id="destinationCountry"
                     value={destinationCountry}
                     onChange={(e) => {
                       setDestinationCountry(e.target.value)
@@ -421,10 +422,11 @@ export default function OnboardingPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    When is your OET exam date? <span className="text-gray-400 font-normal">(optional)</span>
+                  <label htmlFor="examDate" className="block text-sm font-semibold text-gray-700 mb-2">
+                    When is your OET exam date? <span className="text-muted-foreground font-normal">(optional)</span>
                   </label>
                   <Input
+                    id="examDate"
                     type="date"
                     value={examDate}
                     onChange={(e) => setExamDate(e.target.value)}
@@ -432,18 +434,20 @@ export default function OnboardingPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <span id="hasTakenOetLabel" className="block text-sm font-semibold text-gray-700 mb-2">
                     Have you taken OET before?
-                  </label>
-                  <div className="flex gap-3">
+                  </span>
+                  <div role="group" aria-labelledby="hasTakenOetLabel" className="flex gap-3">
                     <button
                       onClick={() => { setHasTakenOet(true); setPreviousBand('') }}
+                      aria-pressed={hasTakenOet === true}
                       className={toggleClass(hasTakenOet === true)}
                     >
                       Yes
                     </button>
                     <button
                       onClick={() => setHasTakenOet(false)}
+                      aria-pressed={hasTakenOet === false}
                       className={toggleClass(hasTakenOet === false)}
                     >
                       No
@@ -453,10 +457,11 @@ export default function OnboardingPage() {
 
                 {hasTakenOet === true && (
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="previousBand" className="block text-sm font-semibold text-gray-700 mb-2">
                       What was your last overall band score?
                     </label>
                     <Select
+                      id="previousBand"
                       value={previousBand}
                       onChange={(e) => setPreviousBand(e.target.value)}
                     >
@@ -472,14 +477,15 @@ export default function OnboardingPage() {
               {/* Indian nurse profile fields */}
               <div className="border-t border-gray-200 pt-6 mt-6">
                 <p className="text-sm font-bold text-gray-800 mb-1">About Your Nursing Career</p>
-                <p className="text-xs text-gray-400 mb-4">Optional — helps us personalise your experience</p>
+                <p className="text-xs text-muted-foreground mb-4">Optional — helps us personalise your experience</p>
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="nurseState" className="block text-sm font-semibold text-gray-700 mb-2">
                       Which Indian state are you based in?
                     </label>
                     <Select
+                      id="nurseState"
                       value={nurseState}
                       onChange={(e) => setNurseState(e.target.value)}
                     >
@@ -501,10 +507,11 @@ export default function OnboardingPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="qualification" className="block text-sm font-semibold text-gray-700 mb-2">
                       What is your nursing qualification?
                     </label>
                     <Select
+                      id="qualification"
                       value={qualification}
                       onChange={(e) => setQualification(e.target.value)}
                     >
@@ -516,10 +523,11 @@ export default function OnboardingPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="yearsOfExperience" className="block text-sm font-semibold text-gray-700 mb-2">
                       Years of nursing experience?
                     </label>
                     <Select
+                      id="yearsOfExperience"
                       value={yearsOfExperience}
                       onChange={(e) => setYearsOfExperience(e.target.value)}
                     >
@@ -531,10 +539,11 @@ export default function OnboardingPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="nurseSpecialty" className="block text-sm font-semibold text-gray-700 mb-2">
                       Nursing specialty / department?
                     </label>
                     <Select
+                      id="nurseSpecialty"
                       value={nurseSpecialty}
                       onChange={(e) => setNurseSpecialty(e.target.value)}
                     >
@@ -560,10 +569,11 @@ export default function OnboardingPage() {
               <h2 className="text-2xl font-bold mb-6">Set Your Target</h2>
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label htmlFor="targetBand" className="block text-sm font-semibold text-gray-700 mb-2">
                     What band score are you aiming for?
                   </label>
                   <Select
+                    id="targetBand"
                     value={targetBand}
                     onChange={(e) => setTargetBand(e.target.value)}
                   >
@@ -575,14 +585,15 @@ export default function OnboardingPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <span id="daysPerWeekLabel" className="block text-sm font-semibold text-gray-700 mb-2">
                     How many days per week can you practice?
-                  </label>
-                  <div className="flex gap-2">
+                  </span>
+                  <div role="group" aria-labelledby="daysPerWeekLabel" className="flex gap-2">
                     {[2, 3, 4, 5, 6, 7].map((d) => (
                       <button
                         key={d}
                         onClick={() => setDaysPerWeek(d)}
+                        aria-pressed={daysPerWeek === d}
                         className={toggleClass(daysPerWeek === d)}
                       >
                         {d}
@@ -812,7 +823,7 @@ function VoiceChatInline({
 
       <div className="bg-gray-50 rounded-xl p-4 mb-4 max-h-80 overflow-y-auto space-y-3">
         {convHistory.length === 0 && (
-          <p className="text-gray-400 text-center py-8">
+          <p className="text-muted-foreground text-center py-8">
             Tap the mic or type your first message to the patient.
           </p>
         )}

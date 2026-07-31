@@ -76,7 +76,7 @@ export function StartFreeMock() {
       <Button onClick={begin} disabled={busy || status === 'loading'} className="h-12 w-full text-base">
         {busy ? 'Preparing your test…' : 'Begin Free Mock Test'}
       </Button>
-      <p className="mt-3 text-xs text-gray-400">
+      <p className="mt-3 text-xs text-muted-foreground">
         No signup required to take it. Set aside about 2½ hours.
       </p>
     </div>

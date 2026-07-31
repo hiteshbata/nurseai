@@ -59,14 +59,14 @@ export default function ReadingMistakesPage() {
         {mistakes.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-lg shadow mt-8">
             <p className="text-xl text-gray-500 mb-2">No mistakes on record</p>
-            <p className="text-gray-400">Practice a passage and anything you get wrong will show up here for review.</p>
+            <p className="text-muted-foreground">Practice a passage and anything you get wrong will show up here for review.</p>
           </div>
         ) : (
           <div className="space-y-6 mt-8">
             {mistakes.map((m) => (
               <Card key={m.questionId} className="p-6">
                 {m.passage_title && (
-                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{m.passage_title}</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{m.passage_title}</span>
                 )}
                 <p className="font-semibold text-gray-800 mt-1 mb-3">{m.content}</p>
 

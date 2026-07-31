@@ -44,7 +44,7 @@ export const WRITING_CRITERIA: { key: string; label: string; max: number }[] = [
 const SPEAKING_CRITERION_MAX = 6
 
 function ratioColor(score: number | null | undefined, max: number) {
-  if (typeof score !== 'number') return 'text-gray-400'
+  if (typeof score !== 'number') return 'text-muted-foreground'
   const pct = max > 0 ? score / max : 0
   if (pct >= 0.67) return 'text-emerald-600'
   if (pct >= 0.5) return 'text-amber-500'
@@ -132,7 +132,7 @@ export function SessionFeedback({
                   Overall band: {feedback.overall_band}/{SPEAKING_CRITERION_MAX}
                 </div>
               )}
-          <div className="mt-1 text-xs text-gray-400">
+          <div className="mt-1 text-xs text-muted-foreground">
             Approximate &mdash; for practice guidance only
           </div>
         </div>

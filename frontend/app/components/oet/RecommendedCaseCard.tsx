@@ -45,9 +45,9 @@ export function RecommendedCaseCard() {
     return (
       <div className="w-full rounded-2xl p-5 bg-card border border-dashed border-border motion-safe:animate-[message-in_0.4s_ease-out_0.24s_both]">
         <div className="flex flex-col gap-1">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Recommended for you
-          </span>
+          </h2>
           <p className="text-sm text-muted-foreground mb-3">
             Complete a speaking session to get a personalized recommendation.
           </p>

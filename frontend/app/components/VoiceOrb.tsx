@@ -422,7 +422,7 @@ function VoiceOrb({
     <p
       className={isHero
         ? 'flex items-center gap-2 text-sm font-semibold text-gray-600'
-        : 'flex items-center gap-1.5 text-xs text-gray-400'}
+        : 'flex items-center gap-1.5 text-xs text-muted-foreground'}
       role="status"
       aria-live="polite"
     >

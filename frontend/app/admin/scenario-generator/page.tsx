@@ -359,7 +359,7 @@ export default function ScenarioGeneratorPage() {
                   <p className="text-sm text-gray-500">Click or drag to replace</p>
                 </div>
               ) : (
-                <div className="text-gray-400">
+                <div className="text-muted-foreground">
                   <div className="text-5xl mb-4">📄</div>
                   <p className="text-lg font-semibold text-gray-600 mb-1">Drop OET roleplay card images or a PDF here</p>
                   <p className="text-sm">or click to browse &bull; JPG, PNG, WebP (5MB each) or PDF (10MB) &bull; multiple allowed</p>
@@ -434,25 +434,25 @@ export default function ScenarioGeneratorPage() {
               <h2 className="text-lg font-bold text-gray-900 mb-4 border-b pb-2">Basic Info</h2>
               <div className="space-y-4">
                 <div>
-                  <label className={labelClasses}>Title</label>
-                  <input className={inputClasses} value={scenario.title} onChange={(e) => updateField('title', e.target.value)} />
+                  <label htmlFor="scenarioTitle" className={labelClasses}>Title</label>
+                  <input id="scenarioTitle" className={inputClasses} value={scenario.title} onChange={(e) => updateField('title', e.target.value)} />
                 </div>
                 <div>
-                  <label className={labelClasses}>Setting</label>
-                  <textarea className={inputClasses} rows={3} value={scenario.setting} onChange={(e) => updateField('setting', e.target.value)} />
+                  <label htmlFor="scenarioSetting" className={labelClasses}>Setting</label>
+                  <textarea id="scenarioSetting" className={inputClasses} rows={3} value={scenario.setting} onChange={(e) => updateField('setting', e.target.value)} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className={labelClasses}>Difficulty</label>
-                    <select className={inputClasses} value={scenario.difficulty} onChange={(e) => updateField('difficulty', e.target.value)}>
+                    <label htmlFor="scenarioDifficulty" className={labelClasses}>Difficulty</label>
+                    <select id="scenarioDifficulty" className={inputClasses} value={scenario.difficulty} onChange={(e) => updateField('difficulty', e.target.value)}>
                       <option value="beginner">Beginner</option>
                       <option value="intermediate">Intermediate</option>
                       <option value="advanced">Advanced</option>
                     </select>
                   </div>
                   <div>
-                    <label className={labelClasses}>Specialty</label>
-                    <select className={inputClasses} value={scenario.specialty} onChange={(e) => updateField('specialty', e.target.value)}>
+                    <label htmlFor="scenarioSpecialty" className={labelClasses}>Specialty</label>
+                    <select id="scenarioSpecialty" className={inputClasses} value={scenario.specialty} onChange={(e) => updateField('specialty', e.target.value)}>
                       {SPECIALTIES.map((s) => (
                         <option key={s} value={s}>{s.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</option>
                       ))}
@@ -467,30 +467,30 @@ export default function ScenarioGeneratorPage() {
               <h2 className="text-lg font-bold text-gray-900 mb-4 border-b pb-2">Patient Details</h2>
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div>
-                  <label className={labelClasses}>Name</label>
-                  <input className={inputClasses} value={scenario.patient_details.name} onChange={(e) => updateField('patient_details.name', e.target.value)} />
+                  <label htmlFor="patientName" className={labelClasses}>Name</label>
+                  <input id="patientName" className={inputClasses} value={scenario.patient_details.name} onChange={(e) => updateField('patient_details.name', e.target.value)} />
                 </div>
                 <div>
-                  <label className={labelClasses}>Age</label>
-                  <input type="number" className={inputClasses} value={scenario.patient_details.age} onChange={(e) => updateField('patient_details.age', e.target.value)} />
+                  <label htmlFor="patientAge" className={labelClasses}>Age</label>
+                  <input id="patientAge" type="number" className={inputClasses} value={scenario.patient_details.age} onChange={(e) => updateField('patient_details.age', e.target.value)} />
                 </div>
                 <div>
-                  <label className={labelClasses}>Occupation</label>
-                  <input className={inputClasses} value={scenario.patient_details.occupation} onChange={(e) => updateField('patient_details.occupation', e.target.value)} />
+                  <label htmlFor="patientOccupation" className={labelClasses}>Occupation</label>
+                  <input id="patientOccupation" className={inputClasses} value={scenario.patient_details.occupation} onChange={(e) => updateField('patient_details.occupation', e.target.value)} />
                 </div>
               </div>
               <div className="mb-4">
-                <label className={labelClasses}>Reason for Admission</label>
-                <textarea className={inputClasses} rows={2} value={scenario.patient_details.reason_for_admission} onChange={(e) => updateField('patient_details.reason_for_admission', e.target.value)} />
+                <label htmlFor="patientReasonForAdmission" className={labelClasses}>Reason for Admission</label>
+                <textarea id="patientReasonForAdmission" className={inputClasses} rows={2} value={scenario.patient_details.reason_for_admission} onChange={(e) => updateField('patient_details.reason_for_admission', e.target.value)} />
               </div>
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className={labelClasses}>Emotional State</label>
-                  <input className={inputClasses} value={scenario.patient_details.emotional_state} onChange={(e) => updateField('patient_details.emotional_state', e.target.value)} />
+                  <label htmlFor="patientEmotionalState" className={labelClasses}>Emotional State</label>
+                  <input id="patientEmotionalState" className={inputClasses} value={scenario.patient_details.emotional_state} onChange={(e) => updateField('patient_details.emotional_state', e.target.value)} />
                 </div>
                 <div>
-                  <label className={labelClasses}>Background</label>
-                  <textarea className={inputClasses} rows={2} value={scenario.patient_details.background} onChange={(e) => updateField('patient_details.background', e.target.value)} />
+                  <label htmlFor="patientBackground" className={labelClasses}>Background</label>
+                  <textarea id="patientBackground" className={inputClasses} rows={2} value={scenario.patient_details.background} onChange={(e) => updateField('patient_details.background', e.target.value)} />
                 </div>
               </div>
             </section>
@@ -499,14 +499,14 @@ export default function ScenarioGeneratorPage() {
             <section className="mb-8">
               <h2 className="text-lg font-bold text-gray-900 mb-4 border-b pb-2">Nurse Card</h2>
               <div className="mb-4">
-                <label className={labelClasses}>Role</label>
-                <input className={inputClasses} value={scenario.nurse_card.role} onChange={(e) => updateField('nurse_card.role', e.target.value)} />
+                <label htmlFor="nurseRole" className={labelClasses}>Role</label>
+                <input id="nurseRole" className={inputClasses} value={scenario.nurse_card.role} onChange={(e) => updateField('nurse_card.role', e.target.value)} />
               </div>
-              <label className={labelClasses}>Tasks</label>
-              <div className="space-y-2">
+              <span id="nurseTasksLabel" className={labelClasses}>Tasks</span>
+              <div role="group" aria-labelledby="nurseTasksLabel" className="space-y-2">
                 {scenario.nurse_card.tasks.map((task, i) => (
                   <div key={i} className="flex gap-2">
-                    <span className="mt-3 text-sm text-gray-400 font-mono">{i + 1}.</span>
+                    <span className="mt-3 text-sm text-muted-foreground font-mono">{i + 1}.</span>
                     <textarea
                       className={inputClasses}
                       rows={2}
@@ -526,47 +526,53 @@ export default function ScenarioGeneratorPage() {
             <section className="mb-8">
               <h2 className="text-lg font-bold text-gray-900 mb-4 border-b pb-2">Interlocutor Card</h2>
               <div className="mb-4">
-                <label className={labelClasses}>Persona</label>
-                <textarea className={inputClasses} rows={3} value={scenario.interlocutor_card.persona} onChange={(e) => updateField('interlocutor_card.persona', e.target.value)} />
+                <label htmlFor="interlocutorPersona" className={labelClasses}>Persona</label>
+                <textarea id="interlocutorPersona" className={inputClasses} rows={3} value={scenario.interlocutor_card.persona} onChange={(e) => updateField('interlocutor_card.persona', e.target.value)} />
               </div>
 
               <div className="mb-4">
-                <label className={labelClasses}>Emotional Triggers</label>
-                {scenario.interlocutor_card.emotional_triggers.map((t, i) => (
-                  <div key={i} className="flex gap-2 mb-2">
-                    <input className={inputClasses} value={t} onChange={(e) => updateArrayItem('interlocutor_card.emotional_triggers', i, e.target.value)} />
-                    {scenario.interlocutor_card.emotional_triggers.length > 1 && (
-                      <button onClick={() => removeArrayItem('interlocutor_card.emotional_triggers', i)} className="text-red-400 hover:text-red-600">&times;</button>
-                    )}
-                  </div>
-                ))}
-                <button onClick={() => addArrayItem('interlocutor_card.emotional_triggers')} className="text-sm text-blue-600 font-semibold hover:underline">+ Add trigger</button>
+                <span id="emotionalTriggersLabel" className={labelClasses}>Emotional Triggers</span>
+                <div role="group" aria-labelledby="emotionalTriggersLabel">
+                  {scenario.interlocutor_card.emotional_triggers.map((t, i) => (
+                    <div key={i} className="flex gap-2 mb-2">
+                      <input className={inputClasses} value={t} onChange={(e) => updateArrayItem('interlocutor_card.emotional_triggers', i, e.target.value)} />
+                      {scenario.interlocutor_card.emotional_triggers.length > 1 && (
+                        <button onClick={() => removeArrayItem('interlocutor_card.emotional_triggers', i)} className="text-red-400 hover:text-red-600">&times;</button>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={() => addArrayItem('interlocutor_card.emotional_triggers')} className="text-sm text-blue-600 font-semibold hover:underline">+ Add trigger</button>
+                </div>
               </div>
 
               <div className="mb-4">
-                <label className={labelClasses}>Questions to Ask</label>
-                {scenario.interlocutor_card.questions_to_ask.map((q, i) => (
-                  <div key={i} className="flex gap-2 mb-2">
-                    <input className={inputClasses} value={q} onChange={(e) => updateArrayItem('interlocutor_card.questions_to_ask', i, e.target.value)} />
-                    {scenario.interlocutor_card.questions_to_ask.length > 1 && (
-                      <button onClick={() => removeArrayItem('interlocutor_card.questions_to_ask', i)} className="text-red-400 hover:text-red-600">&times;</button>
-                    )}
-                  </div>
-                ))}
-                <button onClick={() => addArrayItem('interlocutor_card.questions_to_ask')} className="text-sm text-blue-600 font-semibold hover:underline">+ Add question</button>
+                <span id="questionsToAskLabel" className={labelClasses}>Questions to Ask</span>
+                <div role="group" aria-labelledby="questionsToAskLabel">
+                  {scenario.interlocutor_card.questions_to_ask.map((q, i) => (
+                    <div key={i} className="flex gap-2 mb-2">
+                      <input className={inputClasses} value={q} onChange={(e) => updateArrayItem('interlocutor_card.questions_to_ask', i, e.target.value)} />
+                      {scenario.interlocutor_card.questions_to_ask.length > 1 && (
+                        <button onClick={() => removeArrayItem('interlocutor_card.questions_to_ask', i)} className="text-red-400 hover:text-red-600">&times;</button>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={() => addArrayItem('interlocutor_card.questions_to_ask')} className="text-sm text-blue-600 font-semibold hover:underline">+ Add question</button>
+                </div>
               </div>
 
               <div className="mb-4">
-                <label className={labelClasses}>Information to Withhold</label>
-                {scenario.interlocutor_card.information_to_withhold.map((info, i) => (
-                  <div key={i} className="flex gap-2 mb-2">
-                    <input className={inputClasses} value={info} onChange={(e) => updateArrayItem('interlocutor_card.information_to_withhold', i, e.target.value)} />
-                    {scenario.interlocutor_card.information_to_withhold.length > 1 && (
-                      <button onClick={() => removeArrayItem('interlocutor_card.information_to_withhold', i)} className="text-red-400 hover:text-red-600">&times;</button>
-                    )}
-                  </div>
-                ))}
-                <button onClick={() => addArrayItem('interlocutor_card.information_to_withhold')} className="text-sm text-blue-600 font-semibold hover:underline">+ Add item</button>
+                <span id="informationToWithholdLabel" className={labelClasses}>Information to Withhold</span>
+                <div role="group" aria-labelledby="informationToWithholdLabel">
+                  {scenario.interlocutor_card.information_to_withhold.map((info, i) => (
+                    <div key={i} className="flex gap-2 mb-2">
+                      <input className={inputClasses} value={info} onChange={(e) => updateArrayItem('interlocutor_card.information_to_withhold', i, e.target.value)} />
+                      {scenario.interlocutor_card.information_to_withhold.length > 1 && (
+                        <button onClick={() => removeArrayItem('interlocutor_card.information_to_withhold', i)} className="text-red-400 hover:text-red-600">&times;</button>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={() => addArrayItem('interlocutor_card.information_to_withhold')} className="text-sm text-blue-600 font-semibold hover:underline">+ Add item</button>
+                </div>
               </div>
             </section>
 

@@ -436,7 +436,7 @@ export default function ReadingTestSessionPage() {
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="min-w-0">
                 <h1 className="text-lg font-bold text-[#0F2356] truncate">{test.title}</h1>
-                <p className="text-[11px] text-gray-400 uppercase tracking-wide">{mockId ? 'Full Mock Test · Reading (2 of 3)' : 'Full OET Reading · Part A + B + C'}</p>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{mockId ? 'Full Mock Test · Reading (2 of 3)' : 'Full OET Reading · Part A + B + C'}</p>
               </div>
 
               {/* Part A → B → C stepper */}
@@ -458,7 +458,12 @@ export default function ReadingTestSessionPage() {
               </div>
 
               {/* Timer — greys→amber→red as it runs down */}
-              <div className={`px-4 py-2 rounded-xl font-bold tabular-nums flex items-center gap-2 ${
+              <div
+                role="timer"
+                aria-live="off"
+                aria-atomic="true"
+                aria-label={`${timerLabel} time remaining: ${fmt(timeLeft)}`}
+                className={`px-4 py-2 rounded-xl font-bold tabular-nums flex items-center gap-2 ${
                 timeLeft <= 0 ? 'bg-red-100 text-red-700'
                 : timeLeft <= 300 ? 'bg-amber-100 text-amber-700'
                 : 'bg-[#0F2356]/5 text-[#0F2356]'}`}>
@@ -470,7 +475,7 @@ export default function ReadingTestSessionPage() {
 
             {/* Progress bar */}
             <div className="mt-3">
-              <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+              <div className="flex justify-between text-[11px] text-muted-foreground mb-1">
                 <span>{answeredCount} of {allQuestions.length} answered</span>
                 <span>{Math.round((answeredCount / Math.max(1, allQuestions.length)) * 100)}%</span>
               </div>

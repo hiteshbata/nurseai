@@ -67,7 +67,7 @@ export default function VocabReviewPage() {
       <div className="min-h-screen bg-gray-50 py-12 px-4">
         <div className="max-w-md mx-auto text-center py-16 bg-white rounded-lg shadow">
           <p className="text-xl text-gray-700 mb-2">All caught up!</p>
-          <p className="text-gray-400 mb-6">No words due for review right now. Look up new words while reading or listening and they'll land here.</p>
+          <p className="text-muted-foreground mb-6">No words due for review right now. Look up new words while reading or listening and they'll land here.</p>
           <Link href="/hub" className="text-sm font-semibold text-primary hover:underline">← Back to Study Hub</Link>
         </div>
       </div>
@@ -77,7 +77,7 @@ export default function VocabReviewPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-md mx-auto">
-        <p className="text-sm text-gray-400 mb-4 text-center">{cards.length - index} card{cards.length - index === 1 ? '' : 's'} left</p>
+        <p className="text-sm text-muted-foreground mb-4 text-center">{cards.length - index} card{cards.length - index === 1 ? '' : 's'} left</p>
 
         <Card className="p-10 text-center min-h-[220px] flex flex-col items-center justify-center">
           <h2 className="text-2xl font-bold text-gray-900 capitalize mb-4">{current.term}</h2>

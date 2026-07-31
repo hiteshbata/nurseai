@@ -156,9 +156,9 @@ export function MilestoneBadges({
 
   return (
     <div className="rounded-2xl bg-card border border-border p-6 motion-safe:animate-[message-in_0.4s_ease-out_0.54s_both]">
-      <h3 className="text-sm font-bold text-foreground uppercase tracking-wide mb-4">
+      <h2 className="text-sm font-bold text-foreground uppercase tracking-wide mb-4">
         Milestone Badges
-      </h3>
+      </h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
         {badges.map((b) => {
           const def = BADGE_DEFS.find((d) => d.id === b.id)

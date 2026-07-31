@@ -113,7 +113,7 @@ export default function StudyHubPage() {
                   {!item.completed && (
                     <button
                       onClick={() => completeTask(item.skill_tag)}
-                      className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg px-2 py-1"
+                      className="text-xs text-muted-foreground hover:text-gray-600 border border-gray-200 rounded-lg px-2 py-1"
                     >
                       Mark done
                     </button>
@@ -127,7 +127,7 @@ export default function StudyHubPage() {
         <Card className="p-6">
           <h2 className="font-bold text-lg mb-4">Revision queue</h2>
           {queue.length === 0 ? (
-            <p className="text-gray-400 text-sm">Practice a few sessions and your weakest areas will show up here.</p>
+            <p className="text-muted-foreground text-sm">Practice a few sessions and your weakest areas will show up here.</p>
           ) : (
             <div className="space-y-2">
               {queue.map((q) => (
@@ -137,7 +137,7 @@ export default function StudyHubPage() {
                   className="flex items-center justify-between rounded-xl border border-gray-200 p-3 hover:border-gray-300 transition"
                 >
                   <span className="text-sm font-medium text-gray-800">{q.label}</span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-muted-foreground">
                     band {q.ema_score.toFixed(1)} · {q.attempts} attempt{q.attempts === 1 ? '' : 's'}
                   </span>
                 </Link>

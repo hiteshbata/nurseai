@@ -311,7 +311,7 @@ export default function ListeningTestSessionPage() {
                         <DictionaryLookup>
                           <Transcript value={result.transcripts[s.id]} />
                         </DictionaryLookup>
-                        <p className="text-xs text-gray-400 mt-3">Double-click any word for a quick definition</p>
+                        <p className="text-xs text-muted-foreground mt-3">Double-click any word for a quick definition</p>
                       </div>
                     </details>
                   )}
@@ -348,7 +348,7 @@ export default function ListeningTestSessionPage() {
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="min-w-0">
                 <h1 className="text-lg font-bold text-[#0F2356] truncate">{test.title}</h1>
-                <p className="text-[11px] text-gray-400 uppercase tracking-wide">{mockId ? 'Full Mock Test · Listening (1 of 3)' : 'Full OET Listening · Part A + B + C'}</p>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{mockId ? 'Full Mock Test · Listening (1 of 3)' : 'Full OET Listening · Part A + B + C'}</p>
               </div>
               <div className="flex items-center">
                 {presentParts.map((p, idx) => {
@@ -369,7 +369,12 @@ export default function ListeningTestSessionPage() {
 
               {/* Mock countdown (whole-section cap; the audio itself sets the real pace) */}
               {mockId && secondsLeft !== null && (
-                <div className={`px-4 py-2 rounded-xl font-bold tabular-nums flex items-center gap-2 ${
+                <div
+                  role="timer"
+                  aria-live="off"
+                  aria-atomic="true"
+                  aria-label={`Time remaining: ${fmt(secondsLeft)}`}
+                  className={`px-4 py-2 rounded-xl font-bold tabular-nums flex items-center gap-2 ${
                   secondsLeft <= 0 ? 'bg-red-100 text-red-700'
                   : secondsLeft <= 300 ? 'bg-amber-100 text-amber-700'
                   : 'bg-[#0F2356]/5 text-[#0F2356]'}`}>
@@ -379,7 +384,7 @@ export default function ListeningTestSessionPage() {
               )}
             </div>
             <div className="mt-3">
-              <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+              <div className="flex justify-between text-[11px] text-muted-foreground mb-1">
                 <span>{answeredCount} of {allQuestions.length} answered</span>
                 <span>{Math.round((answeredCount / Math.max(1, allQuestions.length)) * 100)}%</span>
               </div>

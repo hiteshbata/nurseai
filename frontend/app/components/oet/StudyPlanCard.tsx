@@ -88,9 +88,9 @@ export function StudyPlanCard() {
   if (!data.ready) {
     return (
       <div className="rounded-2xl bg-card border border-dashed border-border p-5 motion-safe:animate-[message-in_0.4s_ease-out_0.3s_both]">
-        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-1">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-1">
           AI Study Plan
-        </p>
+        </h2>
         <p className="text-sm text-muted-foreground mb-3">{data.message}</p>
         <Link
           href="/practice/speaking"
@@ -105,9 +105,9 @@ export function StudyPlanCard() {
   return (
     <div className="rounded-2xl bg-card border border-border p-5 motion-safe:animate-[message-in_0.4s_ease-out_0.3s_both]">
       <div className="flex items-center justify-between gap-2 mb-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
           🎯 Your Weekly Study Plan
-        </p>
+        </h2>
         {typeof data.weeks_to_exam === 'number' && (
           <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full shrink-0">
             {data.weeks_to_exam} week{data.weeks_to_exam !== 1 ? 's' : ''} to exam
