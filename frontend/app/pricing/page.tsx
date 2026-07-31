@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { Check, Minus, Mic, Sparkles, TrendingUp, LifeBuoy } from 'lucide-react'
 import { FALLBACK_PLANS } from '@/lib/plans'
 import { SITE_URL, SITE_NAME } from '@/lib/site'
 
@@ -26,19 +27,52 @@ interface FeatureRow {
   pro: Cell
   elite: Cell
 }
+interface FeatureSection {
+  title: string
+  icon: typeof Mic
+  rows: FeatureRow[]
+}
 
-const FEATURE_ROWS: FeatureRow[] = [
-  { label: 'Speaking scenarios per month', free: '3', basic: '20', pro: '40', elite: '80' },
-  { label: 'Full 9-criteria OET speaking score', free: true, basic: true, pro: true, elite: true },
-  { label: 'Premium scoring model + British patient voice', free: false, basic: false, pro: true, elite: true },
-  { label: 'Reading practice', free: false, basic: true, pro: true, elite: true },
-  { label: 'Listening practice', free: false, basic: true, pro: true, elite: true },
-  { label: 'Writing practice & scoring', free: false, basic: false, pro: true, elite: true },
-  { label: 'Full Mock Test (Listening + Reading + Writing + Speaking)', free: false, basic: false, pro: false, elite: true },
-  { label: 'Phoneme-level pronunciation scoring', free: false, basic: false, pro: false, elite: true },
-  { label: 'AI-generated study plan', free: false, basic: false, pro: false, elite: true },
-  { label: 'Attempt history', free: 'Last 3', basic: 'Last 10', pro: 'Unlimited', elite: 'Unlimited' },
-  { label: 'Support', free: 'Community', basic: 'Email', pro: 'Priority email', elite: 'WhatsApp priority' },
+const FEATURE_SECTIONS: FeatureSection[] = [
+  {
+    title: 'Practice',
+    icon: Mic,
+    rows: [
+      { label: 'Speaking sessions per month', free: '3', basic: '20', pro: '40', elite: '80' },
+      { label: 'Reading practice', free: false, basic: true, pro: true, elite: true },
+      { label: 'Listening practice', free: false, basic: true, pro: true, elite: true },
+      { label: 'Writing practice', free: false, basic: false, pro: true, elite: true },
+      { label: 'Full Mock Test (all 4 parts)', free: false, basic: false, pro: false, elite: true },
+    ],
+  },
+  {
+    title: 'AI Feedback',
+    icon: Sparkles,
+    rows: [
+      { label: 'Full 9-criteria OET score', free: true, basic: true, pro: true, elite: true },
+      { label: 'Advanced AI feedback', free: false, basic: false, pro: true, elite: true },
+      { label: 'Premium AI conversation partner', free: false, basic: false, pro: true, elite: true },
+      { label: 'Patient voice', free: 'Standard', basic: 'Standard', pro: 'Natural British', elite: 'Natural British' },
+      { label: 'Handwriting OCR for Writing', free: false, basic: false, pro: true, elite: true },
+      { label: 'Pronunciation analysis', free: false, basic: false, pro: false, elite: true },
+      { label: 'AI-generated study plan', free: false, basic: false, pro: false, elite: true },
+    ],
+  },
+  {
+    title: 'Progress',
+    icon: TrendingUp,
+    rows: [
+      { label: 'Progress tracking dashboard', free: true, basic: true, pro: true, elite: true },
+      { label: 'Attempt history', free: 'Last 3', basic: 'Last 10', pro: 'Unlimited', elite: 'Unlimited' },
+    ],
+  },
+  {
+    title: 'Support',
+    icon: LifeBuoy,
+    rows: [
+      { label: 'Support channel', free: 'Community', basic: 'Email', pro: 'Priority email', elite: 'WhatsApp priority' },
+    ],
+  },
 ]
 
 const PRICING_FAQS = [
@@ -107,16 +141,16 @@ const softwareApplicationJsonLd = {
 function FeatureCell({ value }: { value: Cell }) {
   if (value === true) {
     return (
-      <td className="px-4 py-3 text-center text-emerald-600 font-bold">
-        <span aria-hidden="true">✓</span>
+      <td className="px-4 py-3 text-center">
+        <Check className="w-4 h-4 text-emerald-600 mx-auto" strokeWidth={3} aria-hidden="true" />
         <span className="sr-only">Included</span>
       </td>
     )
   }
   if (value === false) {
     return (
-      <td className="px-4 py-3 text-center text-gray-300">
-        <span aria-hidden="true">–</span>
+      <td className="px-4 py-3 text-center">
+        <Minus className="w-4 h-4 text-gray-300 mx-auto" aria-hidden="true" />
         <span className="sr-only">Not included</span>
       </td>
     )
@@ -141,7 +175,7 @@ export default function PricingPage() {
       <div className="max-w-6xl mx-auto px-4 py-16">
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-bold text-[#0F2356] text-balance">
-            OET Practice Pricing
+            Pricing that grows with your OET prep
           </h1>
           <p className="text-gray-500 mt-4 text-lg max-w-2xl mx-auto">
             Start free with 3 speaking sessions a month. Paid plans from ₹
@@ -152,12 +186,14 @@ export default function PricingPage() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16 items-start">
           {FALLBACK_PLANS.map((plan) => (
             <div
               key={plan.id}
               className={`rounded-2xl bg-white flex flex-col ${
-                plan.highlight ? 'border-2 border-[#0F2356] shadow-lg' : 'border border-gray-200 shadow-sm'
+                plan.highlight
+                  ? 'border-2 border-[#0F2356] shadow-xl md:-translate-y-2'
+                  : 'border border-gray-200 shadow-sm'
               }`}
             >
               {plan.highlight && (
@@ -167,7 +203,7 @@ export default function PricingPage() {
               )}
               <div className="p-6 flex flex-col flex-1">
                 <h2 className="text-xl font-bold text-[#0F2356] mb-1">{plan.name}</h2>
-                <p className="text-sm text-gray-500 mb-4">{plan.description}</p>
+                <p className="text-sm text-gray-500 mb-4 min-h-[2.5rem]">{plan.description}</p>
                 <div className="mb-1">
                   <span className="text-3xl font-black text-[#0F2356]">
                     {plan.price === 0 ? 'Free' : `₹${plan.price}`}
@@ -181,6 +217,15 @@ export default function PricingPage() {
                 )}
                 {plan.price === 0 && <p className="text-xs text-gray-400 mb-4">No credit card required</p>}
 
+                <ul className="flex flex-col gap-2.5 mb-6 flex-1">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2.5 text-sm text-gray-600">
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" strokeWidth={3} aria-hidden="true" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+
                 <Link
                   href="/auth/register"
                   className={`mt-auto block w-full text-center font-semibold px-6 py-3 rounded-xl transition-colors ${
@@ -189,7 +234,7 @@ export default function PricingPage() {
                       : 'bg-gray-50 text-[#0F2356] border border-gray-200 hover:bg-gray-100'
                   }`}
                 >
-                  {plan.id === 'free' ? 'Start Free' : plan.cta}
+                  {plan.cta}
                 </Link>
               </div>
             </div>
@@ -214,19 +259,33 @@ export default function PricingPage() {
                   ))}
                 </tr>
               </thead>
-              <tbody>
-                {FEATURE_ROWS.map((row, i) => (
-                  <tr key={row.label} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}>
-                    <th scope="row" className="px-4 py-3 text-left font-medium text-gray-700">
-                      {row.label}
+              {FEATURE_SECTIONS.map((section) => (
+                <tbody key={section.title}>
+                  <tr className="bg-[#0F2356]/5">
+                    <th
+                      colSpan={5}
+                      scope="colgroup"
+                      className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wider text-[#0F2356]"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <section.icon className="w-3.5 h-3.5" aria-hidden="true" />
+                        {section.title}
+                      </span>
                     </th>
-                    <FeatureCell value={row.free} />
-                    <FeatureCell value={row.basic} />
-                    <FeatureCell value={row.pro} />
-                    <FeatureCell value={row.elite} />
                   </tr>
-                ))}
-              </tbody>
+                  {section.rows.map((row, i) => (
+                    <tr key={row.label} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}>
+                      <th scope="row" className="px-4 py-3 text-left font-medium text-gray-700">
+                        {row.label}
+                      </th>
+                      <FeatureCell value={row.free} />
+                      <FeatureCell value={row.basic} />
+                      <FeatureCell value={row.pro} />
+                      <FeatureCell value={row.elite} />
+                    </tr>
+                  ))}
+                </tbody>
+              ))}
             </table>
           </div>
         </div>
