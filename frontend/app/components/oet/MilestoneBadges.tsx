@@ -155,7 +155,7 @@ export function MilestoneBadges({
   if (badges.length === 0) return null
 
   return (
-    <div className="rounded-2xl bg-white border border-slate-200 p-6">
+    <div className="rounded-2xl bg-white border border-slate-200 p-6 motion-safe:animate-[message-in_0.4s_ease-out_both]">
       <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide mb-4">
         Milestone Badges
       </h3>

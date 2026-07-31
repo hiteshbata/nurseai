@@ -60,7 +60,7 @@ export function StudyPlanCard() {
 
   if (data.locked) {
     return (
-      <div className="rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 p-5">
+      <div className="rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 p-5 motion-safe:animate-[message-in_0.4s_ease-out_both]">
         <div className="flex items-start gap-3">
           <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
             <Lock className="w-4 h-4 text-indigo-600" aria-hidden="true" />
@@ -87,7 +87,7 @@ export function StudyPlanCard() {
 
   if (!data.ready) {
     return (
-      <div className="rounded-2xl bg-white border border-dashed border-slate-200 p-5">
+      <div className="rounded-2xl bg-white border border-dashed border-slate-200 p-5 motion-safe:animate-[message-in_0.4s_ease-out_both]">
         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-1">
           AI Study Plan
         </p>
@@ -103,7 +103,7 @@ export function StudyPlanCard() {
   }
 
   return (
-    <div className="rounded-2xl bg-white border border-slate-200 p-5">
+    <div className="rounded-2xl bg-white border border-slate-200 p-5 motion-safe:animate-[message-in_0.4s_ease-out_both]">
       <div className="flex items-center justify-between gap-2 mb-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
           🎯 Your Weekly Study Plan

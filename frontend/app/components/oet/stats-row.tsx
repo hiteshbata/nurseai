@@ -33,7 +33,7 @@ export function StatsRow({
   thisWeekCount: number
 }) {
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 motion-safe:animate-[message-in_0.4s_ease-out_both]">
       <StatCard
         label="Total Sessions"
         icon={<Layers className="h-4 w-4 text-primary" aria-hidden="true" />}

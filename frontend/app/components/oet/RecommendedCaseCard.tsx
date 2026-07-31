@@ -43,7 +43,7 @@ export function RecommendedCaseCard() {
 
   if (!rec) {
     return (
-      <div className="w-full rounded-2xl p-5 bg-white border border-dashed border-slate-200">
+      <div className="w-full rounded-2xl p-5 bg-white border border-dashed border-slate-200 motion-safe:animate-[message-in_0.4s_ease-out_both]">
         <div className="flex flex-col gap-1">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
             Recommended for you
@@ -72,7 +72,7 @@ export function RecommendedCaseCard() {
   return (
     <button
       onClick={() => router.push(`/practice/speaking?scenario=${rec.scenario_id}`)}
-      className="w-full text-left rounded-2xl p-5 flex items-center justify-between gap-4 cursor-pointer hover:opacity-90 hover:shadow-md active:opacity-80 active:scale-[0.99] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+      className="w-full text-left rounded-2xl p-5 flex items-center justify-between gap-4 cursor-pointer hover:opacity-90 hover:shadow-md active:opacity-80 active:scale-[0.99] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 motion-safe:animate-[message-in_0.4s_ease-out_both]"
       style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)' }}
       aria-label={`Start ${rec.title} case`}
     >

@@ -15,7 +15,7 @@ interface ProgressChartProps {
 export function ProgressChart({ data }: ProgressChartProps) {
   if (data.length < 2) {
     return (
-      <div className="rounded-2xl bg-white border border-slate-200 p-4">
+      <div className="rounded-2xl bg-white border border-slate-200 p-4 motion-safe:animate-[message-in_0.4s_ease-out_both]">
         <p className="text-xs font-semibold text-slate-800 uppercase tracking-wide mb-1">Score Trend</p>
         <p className="text-xs text-slate-500 pt-6 pb-3 text-center">
           {data.length === 0
@@ -48,7 +48,7 @@ export function ProgressChart({ data }: ProgressChartProps) {
       : 0
 
   return (
-    <div className="rounded-2xl bg-white border border-slate-200 p-4">
+    <div className="rounded-2xl bg-white border border-slate-200 p-4 motion-safe:animate-[message-in_0.4s_ease-out_both]">
       <div className="flex items-center justify-between mb-1">
         <p className="text-xs font-semibold text-slate-800 uppercase tracking-wide">Score Trend</p>
         <span className="text-xs text-slate-500">

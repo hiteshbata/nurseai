@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import Link from 'next/link'
+import { useMountReveal } from '@/app/hooks/useMountReveal'
 
 const CRITERIA = ['Fluency', 'Grammar', 'Pronunciation', 'Empathy', 'Intelligibility'] as const
 const MAX = 6
@@ -20,7 +21,7 @@ function polygonPoints(cx: number, cy: number, r: number, n: number): string {
   }).join(' ')
 }
 
-function Pentagon({ scores, allNull }: { scores: number[]; allNull: boolean }) {
+function Pentagon({ scores, allNull, revealed }: { scores: number[]; allNull: boolean; revealed: boolean }) {
   const cx = 150
   const cy = 150
   const outerR = 110
@@ -53,7 +54,18 @@ function Pentagon({ scores, allNull }: { scores: number[]; allNull: boolean }) {
       <polygon points={outerPoints} fill="none" stroke="#cbd5e1" strokeWidth={1.5} />
 
       {!allNull && (
-        <polygon points={innerPoints} fill="rgba(16,185,129,0.3)" stroke="#10B981" strokeWidth={2} />
+        <polygon
+          points={innerPoints}
+          fill="rgba(16,185,129,0.3)"
+          stroke="#10B981"
+          strokeWidth={2}
+          style={{
+            transformOrigin: `${cx}px ${cy}px`,
+            transform: revealed ? 'scale(1)' : 'scale(0.7)',
+            opacity: revealed ? 1 : 0,
+            transition: 'transform 500ms cubic-bezier(0.16,1,0.3,1), opacity 500ms cubic-bezier(0.16,1,0.3,1)',
+          }}
+        />
       )}
 
       {CRITERIA.map((name, i) => {
@@ -79,7 +91,7 @@ function Pentagon({ scores, allNull }: { scores: number[]; allNull: boolean }) {
   )
 }
 
-function ScoreBar({ name, score, allNull }: { name: string; score: number | null; allNull: boolean }) {
+function ScoreBar({ name, score, allNull, revealed }: { name: string; score: number | null; allNull: boolean; revealed: boolean }) {
   const pct = score !== null ? (score / MAX) * 100 : 0
   return (
     <div className="flex items-center gap-2">
@@ -88,8 +100,8 @@ function ScoreBar({ name, score, allNull }: { name: string; score: number | null
       </span>
       <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
         <div
-          className={`h-2 rounded-full transition-all ${allNull ? 'bg-slate-200' : score !== null && score >= 4 ? 'bg-emerald-600' : score !== null && score >= 3 ? 'bg-amber-500' : score !== null ? 'bg-red-400' : 'bg-slate-200'}`}
-          style={{ width: `${pct}%` }}
+          className={`h-2 rounded-full transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${allNull ? 'bg-slate-200' : score !== null && score >= 4 ? 'bg-emerald-600' : score !== null && score >= 3 ? 'bg-amber-500' : score !== null ? 'bg-red-400' : 'bg-slate-200'}`}
+          style={{ width: revealed ? `${pct}%` : '0%' }}
         />
       </div>
       <span className={`text-xs w-10 text-right shrink-0 ${allNull || score === null ? 'text-slate-300' : 'text-slate-500'}`}>
@@ -117,6 +129,7 @@ export function CriteriaPentagonCard({
   ], [scores])
 
   const allNull = useMemo(() => scoreArray.every((s) => s === null), [scoreArray])
+  const revealed = useMountReveal()
 
   if (isLoading) {
     return (
@@ -135,7 +148,7 @@ export function CriteriaPentagonCard({
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-6 w-full">
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 w-full motion-safe:animate-[message-in_0.4s_ease-out_both]">
       <h2 className="text-lg font-bold text-slate-800 mb-2">
         {totalSessions < 3 && totalSessions > 0
           ? `Your Skills (${totalSessions}/3 sessions)`
@@ -159,7 +172,7 @@ export function CriteriaPentagonCard({
       ) : (
         <>
           <div className="flex justify-center">
-            <Pentagon scores={scoreArray as number[]} allNull={allNull} />
+            <Pentagon scores={scoreArray as number[]} allNull={allNull} revealed={revealed} />
           </div>
 
           <div className="flex flex-col gap-2.5 mt-2">
@@ -171,6 +184,7 @@ export function CriteriaPentagonCard({
                   name={name}
                   score={scores[key]}
                   allNull={allNull}
+                  revealed={revealed}
                 />
               )
             })}

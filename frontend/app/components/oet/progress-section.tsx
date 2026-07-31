@@ -1,3 +1,7 @@
+'use client'
+
+import { useMountReveal } from '@/app/hooks/useMountReveal'
+
 const gradePoints: Record<string, number> = {
   E: 0,
   D: 1,
@@ -30,9 +34,10 @@ export function ProgressSection({
   }
 
   const clamped = Math.min(100, Math.max(0, progressPercent))
+  const revealed = useMountReveal()
 
   return (
-    <section className="rounded-2xl border border-gray-100 bg-card p-6 shadow-sm">
+    <section className="rounded-2xl border border-gray-100 bg-card p-6 shadow-sm motion-safe:animate-[message-in_0.4s_ease-out_both]">
       <h2 className="text-lg font-bold text-primary">Your Journey</h2>
 
       <div className="mt-6">
@@ -45,8 +50,8 @@ export function ProgressSection({
           aria-label="Progress toward target band"
         >
           <div
-            className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600"
-            style={{ width: `${clamped}%` }}
+            className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-[width] duration-[1100ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
+            style={{ width: revealed ? `${clamped}%` : '0%' }}
           />
         </div>
 

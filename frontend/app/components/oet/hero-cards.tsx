@@ -27,7 +27,7 @@ export function HeroCards({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 motion-safe:animate-[message-in_0.4s_ease-out_both]">
       {/* Days until exam — navy */}
       <div className="flex flex-col justify-between rounded-2xl border border-primary bg-primary p-6 text-primary-foreground shadow-sm">
         <div className="flex items-center justify-between">

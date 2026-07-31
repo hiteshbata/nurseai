@@ -31,7 +31,7 @@ export function RecentSessions({
   const rows = recentSubmissions.slice(0, 5)
 
   return (
-    <section className="rounded-2xl border border-gray-100 bg-card p-6 shadow-sm">
+    <section className="rounded-2xl border border-gray-100 bg-card p-6 shadow-sm motion-safe:animate-[message-in_0.4s_ease-out_both]">
       {/* "View All" removed: it had no onClick and no destination, and there is
           no full-history page to point it at yet. */}
       <h2 className="text-lg font-bold text-primary">Recent Sessions</h2>

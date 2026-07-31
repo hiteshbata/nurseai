@@ -35,7 +35,7 @@ export function UpgradeBanner({ sessionsUsed, sessionsLimit, sessionsRemaining, 
   const ctaLabel = isNewUser ? 'See Plans & Pricing' : 'Upgrade to Pro'
 
   return (
-    <section className="w-full">
+    <section className="w-full motion-safe:animate-[message-in_0.4s_ease-out_both]">
       <div className="rounded-2xl bg-[#0F2356] p-5 sm:p-6 shadow-md">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex-1 min-w-0">

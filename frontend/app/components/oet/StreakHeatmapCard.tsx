@@ -64,7 +64,7 @@ export function StreakHeatmapCard({
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-6 w-full">
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 w-full motion-safe:animate-[message-in_0.4s_ease-out_both]">
       <div className="mb-4">
         <p className="text-2xl font-bold text-slate-800">
           {streak > 0 ? `🔥 ${streak}-day streak` : 'No active streak'}
