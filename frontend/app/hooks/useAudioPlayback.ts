@@ -7,7 +7,7 @@ interface UseAudioPlaybackReturn {
   /** Plays a Blob returned from the TTS endpoint via an HTMLAudioElement. */
   playBlob: (blob: Blob) => Promise<void>
   /** Browser SpeechSynthesis fallback for when the TTS endpoint is unavailable. */
-  speakFallback: (text: string) => void
+  speakFallback: (text: string) => Promise<void>
   /** Mirrors the app's existing "stop" behavior: cancels any in-flight SpeechSynthesis utterance. */
   stop: () => void
 }
@@ -47,8 +47,8 @@ export function useAudioPlayback(): UseAudioPlaybackReturn {
     })
   }, [])
 
-  const speakFallback = useCallback((text: string) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+  const speakFallback = useCallback((text: string): Promise<void> => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return Promise.resolve()
     window.speechSynthesis.cancel()
     // Strip *stage direction* markup (e.g. "*starts to tear up*") before
     // reading aloud -- it's written for the transcript, not to be spoken.
@@ -56,7 +56,19 @@ export function useAudioPlayback(): UseAudioPlaybackReturn {
     const spoken = text.replace(/\*[^*\n]{1,80}\*/g, '').replace(/[ \t]{2,}/g, ' ').trim() || text
     const utterance = new SpeechSynthesisUtterance(spoken)
     utterance.rate = 0.95
-    window.speechSynthesis.speak(utterance)
+
+    return new Promise((resolve) => {
+      setIsSpeaking(true)
+      utterance.onend = () => {
+        setIsSpeaking(false)
+        resolve()
+      }
+      utterance.onerror = () => {
+        setIsSpeaking(false)
+        resolve()
+      }
+      window.speechSynthesis.speak(utterance)
+    })
   }, [])
 
   const stop = useCallback(() => {

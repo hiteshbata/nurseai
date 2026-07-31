@@ -177,13 +177,13 @@ export function useSpeakingSession({
 
       const contentType = String(response.headers['content-type'] || '')
       if (contentType.includes('application/json')) {
-        audioPlayback.speakFallback(text)
+        await audioPlayback.speakFallback(text)
         return
       }
 
       await audioPlayback.playBlob(response.data)
     } catch (err) {
-      audioPlayback.speakFallback(text)
+      await audioPlayback.speakFallback(text)
     }
     // audioPlayback.speakFallback/playBlob are individually stable (both are
     // useCallback with empty deps in useAudioPlayback); depending on the
