@@ -129,8 +129,8 @@ export default function LoginPage() {
   if (authStatus === 'loading') {
     return (
       <main className="flex min-h-screen">
-        <div className="flex flex-1 items-center justify-center bg-white">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0F2356]" />
+        <div className="flex flex-1 items-center justify-center bg-background">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
         </div>
       </main>
     )
@@ -140,19 +140,19 @@ export default function LoginPage() {
     <main className="flex min-h-screen">
       <AuthLeftPanel />
 
-      <div className="flex flex-1 items-center justify-center bg-white px-6 py-12 sm:px-10">
+      <div className="flex flex-1 items-center justify-center bg-background px-6 py-12 sm:px-10">
         <div className="w-full max-w-md motion-safe:animate-[panel-slide-in_0.45s_ease-out_both]">
           <div className="mb-8 flex flex-col gap-2 lg:hidden">
             <SpeakOETLogo height={28} variant="full" theme="dark" priority />
-            <p className="text-sm text-gray-500">Practice OET Speaking with confidence</p>
+            <p className="text-sm text-muted-foreground">Practice OET Speaking with confidence</p>
           </div>
 
-          <div className="flex w-full flex-col gap-6 sm:rounded-2xl sm:border sm:border-gray-100 sm:p-8 sm:shadow-[0_1px_2px_rgba(15,35,86,0.04),0_8px_24px_rgba(15,35,86,0.06)]">
+          <div className="flex w-full flex-col gap-6 sm:rounded-2xl sm:border sm:border-border sm:p-8 sm:shadow-[0_1px_2px_rgba(15,35,86,0.04),0_8px_24px_rgba(15,35,86,0.06)]">
             <div className="flex flex-col gap-1">
-              <h2 className="text-2xl font-bold text-[#0F2356] text-balance">
+              <h2 className="text-2xl font-bold text-foreground text-balance">
                 Welcome back
               </h2>
-              <p className="text-sm leading-relaxed text-gray-500">
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 Sign in to continue your OET practice
               </p>
             </div>
@@ -168,7 +168,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={handleGoogleSignIn}
                 disabled={googleLoading || microsoftLoading || isLoading}
-                className="h-11 w-full rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 shadow-sm transition-all duration-150 hover:bg-gray-50 hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+                className="h-11 w-full rounded-xl border border-border bg-card text-sm font-medium text-foreground/80 shadow-sm transition-all duration-150 hover:bg-muted hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {googleLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -182,7 +182,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={handleMicrosoftSignIn}
                 disabled={googleLoading || microsoftLoading || isLoading}
-                className="h-11 w-full rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 shadow-sm transition-all duration-150 hover:bg-gray-50 hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+                className="h-11 w-full rounded-xl border border-border bg-card text-sm font-medium text-foreground/80 shadow-sm transition-all duration-150 hover:bg-muted hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {microsoftLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -194,14 +194,14 @@ export default function LoginPage() {
             </div>
 
             <div className="flex items-center gap-3" role="separator" aria-label="or">
-              <div className="h-px flex-1 bg-gray-200" />
-              <span className="text-xs font-medium tracking-wide text-gray-400">OR</span>
-              <div className="h-px flex-1 bg-gray-200" />
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs font-medium tracking-wide text-muted-foreground">OR</span>
+              <div className="h-px flex-1 bg-border" />
             </div>
 
             <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="email" className="text-sm font-medium text-[#0F2356]">
+                <label htmlFor="email" className="text-sm font-medium text-foreground">
                   Email address
                 </label>
                 <input
@@ -217,10 +217,10 @@ export default function LoginPage() {
                   required
                   aria-invalid={!!fieldErrors.email}
                   aria-describedby={fieldErrors.email ? 'email-error' : undefined}
-                  className={`h-11 w-full rounded-xl border bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:bg-white hover:border-gray-300 ${
+                  className={`h-11 w-full rounded-xl border bg-muted/60 px-3.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:bg-card hover:border-border ${
                     fieldErrors.email
                       ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100'
-                      : 'border-gray-200 focus:border-[#0F2356]/40 focus:ring-2 focus:ring-[#0F2356]/8'
+                      : 'border-border focus:border-primary/40 focus:ring-2 focus:ring-primary/10'
                   }`}
                 />
                 {fieldErrors.email && (
@@ -231,7 +231,7 @@ export default function LoginPage() {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="password" className="text-sm font-medium text-[#0F2356]">
+                <label htmlFor="password" className="text-sm font-medium text-foreground">
                   Password
                 </label>
                 <div className="relative">
@@ -248,16 +248,16 @@ export default function LoginPage() {
                     required
                     aria-invalid={!!fieldErrors.password}
                     aria-describedby={fieldErrors.password ? 'password-error' : undefined}
-                    className={`h-11 w-full rounded-xl border bg-gray-50/60 px-3.5 pr-11 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:bg-white hover:border-gray-300 ${
+                    className={`h-11 w-full rounded-xl border bg-muted/60 px-3.5 pr-11 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:bg-card hover:border-border ${
                       fieldErrors.password
                         ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100'
-                        : 'border-gray-200 focus:border-[#0F2356]/40 focus:ring-2 focus:ring-[#0F2356]/8'
+                        : 'border-border focus:border-primary/40 focus:ring-2 focus:ring-primary/10'
                     }`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-0 top-0 h-11 w-11 flex items-center justify-center text-gray-400 transition-colors hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F2356]/40 rounded-xl"
+                    className="absolute right-0 top-0 h-11 w-11 flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-xl"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -295,7 +295,7 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <p className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
+            <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5" aria-hidden="true">
                 <rect x="3" y="11" width="18" height="10" rx="2" />
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -303,24 +303,24 @@ export default function LoginPage() {
               Your data is encrypted and never shared
             </p>
 
-            <p className="text-center text-sm text-gray-500">
+            <p className="text-center text-sm text-muted-foreground">
               Don&apos;t have an account?{' '}
               <Link
                 href="/auth/register"
-                className="font-semibold text-[#0F2356] transition-colors hover:text-emerald-600 focus-visible:outline-none focus-visible:underline"
+                className="font-semibold text-foreground transition-colors hover:text-emerald-600 focus-visible:outline-none focus-visible:underline"
               >
                 Get Started Free
               </Link>
             </p>
           </div>
 
-          <p className="mt-6 text-center text-xs text-gray-400">
+          <p className="mt-6 text-center text-xs text-muted-foreground">
             By signing in, you agree to our{' '}
-            <Link href="/terms" className="underline hover:text-gray-600 focus-visible:outline-none focus-visible:underline">
+            <Link href="/terms" className="underline hover:text-foreground focus-visible:outline-none focus-visible:underline">
               Terms
             </Link>{' '}
             and{' '}
-            <Link href="/privacy" className="underline hover:text-gray-600 focus-visible:outline-none focus-visible:underline">
+            <Link href="/privacy" className="underline hover:text-foreground focus-visible:outline-none focus-visible:underline">
               Privacy Policy
             </Link>
           </p>

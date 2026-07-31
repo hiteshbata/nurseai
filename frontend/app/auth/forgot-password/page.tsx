@@ -32,7 +32,7 @@ export default function ForgotPasswordPage() {
     <main className="flex min-h-screen">
       <AuthLeftPanel />
 
-      <div className="flex flex-1 items-center justify-center bg-white px-6 py-12 sm:px-10">
+      <div className="flex flex-1 items-center justify-center bg-background px-6 py-12 sm:px-10">
         <div className="w-full max-w-md">
           <div className="mb-8 flex items-center gap-2 lg:hidden">
             <SpeakOETLogo height={28} variant="full" theme="dark" priority />
@@ -42,18 +42,18 @@ export default function ForgotPasswordPage() {
             {submitted ? (
               <>
                 <div className="flex flex-col gap-1">
-                  <h2 className="text-2xl font-bold text-[#0F2356] text-balance">
+                  <h2 className="text-2xl font-bold text-foreground text-balance">
                     Check your email
                   </h2>
-                  <p className="text-sm leading-relaxed text-gray-500">
-                    If an account exists for <span className="font-medium text-[#0F2356]">{email}</span>,
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    If an account exists for <span className="font-medium text-foreground">{email}</span>,
                     we&apos;ve sent a link to reset your password. The link expires soon, so use it shortly.
                   </p>
                 </div>
 
                 <Link
                   href="/auth/login"
-                  className="text-center text-sm font-semibold text-[#0F2356] transition-colors hover:text-emerald-600 focus-visible:outline-none focus-visible:underline"
+                  className="text-center text-sm font-semibold text-foreground transition-colors hover:text-emerald-600 focus-visible:outline-none focus-visible:underline"
                 >
                   Back to sign in
                 </Link>
@@ -61,17 +61,17 @@ export default function ForgotPasswordPage() {
             ) : (
               <>
                 <div className="flex flex-col gap-1">
-                  <h2 className="text-2xl font-bold text-[#0F2356] text-balance">
+                  <h2 className="text-2xl font-bold text-foreground text-balance">
                     Forgot your password?
                   </h2>
-                  <p className="text-sm leading-relaxed text-gray-500">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
                     Enter your email and we&apos;ll send you a link to reset it.
                   </p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
                   <div className="flex flex-col gap-1.5">
-                    <label htmlFor="email" className="text-sm font-medium text-[#0F2356]">
+                    <label htmlFor="email" className="text-sm font-medium text-foreground">
                       Email address
                     </label>
                     <input
@@ -82,7 +82,7 @@ export default function ForgotPasswordPage() {
                       placeholder="you@example.com"
                       autoComplete="email"
                       required
-                      className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-2 focus:ring-[#0F2356]/8 hover:border-gray-300"
+                      className="h-11 w-full rounded-xl border border-border bg-muted/60 px-3.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10 hover:border-border"
                     />
                   </div>
 
@@ -102,11 +102,11 @@ export default function ForgotPasswordPage() {
                   </button>
                 </form>
 
-                <p className="text-center text-sm text-gray-500">
+                <p className="text-center text-sm text-muted-foreground">
                   Remembered your password?{' '}
                   <Link
                     href="/auth/login"
-                    className="font-semibold text-[#0F2356] transition-colors hover:text-emerald-600 focus-visible:outline-none focus-visible:underline"
+                    className="font-semibold text-foreground transition-colors hover:text-emerald-600 focus-visible:outline-none focus-visible:underline"
                   >
                     Sign in
                   </Link>

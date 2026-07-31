@@ -117,7 +117,7 @@ export default function ResetPasswordPage() {
     <main className="flex min-h-screen">
       <AuthLeftPanel />
 
-      <div className="flex flex-1 items-center justify-center bg-white px-6 py-12 sm:px-10">
+      <div className="flex flex-1 items-center justify-center bg-background px-6 py-12 sm:px-10">
         <div className="w-full max-w-md">
           <div className="mb-8 flex items-center gap-2 lg:hidden">
             <SpeakOETLogo height={28} variant="full" theme="dark" priority />
@@ -126,18 +126,18 @@ export default function ResetPasswordPage() {
           <div className="flex w-full flex-col gap-6">
             {linkStatus === 'verifying' && (
               <div className="flex flex-col items-center gap-3 py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-[#0F2356]" aria-hidden="true" />
-                <p className="text-sm text-gray-500">Verifying your reset link…</p>
+                <Loader2 className="h-8 w-8 animate-spin text-foreground" aria-hidden="true" />
+                <p className="text-sm text-muted-foreground">Verifying your reset link…</p>
               </div>
             )}
 
             {linkStatus === 'invalid' && (
               <>
                 <div className="flex flex-col gap-1">
-                  <h2 className="text-2xl font-bold text-[#0F2356] text-balance">
+                  <h2 className="text-2xl font-bold text-foreground text-balance">
                     Link expired or invalid
                   </h2>
-                  <p className="text-sm leading-relaxed text-gray-500">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
                     This password reset link is no longer valid. Links expire after a short
                     time and can only be used once.
                   </p>
@@ -154,10 +154,10 @@ export default function ResetPasswordPage() {
             {linkStatus === 'valid' && !done && (
               <>
                 <div className="flex flex-col gap-1">
-                  <h2 className="text-2xl font-bold text-[#0F2356] text-balance">
+                  <h2 className="text-2xl font-bold text-foreground text-balance">
                     Set a new password
                   </h2>
-                  <p className="text-sm leading-relaxed text-gray-500">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
                     Choose a new password for your account.
                   </p>
                 </div>
@@ -170,7 +170,7 @@ export default function ResetPasswordPage() {
 
                 <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
                   <div className="flex flex-col gap-1.5">
-                    <label htmlFor="password" className="text-sm font-medium text-[#0F2356]">
+                    <label htmlFor="password" className="text-sm font-medium text-foreground">
                       New password
                     </label>
                     <div className="relative">
@@ -182,12 +182,12 @@ export default function ResetPasswordPage() {
                         placeholder="Create a new password"
                         autoComplete="new-password"
                         required
-                        className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 pr-11 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-2 focus:ring-[#0F2356]/8 hover:border-gray-300"
+                        className="h-11 w-full rounded-xl border border-border bg-muted/60 px-3.5 pr-11 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10 hover:border-border"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword((v) => !v)}
-                        className="absolute right-0 top-0 h-11 w-11 flex items-center justify-center text-gray-400 transition-colors hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F2356]/40 rounded-xl"
+                        className="absolute right-0 top-0 h-11 w-11 flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-xl"
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                       >
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -196,7 +196,7 @@ export default function ResetPasswordPage() {
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label htmlFor="confirmPassword" className="text-sm font-medium text-[#0F2356]">
+                    <label htmlFor="confirmPassword" className="text-sm font-medium text-foreground">
                       Confirm new password
                     </label>
                     <input
@@ -207,7 +207,7 @@ export default function ResetPasswordPage() {
                       placeholder="Confirm your new password"
                       autoComplete="new-password"
                       required
-                      className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-2 focus:ring-[#0F2356]/8 hover:border-gray-300"
+                      className="h-11 w-full rounded-xl border border-border bg-muted/60 px-3.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10 hover:border-border"
                     />
                   </div>
 
@@ -234,8 +234,8 @@ export default function ResetPasswordPage() {
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
                   <Check className="h-6 w-6 text-emerald-600" aria-hidden="true" />
                 </div>
-                <h2 className="text-xl font-bold text-[#0F2356]">Password updated</h2>
-                <p className="text-sm text-gray-500">Redirecting you to sign in…</p>
+                <h2 className="text-xl font-bold text-foreground">Password updated</h2>
+                <p className="text-sm text-muted-foreground">Redirecting you to sign in…</p>
               </div>
             )}
           </div>

@@ -83,7 +83,7 @@ export default function RegisterPage() {
     <main className="flex min-h-screen">
       <AuthLeftPanel />
 
-      <div className="flex flex-1 items-center justify-center bg-white px-6 py-12 sm:px-10">
+      <div className="flex flex-1 items-center justify-center bg-background px-6 py-12 sm:px-10">
         <div className="w-full max-w-md">
           <div className="mb-8 flex items-center gap-2 lg:hidden">
             <SpeakOETLogo height={28} variant="full" theme="dark" priority />
@@ -91,10 +91,10 @@ export default function RegisterPage() {
 
           <div className="flex w-full flex-col gap-6">
             <div className="flex flex-col gap-1">
-              <h2 className="text-2xl font-bold text-[#0F2356] text-balance">
+              <h2 className="text-2xl font-bold text-foreground text-balance">
                 Create your account
               </h2>
-              <p className="text-sm leading-relaxed text-gray-500">
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 Join nurses already practicing with SpeakOET
               </p>
             </div>
@@ -109,7 +109,7 @@ export default function RegisterPage() {
               type="button"
               onClick={handleGoogleSignUp}
               disabled={googleLoading || isLoading}
-              className="h-11 w-full rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 shadow-sm transition-all duration-150 hover:bg-gray-50 hover:shadow-md flex items-center justify-center gap-2"
+              className="h-11 w-full rounded-xl border border-border bg-card text-sm font-medium text-foreground/80 shadow-sm transition-all duration-150 hover:bg-muted hover:shadow-md flex items-center justify-center gap-2"
             >
               {googleLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -120,14 +120,14 @@ export default function RegisterPage() {
             </button>
 
             <div className="flex items-center gap-3" role="separator" aria-label="or">
-              <div className="h-px flex-1 bg-gray-200" />
-              <span className="text-xs font-medium text-gray-400">or</span>
-              <div className="h-px flex-1 bg-gray-200" />
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs font-medium text-muted-foreground">or</span>
+              <div className="h-px flex-1 bg-border" />
             </div>
 
             <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="name" className="text-sm font-medium text-[#0F2356]">
+                <label htmlFor="name" className="text-sm font-medium text-foreground">
                   Full name
                 </label>
                 <input
@@ -138,12 +138,12 @@ export default function RegisterPage() {
                   onChange={handleChange}
                   placeholder="Your full name"
                   required
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-2 focus:ring-[#0F2356]/8 hover:border-gray-300"
+                  className="h-11 w-full rounded-xl border border-border bg-muted/60 px-3.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10 hover:border-border"
                 />
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="email" className="text-sm font-medium text-[#0F2356]">
+                <label htmlFor="email" className="text-sm font-medium text-foreground">
                   Email address
                 </label>
                 <input
@@ -155,12 +155,12 @@ export default function RegisterPage() {
                   placeholder="you@example.com"
                   autoComplete="email"
                   required
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-2 focus:ring-[#0F2356]/8 hover:border-gray-300"
+                  className="h-11 w-full rounded-xl border border-border bg-muted/60 px-3.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10 hover:border-border"
                 />
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="password" className="text-sm font-medium text-[#0F2356]">
+                <label htmlFor="password" className="text-sm font-medium text-foreground">
                   Password
                 </label>
                 <div className="relative">
@@ -173,22 +173,22 @@ export default function RegisterPage() {
                     placeholder="Create a password"
                     autoComplete="new-password"
                     required
-                    className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 pr-11 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-2 focus:ring-[#0F2356]/8 hover:border-gray-300"
+                    className="h-11 w-full rounded-xl border border-border bg-muted/60 px-3.5 pr-11 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10 hover:border-border"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-0 top-0 h-11 w-11 flex items-center justify-center text-gray-400 transition-colors hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F2356]/40 rounded-xl"
+                    className="absolute right-0 top-0 h-11 w-11 flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-xl"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-                <p className="text-xs text-gray-400">Must be at least 8 characters</p>
+                <p className="text-xs text-muted-foreground">Must be at least 8 characters</p>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="confirmPassword" className="text-sm font-medium text-[#0F2356]">
+                <label htmlFor="confirmPassword" className="text-sm font-medium text-foreground">
                   Confirm password
                 </label>
                 <input
@@ -200,17 +200,17 @@ export default function RegisterPage() {
                   placeholder="Confirm your password"
                   autoComplete="new-password"
                   required
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3.5 text-sm text-[#0F2356] placeholder:text-gray-400 outline-none transition-all duration-150 focus:border-[#0F2356]/40 focus:bg-white focus:ring-2 focus:ring-[#0F2356]/8 hover:border-gray-300"
+                  className="h-11 w-full rounded-xl border border-border bg-muted/60 px-3.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10 hover:border-border"
                 />
               </div>
 
-              <p className="text-center text-xs leading-relaxed text-gray-400">
+              <p className="text-center text-xs leading-relaxed text-muted-foreground">
                 By creating an account, you agree to our{' '}
-                <Link href="/terms" className="font-medium text-gray-500 underline hover:text-[#0F2356]">
+                <Link href="/terms" className="font-medium text-muted-foreground underline hover:text-foreground">
                   Terms
                 </Link>{' '}
                 and{' '}
-                <Link href="/privacy" className="font-medium text-gray-500 underline hover:text-[#0F2356]">
+                <Link href="/privacy" className="font-medium text-muted-foreground underline hover:text-foreground">
                   Privacy Policy
                 </Link>
                 .
@@ -232,11 +232,11 @@ export default function RegisterPage() {
               </button>
             </form>
 
-            <p className="text-center text-sm text-gray-500">
+            <p className="text-center text-sm text-muted-foreground">
               Already have an account?{' '}
               <Link
                 href="/auth/login"
-                className="font-semibold text-[#0F2356] transition-colors hover:text-emerald-600 focus-visible:outline-none focus-visible:underline"
+                className="font-semibold text-foreground transition-colors hover:text-emerald-600 focus-visible:outline-none focus-visible:underline"
               >
                 Sign In
               </Link>
