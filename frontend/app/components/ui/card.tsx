@@ -5,11 +5,13 @@ import { cn } from '@/lib/utils'
 // 16px radius, soft shadow — already the most consistent component in the
 // app per the July 2026 audit. This just gives other flows (onboarding,
 // writing) the same primitive instead of hand-rolling the same classes.
+// shadow-premium is the brand-tinted shadow already used on landing —
+// shadow-sm here was the one place that hadn't picked it up.
 const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('rounded-2xl border border-gray-100 bg-white shadow-sm', className)}
+      className={cn('rounded-2xl border border-gray-100 bg-white shadow-premium', className)}
       {...props}
     />
   ),
