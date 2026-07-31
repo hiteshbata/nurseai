@@ -54,7 +54,7 @@ export function UpgradeBanner({ sessionsUsed, sessionsLimit, sessionsRemaining, 
                 />
               </div>
               <span className="text-xs font-semibold text-white/70 tabular-nums whitespace-nowrap">
-                {Math.round(pct)}%
+                {Math.round(Math.min(pct, 100))}%
               </span>
             </div>
           </div>

@@ -34,10 +34,10 @@ export function ProgressSection({
   }
 
   const clamped = Math.min(100, Math.max(0, progressPercent))
-  const revealed = useMountReveal()
+  const revealed = useMountReveal(520)
 
   return (
-    <section className="rounded-2xl border border-gray-100 bg-card p-6 shadow-sm motion-safe:animate-[message-in_0.4s_ease-out_both]">
+    <section className="rounded-2xl border border-gray-100 bg-card p-6 shadow-sm motion-safe:animate-[message-in_0.4s_ease-out_0.12s_both]">
       <h2 className="text-lg font-bold text-primary">Your Journey</h2>
 
       <div className="mt-6">

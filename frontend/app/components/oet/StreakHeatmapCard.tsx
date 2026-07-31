@@ -51,7 +51,7 @@ export function StreakHeatmapCard({
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 w-full animate-pulse">
+      <div className="bg-white rounded-2xl border border-gray-100 p-6 w-full animate-pulse">
         <div className="h-8 bg-slate-100 rounded w-1/2 mb-4" />
         <div className="grid grid-cols-7 gap-1.5">
           {Array.from({ length: 28 }, (_, i) => (
@@ -64,7 +64,7 @@ export function StreakHeatmapCard({
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-6 w-full motion-safe:animate-[message-in_0.4s_ease-out_both]">
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 w-full motion-safe:animate-[message-in_0.4s_ease-out_0.48s_both]">
       <div className="mb-4">
         <p className="text-2xl font-bold text-slate-800">
           {streak > 0 ? `🔥 ${streak}-day streak` : 'No active streak'}

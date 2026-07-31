@@ -39,7 +39,7 @@ export function FirstRunHero({
   }
 
   return (
-    <div className="flex flex-col gap-6 motion-safe:animate-[message-in_0.4s_ease-out_both]">
+    <div className="flex flex-col gap-6 motion-safe:animate-[message-in_0.4s_ease-out_0.06s_both]">
       <div className="flex flex-col gap-5 rounded-2xl bg-primary p-8 text-primary-foreground shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold text-balance">Start your first 5-minute roleplay</h2>

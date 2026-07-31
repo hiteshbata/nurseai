@@ -129,11 +129,11 @@ export function CriteriaPentagonCard({
   ], [scores])
 
   const allNull = useMemo(() => scoreArray.every((s) => s === null), [scoreArray])
-  const revealed = useMountReveal()
+  const revealed = useMountReveal(880)
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 w-full animate-pulse">
+      <div className="bg-white rounded-2xl border border-gray-100 p-6 w-full animate-pulse">
         <div className="h-6 bg-slate-100 rounded w-1/3 mb-4" />
         <div className="flex justify-center mb-4">
           <div className="w-[300px] h-[300px] bg-slate-100 rounded-full" />
@@ -148,7 +148,7 @@ export function CriteriaPentagonCard({
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-6 w-full motion-safe:animate-[message-in_0.4s_ease-out_both]">
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 w-full motion-safe:animate-[message-in_0.4s_ease-out_0.48s_both]">
       <h2 className="text-lg font-bold text-slate-800 mb-2">
         {totalSessions < 3 && totalSessions > 0
           ? `Your Skills (${totalSessions}/3 sessions)`

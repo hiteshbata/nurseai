@@ -22,7 +22,7 @@ export function CoachSummaryCard() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl bg-white border border-slate-200 p-5 animate-pulse">
+      <div className="rounded-2xl bg-white border border-gray-100 p-5 animate-pulse">
         <div className="flex items-start gap-3">
           <div className="w-9 h-9 rounded-full bg-slate-100 shrink-0" />
           <div className="flex-1 space-y-2">
@@ -36,7 +36,7 @@ export function CoachSummaryCard() {
   }
 
   return (
-    <div className="rounded-2xl bg-white border border-slate-200 p-5 motion-safe:animate-[message-in_0.4s_ease-out_both]">
+    <div className="rounded-2xl bg-white border border-gray-100 p-5 motion-safe:animate-[message-in_0.4s_ease-out_0.36s_both]">
       <div className="flex items-start gap-3">
         <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
           <Bot className="w-4 h-4 text-indigo-600" aria-hidden="true" />
