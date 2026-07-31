@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { supabase, signOut, useSupabaseSession } from '@/lib/supabase'
 import { LayoutDashboard, Settings, LogOut, Gift } from 'lucide-react'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import api from '@/lib/api'
 
 const publicNavLinks = [
@@ -123,7 +124,7 @@ export function Navbar() {
     if (!usage) return null
     return (
       <div className="flex items-center gap-2">
-        <span className="inline-flex items-center whitespace-nowrap rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+        <span className="inline-flex items-center whitespace-nowrap rounded-full bg-blue-50 dark:bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:text-blue-400">
           {planLabel} &middot; {usage.sessions_used}/{usage.sessions_limit} sessions
         </span>
         {showUpgrade && (
@@ -142,7 +143,7 @@ export function Navbar() {
   return (
     <nav
       id="main-navbar"
-      className={`sticky top-0 z-50 bg-white border-b border-gray-100 transition-shadow duration-200 ${scrolled ? 'shadow-md' : ''}`}
+      className={`sticky top-0 z-50 bg-card border-b border-border transition-shadow duration-200 ${scrolled ? 'shadow-md' : ''}`}
     >
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         <Link href="/">
@@ -155,7 +156,7 @@ export function Navbar() {
             link.disabled ? (
               <span
                 key={link.href}
-                className="text-gray-400 cursor-not-allowed text-sm font-semibold transition"
+                className="text-muted-foreground cursor-not-allowed text-sm font-semibold transition"
                 title="Coming Soon"
               >
                 {link.label}
@@ -168,13 +169,13 @@ export function Navbar() {
                 aria-current={isActiveLink(link.href) ? 'page' : undefined}
                 className={`inline-flex items-center gap-1.5 min-h-11 transition text-sm font-semibold ${
                   isActiveLink(link.href)
-                    ? 'text-emerald-700 border-b-2 border-emerald-700'
-                    : 'text-gray-700 hover:text-emerald-700'
+                    ? 'text-emerald-600 border-b-2 border-emerald-600'
+                    : 'text-foreground/80 hover:text-emerald-600'
                 }`}
               >
                 {link.label}
                 {link.href === '/practice/writing' && usage && !WRITING_PLANS.includes(usage.plan) && (
-                  <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">Pro</span>
+                  <span className="rounded-full bg-blue-50 dark:bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:text-blue-400">Pro</span>
                 )}
               </Link>
             )
@@ -192,39 +193,39 @@ export function Navbar() {
               <div className="relative" ref={avatarRef}>
               <button
                 onClick={() => setAvatarOpen(!avatarOpen)}
-                className="w-9 h-9 rounded-full bg-[#0F2356] text-white text-sm font-semibold flex items-center justify-center hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-[#10B981] focus:ring-offset-2"
+                className="w-9 h-9 rounded-full bg-primary text-primary-foreground text-sm font-semibold flex items-center justify-center hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
               >
                 {getInitials(userName)}
               </button>
               {avatarOpen && (
-                <div className="absolute right-0 top-12 z-50 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-2">
-                  <div className="px-4 py-2 font-semibold text-sm text-gray-900 truncate">
+                <div className="absolute right-0 top-12 z-50 w-48 bg-card rounded-xl shadow-lg border border-border py-2">
+                  <div className="px-4 py-2 font-semibold text-sm text-foreground truncate">
                     {userName}
                   </div>
-                  <div className="px-4 pb-2 text-xs text-gray-500 truncate">
+                  <div className="px-4 pb-2 text-xs text-muted-foreground truncate">
                     {userEmail}
                   </div>
                   {usage && (
                     <div className="px-4 pb-2 flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-gray-600">
+                      <span className="text-xs font-semibold text-muted-foreground">
                         {planLabel} plan &middot; {usage.sessions_used}/{usage.sessions_limit} sessions
                       </span>
                       {showUpgrade && (
                         <Link
                           href="/upgrade"
                           onClick={() => setAvatarOpen(false)}
-                          className="text-xs font-semibold text-emerald-700 hover:underline whitespace-nowrap"
+                          className="text-xs font-semibold text-emerald-600 hover:underline whitespace-nowrap"
                         >
                           Upgrade
                         </Link>
                       )}
                     </div>
                   )}
-                  <div className="border-t border-gray-100 my-1" />
+                  <div className="border-t border-border my-1" />
                   <Link
                     href="/dashboard"
                     onClick={() => setAvatarOpen(false)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-foreground/80 hover:bg-muted"
                   >
                     <LayoutDashboard className="h-4 w-4" />
                     Dashboard
@@ -232,7 +233,7 @@ export function Navbar() {
                   <Link
                     href="/profile"
                     onClick={() => setAvatarOpen(false)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-foreground/80 hover:bg-muted"
                   >
                     <Settings className="h-4 w-4" />
                     Settings
@@ -240,15 +241,15 @@ export function Navbar() {
                   <Link
                     href="/refer"
                     onClick={() => setAvatarOpen(false)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-foreground/80 hover:bg-muted"
                   >
                     <Gift className="h-4 w-4" />
                     Refer &amp; Earn
                   </Link>
-                  <div className="border-t border-gray-100 my-1" />
+                  <div className="border-t border-border my-1" />
                   <button
                     onClick={async () => { setAvatarOpen(false); router.push('/'); await signOut() }}
-                    className="flex items-center gap-2 px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 w-full text-left"
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 w-full text-left"
                   >
                     <LogOut className="h-4 w-4" />
                     Sign Out
@@ -276,7 +277,7 @@ export function Navbar() {
             </div>
           ) : (
             <div className="hidden sm:flex items-center gap-3">
-              <Link href="/auth/login" className="text-sm text-[#0F2356] font-semibold hover:bg-gray-50 px-3 py-2 rounded transition whitespace-nowrap">
+              <Link href="/auth/login" className="text-sm text-foreground font-semibold hover:bg-muted px-3 py-2 rounded transition whitespace-nowrap">
                 Sign In
               </Link>
               <Link href="/auth/register" className="px-4 py-2 bg-emerald-700 text-white rounded-lg text-sm font-semibold hover:opacity-90 transition whitespace-nowrap">
@@ -285,10 +286,12 @@ export function Navbar() {
             </div>
           )}
 
+          <ThemeToggle className="hidden sm:inline-flex" />
+
           {/* Hamburger */}
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden p-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+            className="md:hidden p-2 text-foreground/80 hover:bg-muted rounded-lg"
             aria-label="Toggle menu"
           >
             {mobileOpen ? (
@@ -307,13 +310,13 @@ export function Navbar() {
       {/* Mobile menu */}
       <div
         className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out ${
-          mobileOpen ? 'max-h-96 border-b border-gray-100 shadow-sm' : 'max-h-0'
+          mobileOpen ? 'max-h-96 border-b border-border shadow-sm' : 'max-h-0'
         }`}
       >
-        <div className="px-4 py-2 bg-white">
+        <div className="px-4 py-2 bg-card">
           {session && usage && (
-            <div className="sm:hidden flex items-center justify-between gap-2 py-3 border-b border-gray-100 mb-1">
-              <span className="inline-flex items-center whitespace-nowrap rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+            <div className="sm:hidden flex items-center justify-between gap-2 py-3 border-b border-border mb-1">
+              <span className="inline-flex items-center whitespace-nowrap rounded-full bg-blue-50 dark:bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:text-blue-400">
                 {planLabel} &middot; {usage.sessions_used}/{usage.sessions_limit} sessions
               </span>
               {showUpgrade && (
@@ -331,7 +334,7 @@ export function Navbar() {
             link.disabled ? (
               <span
                 key={link.href}
-                className="block py-2 text-gray-400 cursor-not-allowed text-sm"
+                className="block py-2 text-muted-foreground cursor-not-allowed text-sm"
                 title="Coming Soon"
               >
                 {link.label} <span className="text-xs text-amber-500">(Coming Soon)</span>
@@ -343,19 +346,19 @@ export function Navbar() {
                 onClick={() => setMobileOpen(false)}
                 aria-current={isActiveLink(link.href) ? 'page' : undefined}
                 className={`flex items-center gap-1.5 min-h-11 transition text-sm ${
-                  isActiveLink(link.href) ? 'text-emerald-700 font-semibold' : 'text-gray-700 hover:text-emerald-700'
+                  isActiveLink(link.href) ? 'text-emerald-600 font-semibold' : 'text-foreground/80 hover:text-emerald-600'
                 }`}
               >
                 {link.label}
                 {link.href === '/practice/writing' && usage && !WRITING_PLANS.includes(usage.plan) && (
-                  <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">Pro</span>
+                  <span className="rounded-full bg-blue-50 dark:bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:text-blue-400">Pro</span>
                 )}
               </Link>
             )
           )}
           {status !== 'loading' && !session && (
             <>
-              <Link href="/auth/login" onClick={() => setMobileOpen(false)} className="flex items-center min-h-11 text-gray-700 hover:text-emerald-700 transition text-sm">
+              <Link href="/auth/login" onClick={() => setMobileOpen(false)} className="flex items-center min-h-11 text-foreground/80 hover:text-emerald-600 transition text-sm">
                 Sign In
               </Link>
               <Link href="/auth/register" onClick={() => setMobileOpen(false)} className="flex items-center min-h-11 text-emerald-700 font-semibold text-sm">
@@ -363,6 +366,10 @@ export function Navbar() {
               </Link>
             </>
           )}
+          <div className="flex items-center justify-between border-t border-border mt-2 pt-3">
+            <span className="text-sm text-muted-foreground">Appearance</span>
+            <ThemeToggle />
+          </div>
         </div>
       </div>
     </nav>
