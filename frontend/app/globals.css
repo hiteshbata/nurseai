@@ -25,6 +25,32 @@
     --ring: 160 84% 39%;
     --radius: 0.625rem;
   }
+
+  /* Background/foreground swap the light palette's values (standard shadcn
+     convention); primary is lightened from the brand navy since the raw
+     #0F2356 has poor contrast on a dark background -- everything else keeps
+     the same hue, adjusted for legibility on dark surfaces. */
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 222 39% 15%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 39% 15%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 223 70% 62%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 222 30% 20%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 222 30% 18%;
+    --muted-foreground: 215 16% 65%;
+    --accent: 160 70% 45%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 20% 24%;
+    --input: 222 20% 24%;
+    --ring: 160 70% 45%;
+  }
 }
 
 @media print {

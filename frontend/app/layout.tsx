@@ -65,8 +65,8 @@ const organizationJsonLd = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${fraunces.variable} ${inter.variable}`}>
-      <body className="bg-gray-50 text-gray-900 font-sans">
+    <html lang="en" className={`${fraunces.variable} ${inter.variable}`} suppressHydrationWarning>
+      <body className="bg-background text-foreground font-sans">
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
