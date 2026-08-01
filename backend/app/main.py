@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.supabase import get_supabase
+from app.core.redis_client import get_redis
 from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads, reading, listening, hub, vocab, mock, referrals, tools
 from app.services.oet_questions import oet_service
 from app.services.seed_scenarios import seed_scenarios
@@ -41,6 +42,13 @@ async def lifespan(app: FastAPI):
             seed_scenarios()
     except Exception:
         print("[WARN] startup seeding check failed — Supabase unreachable or tables missing, continuing to serve")
+
+    if not settings.REDIS_URL and settings.SENTRY_ENVIRONMENT == "production":
+        print(
+            "[WARN] REDIS_URL is unset in production — rate limiting and role "
+            "caching will silently degrade to per-process memory, which is "
+            "wrong once more than one worker/instance is running."
+        )
 
     yield
 
@@ -161,13 +169,26 @@ async def health_check():
 
     ai_api_status = "ok" if (settings.OPENROUTER_API_KEY or settings.GEMINI_API_KEY) else "not_configured"
 
-    overall = "ok" if database_status == "ok" and ai_api_status in ("ok", "not_configured") else "degraded"
+    if not settings.REDIS_URL:
+        redis_status = "not_configured"
+    else:
+        try:
+            redis_status = "ok" if get_redis().ping() else "error"
+        except Exception:
+            redis_status = "error"
+
+    overall = (
+        "ok"
+        if database_status == "ok" and ai_api_status in ("ok", "not_configured") and redis_status != "error"
+        else "degraded"
+    )
 
     return {
         "status": overall,
         "timestamp": timestamp,
         "database": database_status,
         "ai_api": ai_api_status,
+        "redis": redis_status,
     }
 
 if __name__ == "__main__":
