@@ -41,6 +41,29 @@ export async function middleware(request: NextRequest) {
     : request.nextUrl.pathname
   const isProtected = protectedPaths.some((p) => pathname === p || pathname.startsWith(p + '/'))
 
+  // Landing page: authenticated (non-anonymous) users skip the marketing page
+  // and go straight to the app. Without this the client-side Home component
+  // renders the full landing page, returns null once the session resolves,
+  // then triggers router.push('/dashboard') — flashing a white screen with
+  // the Navbar in between. Server-side redirect eliminates that intermediate
+  // render entirely.
+  if (!isProtected && pathname === '/') {
+    const { supabase, getResponse } = createMiddlewareClient(request)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user && !user.is_anonymous) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      const redirectResponse = NextResponse.redirect(url)
+      const responseWithCookies = getResponse()
+      const setCookieHeader = responseWithCookies.headers.get('set-cookie')
+      if (setCookieHeader) {
+        redirectResponse.headers.set('set-cookie', setCookieHeader)
+      }
+      return redirectResponse
+    }
+    return NextResponse.next()
+  }
+
   if (!isProtected) {
     return NextResponse.next()
   }

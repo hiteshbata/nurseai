@@ -81,10 +81,21 @@ export default function DashboardPage() {
       return
     }
 
+    if (status === 'authenticated' && session?.user?.is_anonymous) {
+      router.push('/')
+      return
+    }
+
     if (status === 'authenticated' && session?.user?.email) {
       fetchAll()
     }
   }, [status, session])
+
+  useEffect(() => {
+    if (profileReady && profile && !profile.onboarding_completed) {
+      router.replace('/onboarding')
+    }
+  }, [profileReady, profile, router])
 
   const fetchAll = () => {
     api.get('/progress/stats')
