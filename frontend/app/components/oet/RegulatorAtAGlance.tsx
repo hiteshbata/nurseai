@@ -1,4 +1,5 @@
 import { MODULE_LABELS, REGULATORS, scoreToGrade, type OetModule } from '@/lib/oetScoring'
+import { RevealOnScroll } from '@/components/RevealOnScroll'
 
 const MODULES: OetModule[] = ['listening', 'reading', 'writing', 'speaking']
 
@@ -7,7 +8,7 @@ export function RegulatorAtAGlance({ regulatorId }: { regulatorId: string }) {
   if (!regulator) return null
 
   return (
-    <div className="mb-8 rounded-2xl border border-[#0F2356]/10 bg-[#F8FAFC] p-6">
+    <RevealOnScroll className="block mb-8 rounded-2xl border border-[#0F2356]/10 bg-[#F8FAFC] p-6">
       <p className="text-xs font-semibold uppercase tracking-wide text-[#0F2356]/60 mb-3">At a glance</p>
       <dl className="grid grid-cols-2 gap-y-2 text-sm text-gray-700 sm:grid-cols-4">
         {MODULES.map((module) => (
@@ -23,6 +24,6 @@ export function RegulatorAtAGlance({ regulatorId }: { regulatorId: string }) {
         Combining two sittings: allowed by some regulators — verify {regulator.name}&apos;s current
         policy. Score validity: commonly around two years, but confirm the current window directly.
       </p>
-    </div>
+    </RevealOnScroll>
   )
 }

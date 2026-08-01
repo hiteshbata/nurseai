@@ -127,20 +127,20 @@ export function ScoreCalculator() {
 
   return (
     <div>
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-premium">
         <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
           <div className="inline-flex rounded-lg border border-gray-200 p-1 text-sm">
             <button
               type="button"
               onClick={() => setMode('grade')}
-              className={`px-3 py-1.5 rounded-md font-medium transition ${mode === 'grade' ? 'bg-[#0F2356] text-white' : 'text-gray-500'}`}
+              className={`px-3 py-1.5 rounded-md font-medium motion-safe:transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2 ${mode === 'grade' ? 'bg-[#0F2356] text-white' : 'text-gray-500'}`}
             >
               I have grades
             </button>
             <button
               type="button"
               onClick={() => setMode('number')}
-              className={`px-3 py-1.5 rounded-md font-medium transition ${mode === 'number' ? 'bg-[#0F2356] text-white' : 'text-gray-500'}`}
+              className={`px-3 py-1.5 rounded-md font-medium motion-safe:transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2 ${mode === 'number' ? 'bg-[#0F2356] text-white' : 'text-gray-500'}`}
             >
               I have numbers (0-500)
             </button>
@@ -230,7 +230,7 @@ export function ScoreCalculator() {
             )}
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm mb-8">
+          <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-premium mb-8">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
@@ -263,8 +263,8 @@ export function ScoreCalculator() {
           </div>
 
           {weakest && (
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm mb-8">
-              <h2 className="text-lg font-bold text-[#0F2356] mb-4">
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-premium mb-8">
+              <h2 className="font-display text-lg font-semibold text-[#0F2356] mb-4">
                 4-week plan: {MODULE_LABELS[weakest.module]}
               </h2>
               <ol className="space-y-4">
@@ -277,7 +277,7 @@ export function ScoreCalculator() {
               </ol>
               <Link
                 href="/auth/register"
-                className="mt-6 inline-flex items-center justify-center bg-[#0F2356] text-white font-semibold px-6 py-3 rounded-xl hover:bg-[#0F2356]/90 transition-colors"
+                className="mt-6 inline-flex items-center justify-center bg-[#0F2356] text-white font-semibold px-6 py-3 rounded-xl motion-safe:transition-colors hover:bg-[#0F2356]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
               >
                 Start practicing {MODULE_LABELS[weakest.module]} free →
               </Link>
@@ -288,7 +288,7 @@ export function ScoreCalculator() {
             <button
               type="button"
               onClick={handleCopyLink}
-              className="text-sm text-gray-500 hover:text-[#0F2356] underline"
+              className="text-sm text-gray-500 hover:text-[#0F2356] underline rounded motion-safe:transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
             >
               {copied ? 'Link copied!' : 'Copy a link to this result'}
             </button>

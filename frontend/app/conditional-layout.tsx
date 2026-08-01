@@ -11,15 +11,13 @@ import { AppShell } from '@/components/AppShell'
 const USE_APP_SHELL = true
 
 // Marketing / legal / content pages keep the marketing top bar even when
-// signed in; they are not part of the practice app.
-//
-// /support is deliberately NOT here even though it's marketing-adjacent: the
-// avatar menu's "Help & Support" link points at it, so it must render inside
-// AppShell or clicking it drops a signed-in user back into the old top bar
-// mid-session. Anonymous visitors arriving from the public footer link get
-// AppShell too (with a Sign In button instead of the avatar) rather than
-// branching this decision on auth state -- see the hydration note below.
-const PUBLIC_PATHS = ['/', '/about', '/blog', '/privacy', '/terms', '/pricing']
+// signed in; they are not part of the practice app. /support included so
+// anonymous visitors from the public footer link see the plain marketing
+// chrome instead of the app dashboard sidebar (which implied a logged-in
+// state and linked to gated pages they couldn't use). Signed-in users
+// dropping to the top bar via the avatar menu's "Help & Support" link is
+// consistent with how Privacy/Terms already behave from that same menu.
+const PUBLIC_PATHS = ['/', '/about', '/blog', '/privacy', '/terms', '/pricing', '/support']
 const PUBLIC_PREFIXES = ['/learn', '/docs', '/admin', '/tools']
 
 export default function ConditionalLayout({ children }: { children: React.ReactNode }) {

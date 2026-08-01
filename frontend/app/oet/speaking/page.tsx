@@ -91,13 +91,15 @@ export default function OetSpeakingPillarPage() {
         datePublished="2026-07-29"
       />
 
-      <h1 className="text-3xl font-bold text-[#0F2356] mt-4 mb-4">
-        OET Speaking: The Complete Guide for Nurses
-      </h1>
-      <p className="text-gray-500 text-lg mb-2">
-        The format, all 9 assessment criteria with real examples, a full worked roleplay, common
-        mistakes, and how to prepare &mdash; in one place.
-      </p>
+      <div className="motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
+        <h1 className="font-display text-3xl font-semibold text-[#0F2356] mt-4 mb-4">
+          OET Speaking: The Complete Guide for Nurses
+        </h1>
+        <p className="text-gray-500 text-lg mb-2">
+          The format, all 9 assessment criteria with real examples, a full worked roleplay, common
+          mistakes, and how to prepare &mdash; in one place.
+        </p>
+      </div>
       <ArticleMeta date="2026-07-29" />
 
       <p className="text-gray-600 leading-relaxed mb-6">
@@ -135,7 +137,7 @@ export default function OetSpeakingPillarPage() {
       <TableOfContents items={toc} />
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="what-is-oet-speaking" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="what-is-oet-speaking" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         What is OET Speaking?
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -168,7 +170,7 @@ export default function OetSpeakingPillarPage() {
       </p>
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="format" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="format" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         The format
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -215,7 +217,7 @@ export default function OetSpeakingPillarPage() {
       </div>
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="criteria" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="criteria" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         All 9 assessment criteria
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -361,7 +363,7 @@ export default function OetSpeakingPillarPage() {
       />
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="step-by-step-strategy" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="step-by-step-strategy" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         A step-by-step exam strategy
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -416,7 +418,7 @@ export default function OetSpeakingPillarPage() {
       </Callout>
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="worked-example" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="worked-example" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         A full worked example
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -469,7 +471,7 @@ export default function OetSpeakingPillarPage() {
       </p>
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="common-mistakes" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="common-mistakes" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         18 mistakes that quietly cap your score
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -498,7 +500,7 @@ export default function OetSpeakingPillarPage() {
       </ol>
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="tutor-tips" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="tutor-tips" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         Tips from experienced OET tutors
       </h2>
       <ul className="list-disc pl-5 space-y-3 text-gray-600 mb-4">
@@ -521,50 +523,50 @@ export default function OetSpeakingPillarPage() {
       <FaqSection faqs={faqs} />
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="related-guides" className="text-2xl font-bold text-[#0F2356] mt-12 mb-4">
+      <h2 id="related-guides" className="font-display text-2xl font-semibold text-[#0F2356] mt-12 mb-4">
         Related guides
       </h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 mb-4 text-sm">
-        <Link href="/learn/what-is-oet-speaking" className="text-[#0F2356] font-semibold underline">
+        <Link href="/learn/what-is-oet-speaking" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           What is OET Speaking?
         </Link>
-        <Link href="/learn/oet-speaking-tips" className="text-[#0F2356] font-semibold underline">
+        <Link href="/learn/oet-speaking-tips" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           OET Speaking Tips for Nurses
         </Link>
-        <Link href="/learn/oet-writing" className="text-[#0F2356] font-semibold underline">
+        <Link href="/learn/oet-writing" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           OET Writing Guide for Nurses
         </Link>
-        <Link href="/learn/oet-reading" className="text-[#0F2356] font-semibold underline">
+        <Link href="/learn/oet-reading" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           OET Reading Guide for Nurses
         </Link>
-        <Link href="/learn/oet-listening" className="text-[#0F2356] font-semibold underline">
+        <Link href="/learn/oet-listening" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           OET Listening Guide for Nurses
         </Link>
-        <Link href="/learn/oet-band-scores" className="text-[#0F2356] font-semibold underline">
+        <Link href="/learn/oet-band-scores" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           OET Band Scores Explained
         </Link>
-        <Link href="/learn/oet-vs-ielts" className="text-[#0F2356] font-semibold underline">
+        <Link href="/learn/oet-vs-ielts" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           OET vs IELTS
         </Link>
-        <Link href="/oet/uk" className="text-[#0F2356] font-semibold underline">
+        <Link href="/oet/uk" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           OET Requirements for the UK (NMC)
         </Link>
-        <Link href="/oet/australia" className="text-[#0F2356] font-semibold underline">
+        <Link href="/oet/australia" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           OET Requirements for Australia
         </Link>
-        <Link href="/oet/ireland" className="text-[#0F2356] font-semibold underline">
+        <Link href="/oet/ireland" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           OET Requirements for Ireland
         </Link>
-        <Link href="/oet/new-zealand" className="text-[#0F2356] font-semibold underline">
+        <Link href="/oet/new-zealand" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           OET Requirements for New Zealand
         </Link>
-        <Link href="/oet/canada" className="text-[#0F2356] font-semibold underline">
+        <Link href="/oet/canada" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           OET Requirements for Canada
         </Link>
-        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline">
+        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           Free OET Score Calculator
         </Link>
-        <Link href="/practice/mock" className="text-[#0F2356] font-semibold underline">
+        <Link href="/practice/mock" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           Full 4-Skill Mock Test
         </Link>
       </div>

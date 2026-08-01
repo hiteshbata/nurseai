@@ -7,6 +7,10 @@ import { SummaryBox } from '@/components/learn/SummaryBox'
 import { Callout } from '@/components/learn/Callout'
 import { FaqSection } from '@/components/seo/FaqSection'
 import { OetPageJsonLd } from '@/components/seo/OetPageJsonLd'
+import { RevealOnScroll } from '@/components/RevealOnScroll'
+
+const relatedLinkClass =
+  'text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2'
 
 const TITLE = 'OET Reading Guide for Nurses: How to Pass the OET Reading Sub-Test'
 const DESCRIPTION =
@@ -91,17 +95,22 @@ export default function OetReadingPillarPage() {
         datePublished="2026-07-27"
       />
 
-      <Link href="/blog" className="text-sm text-gray-500 hover:text-[#0F2356] transition">
+      <Link
+        href="/blog"
+        className="text-sm text-gray-500 hover:text-[#0F2356] transition rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+      >
         ← All articles
       </Link>
-      <h1 className="text-3xl font-bold text-[#0F2356] mt-4 mb-4">
-        OET Reading Guide for Nurses
-      </h1>
-      <p className="text-gray-500 text-lg mb-2">
-        Everything a nurse needs to pass OET Reading: the 3-part format, what each question type
-        is really testing, a minute-by-minute strategy, a full worked example, and the mistakes
-        that quietly cost marks under time pressure.
-      </p>
+      <div className="motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
+        <h1 className="font-display text-3xl font-semibold text-[#0F2356] mt-4 mb-4">
+          OET Reading Guide for Nurses
+        </h1>
+        <p className="text-gray-500 text-lg mb-2">
+          Everything a nurse needs to pass OET Reading: the 3-part format, what each question type
+          is really testing, a minute-by-minute strategy, a full worked example, and the mistakes
+          that quietly cost marks under time pressure.
+        </p>
+      </div>
       <ArticleMeta date="2026-07-27" />
 
       <p className="text-gray-600 leading-relaxed mb-6">
@@ -128,7 +137,7 @@ export default function OetReadingPillarPage() {
       <TableOfContents items={toc} />
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="what-is-oet-reading" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="what-is-oet-reading" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         What is OET Reading?
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -164,7 +173,7 @@ export default function OetReadingPillarPage() {
       </p>
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="format" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="format" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         The format
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -172,37 +181,39 @@ export default function OetReadingPillarPage() {
         &mdash; each one rewards a different reading skill, timed separately from the others.
       </p>
 
-      <div className="overflow-x-auto mb-6">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="border-b border-gray-200">
-              <th className="text-left py-2 pr-4 text-[#0F2356] font-semibold">Part</th>
-              <th className="text-left py-2 pr-4 text-[#0F2356] font-semibold">Time</th>
-              <th className="text-left py-2 pr-4 text-[#0F2356] font-semibold">Texts</th>
-              <th className="text-left py-2 text-[#0F2356] font-semibold">Questions</th>
-            </tr>
-          </thead>
-          <tbody className="text-gray-600">
-            <tr className="border-b border-gray-100">
-              <td className="py-2 pr-4 font-semibold text-[#0F2356]">A</td>
-              <td className="py-2 pr-4">15 minutes</td>
-              <td className="py-2 pr-4">4 short texts, one shared topic</td>
-              <td className="py-2">~20 — matching, sentence completion, short answer</td>
-            </tr>
-            <tr className="border-b border-gray-100">
-              <td className="py-2 pr-4 font-semibold text-[#0F2356]">B</td>
-              <td className="py-2 pr-4" rowSpan={2}>45 minutes (shared)</td>
-              <td className="py-2 pr-4">6 short workplace texts</td>
-              <td className="py-2">6 — one 3-option question per text</td>
-            </tr>
-            <tr>
-              <td className="py-2 pr-4 font-semibold text-[#0F2356]">C</td>
-              <td className="py-2 pr-4">2 longer healthcare texts</td>
-              <td className="py-2">~16 — 4-option questions, ~8 per text</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <RevealOnScroll>
+        <div className="overflow-x-auto mb-6">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-2 pr-4 text-[#0F2356] font-semibold">Part</th>
+                <th className="text-left py-2 pr-4 text-[#0F2356] font-semibold">Time</th>
+                <th className="text-left py-2 pr-4 text-[#0F2356] font-semibold">Texts</th>
+                <th className="text-left py-2 text-[#0F2356] font-semibold">Questions</th>
+              </tr>
+            </thead>
+            <tbody className="text-gray-600">
+              <tr className="border-b border-gray-100">
+                <td className="py-2 pr-4 font-semibold text-[#0F2356]">A</td>
+                <td className="py-2 pr-4">15 minutes</td>
+                <td className="py-2 pr-4">4 short texts, one shared topic</td>
+                <td className="py-2">~20 — matching, sentence completion, short answer</td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="py-2 pr-4 font-semibold text-[#0F2356]">B</td>
+                <td className="py-2 pr-4" rowSpan={2}>45 minutes (shared)</td>
+                <td className="py-2 pr-4">6 short workplace texts</td>
+                <td className="py-2">6 — one 3-option question per text</td>
+              </tr>
+              <tr>
+                <td className="py-2 pr-4 font-semibold text-[#0F2356]">C</td>
+                <td className="py-2 pr-4">2 longer healthcare texts</td>
+                <td className="py-2">~16 — 4-option questions, ~8 per text</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </RevealOnScroll>
 
       <Callout variant="warning" title="Part A has a hard stop">
         The 15 minutes for Part A is a separate clock. Once it ends, you move into the shared
@@ -211,7 +222,7 @@ export default function OetReadingPillarPage() {
         later.&rdquo;
       </Callout>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-6 mb-2">Part A in detail</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-6 mb-2">Part A in detail</h3>
       <p className="text-gray-600 leading-relaxed mb-4">
         Four short texts (labelled Text A–D) all on one healthcare topic &mdash; think four
         different extracts about the same medication, condition, or hospital procedure. Around 20
@@ -221,7 +232,7 @@ export default function OetReadingPillarPage() {
         &mdash; OET is testing speed of locating information, not slow, careful comprehension.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-6 mb-2">Part B in detail</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-6 mb-2">Part B in detail</h3>
       <p className="text-gray-600 leading-relaxed mb-4">
         Six short, unrelated workplace texts &mdash; the kind of thing that actually lands in a
         ward pigeonhole or inbox: a memo, a policy extract, a set of guidelines, an incident
@@ -229,7 +240,7 @@ export default function OetReadingPillarPage() {
         text&rsquo;s main purpose, what a reader should do, or what a specific instruction means.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-6 mb-2">Part C in detail</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-6 mb-2">Part C in detail</h3>
       <p className="text-gray-600 leading-relaxed mb-4">
         Two longer, more academic or discursive healthcare texts, each followed by around eight
         four-option (A/B/C/D) questions. This is where most of your 45-minute B/C block should go
@@ -245,7 +256,7 @@ export default function OetReadingPillarPage() {
       />
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="how-reading-is-scored" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="how-reading-is-scored" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         What each part is really testing
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -255,7 +266,7 @@ export default function OetReadingPillarPage() {
         skill is being tested changes how you should read the question.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-8 mb-2">1. Part A matching — scanning, not reading</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-8 mb-2">1. Part A matching — scanning, not reading</h3>
       <p className="text-gray-600 leading-relaxed mb-3">
         &ldquo;Which text mentions the recommended dosage for renal impairment?&rdquo; is a
         scanning task: you&rsquo;re hunting for a keyword or concept across four texts, not
@@ -276,7 +287,7 @@ export default function OetReadingPillarPage() {
         four texts first.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-8 mb-2">2. Part A completion & short answer — exact wording</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-8 mb-2">2. Part A completion & short answer — exact wording</h3>
       <p className="text-gray-600 leading-relaxed mb-3">
         These questions want the text&rsquo;s own word or short phrase, copied accurately &mdash;
         not a paraphrase, however correct in meaning.
@@ -296,7 +307,7 @@ export default function OetReadingPillarPage() {
         misspelling is a more common cause of lost marks here than not finding the answer at all.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-8 mb-2">3. Part B — purpose and instruction, not detail</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-8 mb-2">3. Part B — purpose and instruction, not detail</h3>
       <p className="text-gray-600 leading-relaxed mb-3">
         With only one question per text, Part B is usually asking about the text&rsquo;s overall
         purpose, its intended reader, or what action it requires &mdash; not a buried detail.
@@ -315,7 +326,7 @@ export default function OetReadingPillarPage() {
         already know the answer before you&rsquo;ve read the three options.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-8 mb-2">4. Part C — inference and distractor elimination</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-8 mb-2">4. Part C — inference and distractor elimination</h3>
       <p className="text-gray-600 leading-relaxed mb-3">
         Part C questions test whether you can infer a writer&rsquo;s opinion, understand a
         cause-and-effect relationship, or work out a word&rsquo;s meaning from context &mdash; and
@@ -337,13 +348,16 @@ export default function OetReadingPillarPage() {
         passage was about.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-8 mb-2">5. How your answers become a grade</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-8 mb-2">5. How your answers become a grade</h3>
       <p className="text-gray-600 leading-relaxed mb-4">
         Unlike Writing and Speaking, Reading has no partial credit for reasoning &mdash; your raw
         score is simply correct answers out of total questions, converted into a band out of 6,
         which then maps to a letter grade and a 0&ndash;500 score, the same scale used across all
         four sub-tests. See our{' '}
-        <Link href="/learn/oet-band-scores" className="text-[#0F2356] font-semibold underline">
+        <Link
+          href="/learn/oet-band-scores"
+          className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+        >
           full breakdown of how band scores work
         </Link>{' '}
         for how that conversion applies across Reading, Listening, Writing, and Speaking.
@@ -362,7 +376,7 @@ export default function OetReadingPillarPage() {
       />
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="step-by-step-strategy" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="step-by-step-strategy" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         A minute-by-minute exam strategy
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -370,6 +384,7 @@ export default function OetReadingPillarPage() {
         actually spend the 60 minutes.
       </p>
 
+      <RevealOnScroll>
       <div className="overflow-x-auto mb-6">
         <table className="w-full text-sm border-collapse">
           <thead>
@@ -406,6 +421,7 @@ export default function OetReadingPillarPage() {
           </tbody>
         </table>
       </div>
+      </RevealOnScroll>
 
       <Callout variant="warning" title="If a Part C question is taking too long">
         Mark your best guess and move on rather than re-reading the same paragraph a fourth time.
@@ -416,17 +432,19 @@ export default function OetReadingPillarPage() {
         against the text one more time &mdash; not from memory, from the actual sentence.
       </Callout>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-6 mb-2">Decision tree: stuck on a question?</h3>
-      <div className="rounded-xl border border-gray-100 bg-[#F8FAFC] p-5 mb-4 text-sm text-gray-700 leading-relaxed">
-        <p className="mb-2"><span className="font-semibold text-[#0F2356]">Have you found the exact sentence the question is based on?</span></p>
-        <p className="mb-2 pl-4">No → keep scanning for the keyword or concept in the question, don&rsquo;t start guessing between options yet.</p>
-        <p className="mb-2 pl-4">Yes → does one option directly restate that sentence&rsquo;s meaning?</p>
-        <p className="mb-2 pl-8">Yes → select it and move on immediately.</p>
-        <p className="pl-8">No → eliminate any option that reverses, overstates, or invents a claim the sentence doesn&rsquo;t make; guess among what&rsquo;s left and move on within 90 seconds.</p>
-      </div>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-6 mb-2">Decision tree: stuck on a question?</h3>
+      <RevealOnScroll>
+        <div className="rounded-xl border border-gray-100 bg-[#F8FAFC] p-5 mb-4 text-sm text-gray-700 leading-relaxed">
+          <p className="mb-2"><span className="font-semibold text-[#0F2356]">Have you found the exact sentence the question is based on?</span></p>
+          <p className="mb-2 pl-4">No → keep scanning for the keyword or concept in the question, don&rsquo;t start guessing between options yet.</p>
+          <p className="mb-2 pl-4">Yes → does one option directly restate that sentence&rsquo;s meaning?</p>
+          <p className="mb-2 pl-8">Yes → select it and move on immediately.</p>
+          <p className="pl-8">No → eliminate any option that reverses, overstates, or invents a claim the sentence doesn&rsquo;t make; guess among what&rsquo;s left and move on within 90 seconds.</p>
+        </div>
+      </RevealOnScroll>
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="worked-example" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="worked-example" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         A full worked example
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -434,29 +452,33 @@ export default function OetReadingPillarPage() {
         process a strong candidate actually uses &mdash; not just the correct answer.
       </p>
 
-      <div className="rounded-xl border border-gray-100 bg-[#F8FAFC] p-5 mb-4 text-sm text-gray-700 leading-relaxed">
-        <p className="font-semibold text-[#0F2356] mb-2">Extract</p>
-        <p>
-          Since the ward introduced a standardised sepsis-screening tool at admission, the time
-          between a patient meeting screening criteria and the first dose of antibiotics has
-          fallen by an average of 40 minutes. Nursing staff report that the tool is quick to use,
-          though several noted that its usefulness depends entirely on being completed at the
-          point of admission rather than retrospectively. Where screening was delayed until after
-          the initial assessment was complete, the time-to-antibiotics improvement largely
-          disappeared. The trust is now reviewing whether screening should be built into the
-          admission checklist itself, rather than remaining a separate step nursing staff must
-          remember to initiate.
-        </p>
-      </div>
+      <RevealOnScroll>
+        <div className="rounded-xl border border-gray-100 bg-[#F8FAFC] p-5 mb-4 text-sm text-gray-700 leading-relaxed">
+          <p className="font-semibold text-[#0F2356] mb-2">Extract</p>
+          <p>
+            Since the ward introduced a standardised sepsis-screening tool at admission, the time
+            between a patient meeting screening criteria and the first dose of antibiotics has
+            fallen by an average of 40 minutes. Nursing staff report that the tool is quick to use,
+            though several noted that its usefulness depends entirely on being completed at the
+            point of admission rather than retrospectively. Where screening was delayed until after
+            the initial assessment was complete, the time-to-antibiotics improvement largely
+            disappeared. The trust is now reviewing whether screening should be built into the
+            admission checklist itself, rather than remaining a separate step nursing staff must
+            remember to initiate.
+          </p>
+        </div>
+      </RevealOnScroll>
 
-      <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-5 mb-4 text-sm text-gray-700 leading-relaxed">
-        <p className="font-semibold text-[#0F2356] mb-2">Question</p>
-        <p className="mb-2">According to the text, the sepsis-screening tool&rsquo;s benefit is:</p>
-        <p className="mb-1">A. guaranteed regardless of when it is completed during admission.</p>
-        <p className="mb-1">B. dependent on being completed at the point of admission.</p>
-        <p className="mb-1">C. limited mainly by how quickly staff can be trained to use it.</p>
-        <p>D. no longer being reviewed by the trust.</p>
-      </div>
+      <RevealOnScroll>
+        <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-5 mb-4 text-sm text-gray-700 leading-relaxed">
+          <p className="font-semibold text-[#0F2356] mb-2">Question</p>
+          <p className="mb-2">According to the text, the sepsis-screening tool&rsquo;s benefit is:</p>
+          <p className="mb-1">A. guaranteed regardless of when it is completed during admission.</p>
+          <p className="mb-1">B. dependent on being completed at the point of admission.</p>
+          <p className="mb-1">C. limited mainly by how quickly staff can be trained to use it.</p>
+          <p>D. no longer being reviewed by the trust.</p>
+        </div>
+      </RevealOnScroll>
 
       <p className="text-gray-600 leading-relaxed mb-3">
         <span className="font-semibold text-[#0F2356]">Eliminating A:</span> the text says the
@@ -483,13 +505,14 @@ export default function OetReadingPillarPage() {
       </p>
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="common-mistakes" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="common-mistakes" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         18 mistakes that quietly cost marks
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
         None of these will make you fail obviously &mdash; they just chip away marks you assumed
         you had.
       </p>
+      <RevealOnScroll>
       <ol className="list-decimal pl-5 space-y-3 text-gray-600 mb-4">
         <li><span className="font-semibold text-[#0F2356]">Reading every word of every Part A text before answering.</span> Burns most of your 15 minutes on content no question ever asks about.</li>
         <li><span className="font-semibold text-[#0F2356]">Reading the texts before the questions.</span> You end up scanning twice instead of once, with no idea what you&rsquo;re hunting for the first time.</li>
@@ -510,11 +533,13 @@ export default function OetReadingPillarPage() {
         <li><span className="font-semibold text-[#0F2356]">Practising only with general-topic articles.</span> Healthcare workplace documents (memos, policies, guidelines) have a different structure to news or academic writing, and Part B specifically expects familiarity with that structure.</li>
         <li><span className="font-semibold text-[#0F2356]">Never reviewing your wrong answers by question type.</span> Losing marks repeatedly in the same skill (say, Part C inference) without ever noticing the pattern.</li>
       </ol>
+      </RevealOnScroll>
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="tutor-tips" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="tutor-tips" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         Tips from experienced OET tutors
       </h2>
+      <RevealOnScroll>
       <ul className="list-disc pl-5 space-y-3 text-gray-600 mb-4">
         <li>Time yourself by part, not just overall — knowing you consistently overrun Part C by four minutes is far more useful than knowing your total time was five minutes over.</li>
         <li>For Part A, read the question stem before you read any text. Decide what you&rsquo;re hunting for first.</li>
@@ -526,6 +551,7 @@ export default function OetReadingPillarPage() {
         <li>When a Part C question asks for the writer&rsquo;s opinion rather than a fact, look for hedging language first (&ldquo;suggests,&rdquo; &ldquo;appears to,&rdquo; &ldquo;may indicate&rdquo;) — that&rsquo;s usually where the opinion lives, not in the factual sentences around it.</li>
         <li>Do a handful of practice sessions at a time of day close to your actual test slot. Reading speed under pressure genuinely dips at the end of a long shift or early in the morning — find that out in practice, not on test day.</li>
       </ul>
+      </RevealOnScroll>
 
       <p className="text-gray-600 leading-relaxed mb-8">
         Always check the exact current format, timing, and question types on the official OET
@@ -535,53 +561,55 @@ export default function OetReadingPillarPage() {
       <FaqSection faqs={faqs} />
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="related-guides" className="text-2xl font-bold text-[#0F2356] mt-12 mb-4">
+      <h2 id="related-guides" className="font-display text-2xl font-semibold text-[#0F2356] mt-12 mb-4">
         Related guides
       </h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 mb-4 text-sm">
-        <Link href="/learn/oet-listening" className="text-[#0F2356] font-semibold underline">
-          OET Listening Guide for Nurses
-        </Link>
-        <Link href="/learn/oet-writing" className="text-[#0F2356] font-semibold underline">
-          OET Writing Guide for Nurses
-        </Link>
-        <Link href="/oet/speaking" className="text-[#0F2356] font-semibold underline">
-          OET Speaking: The Complete Guide
-        </Link>
-        <Link href="/learn/what-is-oet-speaking" className="text-[#0F2356] font-semibold underline">
-          What is OET Speaking?
-        </Link>
-        <Link href="/learn/oet-band-scores" className="text-[#0F2356] font-semibold underline">
-          OET Band Scores Explained
-        </Link>
-        <Link href="/learn/oet-speaking-tips" className="text-[#0F2356] font-semibold underline">
-          OET Speaking Tips for Nurses
-        </Link>
-        <Link href="/learn/oet-vs-ielts" className="text-[#0F2356] font-semibold underline">
-          OET vs IELTS
-        </Link>
-        <Link href="/oet/uk" className="text-[#0F2356] font-semibold underline">
-          OET Requirements for the UK (NMC)
-        </Link>
-        <Link href="/oet/australia" className="text-[#0F2356] font-semibold underline">
-          OET Requirements for Australia
-        </Link>
-        <Link href="/oet/ireland" className="text-[#0F2356] font-semibold underline">
-          OET Requirements for Ireland
-        </Link>
-        <Link href="/oet/new-zealand" className="text-[#0F2356] font-semibold underline">
-          OET Requirements for New Zealand
-        </Link>
-        <Link href="/oet/canada" className="text-[#0F2356] font-semibold underline">
-          OET Requirements for Canada
-        </Link>
-        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline">
-          Free OET Score Calculator
-        </Link>
-        <Link href="/tools/ai-study-plan-generator" className="text-[#0F2356] font-semibold underline">
-          Free AI Study Plan Generator
-        </Link>
-      </div>
+      <RevealOnScroll>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 mb-4 text-sm">
+          <Link href="/learn/oet-listening" className={relatedLinkClass}>
+            OET Listening Guide for Nurses
+          </Link>
+          <Link href="/learn/oet-writing" className={relatedLinkClass}>
+            OET Writing Guide for Nurses
+          </Link>
+          <Link href="/oet/speaking" className={relatedLinkClass}>
+            OET Speaking: The Complete Guide
+          </Link>
+          <Link href="/learn/what-is-oet-speaking" className={relatedLinkClass}>
+            What is OET Speaking?
+          </Link>
+          <Link href="/learn/oet-band-scores" className={relatedLinkClass}>
+            OET Band Scores Explained
+          </Link>
+          <Link href="/learn/oet-speaking-tips" className={relatedLinkClass}>
+            OET Speaking Tips for Nurses
+          </Link>
+          <Link href="/learn/oet-vs-ielts" className={relatedLinkClass}>
+            OET vs IELTS
+          </Link>
+          <Link href="/oet/uk" className={relatedLinkClass}>
+            OET Requirements for the UK (NMC)
+          </Link>
+          <Link href="/oet/australia" className={relatedLinkClass}>
+            OET Requirements for Australia
+          </Link>
+          <Link href="/oet/ireland" className={relatedLinkClass}>
+            OET Requirements for Ireland
+          </Link>
+          <Link href="/oet/new-zealand" className={relatedLinkClass}>
+            OET Requirements for New Zealand
+          </Link>
+          <Link href="/oet/canada" className={relatedLinkClass}>
+            OET Requirements for Canada
+          </Link>
+          <Link href="/tools/oet-score-calculator" className={relatedLinkClass}>
+            Free OET Score Calculator
+          </Link>
+          <Link href="/tools/ai-study-plan-generator" className={relatedLinkClass}>
+            Free AI Study Plan Generator
+          </Link>
+        </div>
+      </RevealOnScroll>
 
       <LearnCTA
         heading="Ready to beat the clock?"

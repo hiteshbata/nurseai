@@ -2,6 +2,10 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { learnArticles } from '../learn/articles'
 import { getBlogPosts } from '@/lib/sanity'
+import { RevealOnScroll } from '@/components/RevealOnScroll'
+
+const cardClass =
+  'block rounded-2xl border border-gray-100 bg-white shadow-premium p-6 motion-safe:transition-shadow motion-safe:duration-200 hover:shadow-premium-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2'
 
 export const revalidate = 60
 
@@ -17,34 +21,32 @@ export default async function BlogPage() {
 
   return (
     <main className="min-h-screen px-4 py-20 max-w-3xl mx-auto">
-      <h1 className="text-3xl font-bold text-[#0F2356] mb-4">Blog</h1>
-      <p className="text-gray-500 text-lg mb-10">
-        Guides on OET Speaking — format, scoring, and how to actually prepare.
-      </p>
+      <div className="motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
+        <h1 className="font-display text-3xl font-semibold text-[#0F2356] mb-4">Blog</h1>
+        <p className="text-gray-500 text-lg mb-10">
+          Guides on OET Speaking — format, scoring, and how to actually prepare.
+        </p>
+      </div>
 
       <div className="space-y-4 mb-10">
-        {posts.map((post) => (
-          <Link
-            key={post._id}
-            href={`/blog/${post.slug}`}
-            className="block rounded-2xl border border-gray-100 bg-white shadow-sm p-6 hover:shadow-md transition"
-          >
-            <h2 className="text-lg font-bold text-[#0F2356] mb-1">{post.title}</h2>
-            <p className="text-gray-500 text-sm">{post.excerpt}</p>
-          </Link>
+        {posts.map((post, i) => (
+          <RevealOnScroll key={post._id} delayMs={Math.min(i, 4) * 40}>
+            <Link href={`/blog/${post.slug}`} className={cardClass}>
+              <h2 className="font-display text-lg font-semibold text-[#0F2356] mb-1">{post.title}</h2>
+              <p className="text-gray-500 text-sm">{post.excerpt}</p>
+            </Link>
+          </RevealOnScroll>
         ))}
       </div>
 
       <div className="space-y-4">
-        {learnArticles.map((article) => (
-          <Link
-            key={article.href}
-            href={article.href}
-            className="block rounded-2xl border border-gray-100 bg-white shadow-sm p-6 hover:shadow-md transition"
-          >
-            <h2 className="text-lg font-bold text-[#0F2356] mb-1">{article.title}</h2>
-            <p className="text-gray-500 text-sm">{article.description}</p>
-          </Link>
+        {learnArticles.map((article, i) => (
+          <RevealOnScroll key={article.href} delayMs={Math.min(i, 4) * 40}>
+            <Link href={article.href} className={cardClass}>
+              <h2 className="font-display text-lg font-semibold text-[#0F2356] mb-1">{article.title}</h2>
+              <p className="text-gray-500 text-sm">{article.description}</p>
+            </Link>
+          </RevealOnScroll>
         ))}
       </div>
     </main>

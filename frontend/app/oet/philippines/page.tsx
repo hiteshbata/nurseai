@@ -54,26 +54,28 @@ export default function OetPhilippinesPage() {
     <main className="min-h-screen px-4 py-20 max-w-3xl mx-auto">
       <OetPageJsonLd path="/oet/philippines" title={TITLE} description={DESCRIPTION} datePublished="2026-07-27" />
 
-      <h1 className="text-3xl font-bold text-[#0F2356] mt-4 mb-4">OET for Filipino Nurses</h1>
-      <p className="text-gray-500 text-lg mb-2">
-        What Filipino nurses need to know about OET before registering abroad — in the UK, Australia,
-        Canada, the Gulf, and beyond.
-      </p>
-      <p className="text-gray-600 leading-relaxed mb-4">
-        Before checking which regulator applies to you, you can estimate your current level using our{' '}
-        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline">
-          OET Score Calculator
-        </Link>{' '}
-        and practise with{' '}
-        <Link href="/auth/register" className="text-[#0F2356] font-semibold underline">
-          free OET Speaking roleplays
-        </Link>
-        .
-      </p>
+      <div className="motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
+        <h1 className="font-display text-3xl font-semibold text-[#0F2356] mt-4 mb-4">OET for Filipino Nurses</h1>
+        <p className="text-gray-500 text-lg mb-2">
+          What Filipino nurses need to know about OET before registering abroad — in the UK, Australia,
+          Canada, the Gulf, and beyond.
+        </p>
+        <p className="text-gray-600 leading-relaxed mb-4">
+          Before checking which regulator applies to you, you can estimate your current level using our{' '}
+          <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
+            OET Score Calculator
+          </Link>{' '}
+          and practise with{' '}
+          <Link href="/auth/register" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
+            free OET Speaking roleplays
+          </Link>
+          .
+        </p>
+      </div>
       <ArticleMeta date="2026-07-27" />
       <TableOfContents items={toc} />
 
-      <h2 id="prc" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="prc" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         OET vs your PRC license
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -84,36 +86,36 @@ export default function OetPhilippinesPage() {
         with your destination regulator, not just the language-test piece covered here.
       </p>
 
-      <h2 id="where" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="where" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         Where Filipino nurses use OET
       </h2>
       <RegulatorComparisonTable />
       <p className="text-gray-600 leading-relaxed mb-4">
         The Gulf authorities (DHA, DOH, MOHAP) also accept OET — see the{' '}
-        <Link href="/oet/uae" className="text-[#0F2356] font-semibold underline">
+        <Link href="/oet/uae" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           UAE page
         </Link>{' '}
         for why we don't publish a score for them here. The US doesn't have one national board either —
         check the TruMerit/CGFNS national pathway or your target state directly in our{' '}
-        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline">
+        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           free OET Score Calculator
         </Link>
         .
       </p>
 
-      <h2 id="test-centres" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="test-centres" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         OET test centres in the Philippines
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
         OET is available at test centres in Manila and other major Philippine cities, and the network
         changes over time. Find your nearest current centre and book directly through{' '}
-        <a href="https://oet.com" target="_blank" rel="noopener noreferrer" className="text-[#0F2356] font-semibold underline">
+        <a href="https://oet.com" target="_blank" rel="noopener noreferrer" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           oet.com
         </a>{' '}
         rather than a third-party listing, so you're seeing the actual current locations and dates.
       </p>
 
-      <h2 id="common-challenges" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="common-challenges" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         Common challenges
       </h2>
       <ul className="list-disc pl-5 space-y-2 text-gray-600 mb-4">
@@ -136,14 +138,14 @@ export default function OetPhilippinesPage() {
 
       <RegulatorCTA regulatorName="OET score you need" />
 
-      <h2 id="how-to-prepare" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="how-to-prepare" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         How to prepare
       </h2>
       <ol className="list-decimal pl-5 space-y-2 text-gray-600 mb-4">
         <li>Confirm the exact score your target regulator requires before you book the test.</li>
         <li>
           Learn the format cold — see our{' '}
-          <Link href="/learn/what-is-oet-speaking" className="text-[#0F2356] font-semibold underline">
+          <Link href="/learn/what-is-oet-speaking" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
             OET Speaking guide
           </Link>
           .

@@ -57,7 +57,12 @@ export function Navbar() {
     (pathname?.startsWith('/learn') ?? false) ||
     (pathname?.startsWith('/docs') ?? false) ||
     (pathname?.startsWith('/tools') ?? false)
-  const navLinksToShow = !session && isPublicPage ? publicNavLinks : appNavLinks
+  // An anonymous free-mock-test session is a real `session` object, but it's
+  // not a signed-up visitor -- on public/marketing pages it should read the
+  // same as signed-out (see AppShell.tsx's isAnonymous branch for the app-shell
+  // side of this same fix).
+  const isAnonymous = !!session?.user?.is_anonymous
+  const navLinksToShow = (!session || isAnonymous) && isPublicPage ? publicNavLinks : appNavLinks
   const isActiveLink = (href: string) => !href.startsWith('/#') && pathname === href
 
   const getInitials = (name: string) => {
@@ -82,7 +87,7 @@ export function Navbar() {
   const [usage, setUsage] = useState<SessionUsage | null>(null)
 
   useEffect(() => {
-    if (status !== 'authenticated') {
+    if (status !== 'authenticated' || isAnonymous) {
       setUsage(null)
       return
     }
@@ -91,7 +96,7 @@ export function Navbar() {
       if (!cancelled) setUsage(res.data)
     }).catch(() => {})
     return () => { cancelled = true }
-  }, [status])
+  }, [status, isAnonymous])
 
   const planLabel = usage ? (PLAN_LABELS[usage.plan] ?? usage.plan) : null
   const showUpgrade = usage ? usage.plan !== 'elite' : false
@@ -185,7 +190,7 @@ export function Navbar() {
         <div className="flex items-center gap-3">
           {status === 'loading' ? (
             <div className="w-24 h-9" />
-          ) : status === 'authenticated' ? (
+          ) : status === 'authenticated' && !isAnonymous ? (
             <>
               <div className="hidden sm:flex">
                 <PlanUsagePill />
@@ -248,7 +253,7 @@ export function Navbar() {
                   </Link>
                   <div className="border-t border-border my-1" />
                   <button
-                    onClick={async () => { setAvatarOpen(false); router.push('/'); await signOut() }}
+                    onClick={async () => { setAvatarOpen(false); await signOut(); window.location.href = '/' }}
                     className="flex items-center gap-2 px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 w-full text-left"
                   >
                     <LogOut className="h-4 w-4" />
@@ -356,7 +361,7 @@ export function Navbar() {
               </Link>
             )
           )}
-          {status !== 'loading' && !session && (
+          {status !== 'loading' && (!session || isAnonymous) && (
             <>
               <Link href="/auth/login" onClick={() => setMobileOpen(false)} className="flex items-center min-h-11 text-foreground/80 hover:text-emerald-600 transition text-sm">
                 Sign In

@@ -8,12 +8,13 @@ import StatsBar from '@/components/landing/StatsBar'
 import FailureSection from '@/components/landing/FailureSection'
 import HowItWorks from '@/components/landing/HowItWorks'
 import FeaturesGrid from '@/components/landing/FeaturesGrid'
+import ModulesSection from '@/components/landing/ModulesSection'
 import PricingSection from '@/components/landing/PricingSection'
+import ToolsSection from '@/components/landing/ToolsSection'
 import InstituteSection from '@/components/landing/InstituteSection'
 import DemoSection from '@/components/landing/DemoSection'
 import FounderSection from '@/components/landing/FounderSection'
 import FAQSection from '@/components/landing/FAQSection'
-import CTASection from '@/components/landing/CTASection'
 
 // Mirrors the questions/answers rendered by FAQSection -- Google's structured-data
 // guidelines require this to match visible page content, so keep the two in sync
@@ -41,7 +42,7 @@ const faqJsonLd = {
     },
     {
       q: 'How much does Pro cost?',
-      a: 'Pro is ₹799 per month — about US$10. That is significantly less than one hour with a human OET tutor. You get 40 speaking scenarios per month, all scenarios, progress tracking, and compare attempts.',
+      a: 'Pro is ₹799 per month, about US$10. That is significantly less than one hour with a human OET tutor. You get 40 speaking sessions per month plus Reading, Listening and Writing practice, progress tracking, and compare attempts.',
     },
     {
       q: 'I am an Indian nurse going to Australia or UK — is this right for me?',
@@ -100,12 +101,13 @@ export default function Home() {
       <FailureSection />
       <HowItWorks />
       <FeaturesGrid />
+      <ModulesSection />
       <PricingSection />
+      <ToolsSection />
       <DemoSection />
       <FounderSection />
       <InstituteSection />
       <FAQSection />
-      <CTASection />
     </>
   )
 }

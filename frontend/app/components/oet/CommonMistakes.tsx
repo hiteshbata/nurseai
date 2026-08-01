@@ -1,3 +1,5 @@
+import { RevealOnScroll } from '@/components/RevealOnScroll'
+
 const MISTAKES = [
   'Assume old score requirements still apply.',
   "Forget to check the regulator's latest English-language policy.",
@@ -7,8 +9,8 @@ const MISTAKES = [
 
 export function CommonMistakes() {
   return (
-    <>
-      <h2 className="text-xl font-bold text-[#0F2356] mt-8 mb-3">Common mistakes</h2>
+    <RevealOnScroll>
+      <h2 className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">Common mistakes</h2>
       <p className="text-gray-600 leading-relaxed mb-3">
         Many candidates delay registration because they:
       </p>
@@ -17,6 +19,6 @@ export function CommonMistakes() {
           <li key={mistake}>{mistake}</li>
         ))}
       </ul>
-    </>
+    </RevealOnScroll>
   )
 }

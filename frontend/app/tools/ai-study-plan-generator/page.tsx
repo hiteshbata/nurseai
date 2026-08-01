@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { StudyPlanGenerator } from './StudyPlanGenerator'
 import { SITE_URL, SITE_NAME } from '@/lib/site'
+import { RevealOnScroll } from '@/components/RevealOnScroll'
 
 export const metadata: Metadata = {
   title: 'AI Study Plan Generator — Free Personalized OET Prep Plan',
@@ -64,8 +65,8 @@ export default function AiStudyPlanGeneratorPage() {
       />
 
       <div className="max-w-4xl mx-auto px-4 py-16">
-        <div className="text-center mb-10">
-          <h1 className="text-4xl md:text-5xl font-bold text-[#0F2356] text-balance">
+        <div className="text-center mb-10 motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
+          <h1 className="font-display text-4xl md:text-5xl font-semibold text-[#0F2356] text-balance">
             AI Study Plan Generator
           </h1>
           <p className="text-gray-500 mt-4 text-lg max-w-2xl mx-auto">
@@ -77,12 +78,12 @@ export default function AiStudyPlanGeneratorPage() {
         <StudyPlanGenerator />
 
         <div className="max-w-3xl mx-auto mt-16">
-          <h2 className="text-2xl md:text-3xl font-bold text-[#0F2356] text-center mb-8">
+          <h2 className="font-display text-2xl md:text-3xl font-semibold text-[#0F2356] text-center mb-8">
             Generator Questions
           </h2>
-          <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-white">
+          <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-premium bg-white">
             {FAQS.map((faq, i) => (
-              <div key={faq.q} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+              <RevealOnScroll key={faq.q} delayMs={Math.min(i, 4) * 40} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                 <div className="px-6 py-5">
                   <h3 className="text-[#0F2356] font-semibold text-sm md:text-base leading-snug mb-2">
                     {faq.q}
@@ -90,7 +91,7 @@ export default function AiStudyPlanGeneratorPage() {
                   <p className="text-gray-600 text-sm leading-relaxed">{faq.a}</p>
                 </div>
                 {i < FAQS.length - 1 && <div className="border-b border-gray-100" />}
-              </div>
+              </RevealOnScroll>
             ))}
           </div>
         </div>

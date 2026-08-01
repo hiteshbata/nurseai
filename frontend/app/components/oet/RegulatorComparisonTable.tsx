@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { MODULE_LABELS, REGULATORS, scoreToGrade, type OetModule } from '@/lib/oetScoring'
+import { RevealOnScroll } from '@/components/RevealOnScroll'
 
 const MODULES: OetModule[] = ['listening', 'reading', 'writing', 'speaking']
 
@@ -13,7 +14,7 @@ const COMPARISON_ROWS = [
 
 export function RegulatorComparisonTable({ currentSlug }: { currentSlug?: string }) {
   return (
-    <div className="my-8 overflow-x-auto rounded-2xl border border-gray-100 shadow-sm">
+    <RevealOnScroll className="my-8 block overflow-x-auto rounded-2xl border border-gray-100 shadow-premium">
       <table className="w-full text-left">
         <thead className="bg-[#0F2356] text-white">
           <tr>
@@ -33,13 +34,16 @@ export function RegulatorComparisonTable({ currentSlug }: { currentSlug?: string
             return (
               <tr
                 key={row.slug}
-                className={isCurrent ? 'bg-[#F8FAFC] font-semibold' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                className={`motion-safe:transition-colors motion-safe:duration-200 ${isCurrent ? 'bg-[#F8FAFC] font-semibold' : i % 2 === 0 ? 'bg-white hover:bg-[#F8FAFC]' : 'bg-gray-50 hover:bg-[#F8FAFC]'}`}
               >
                 <td className="px-4 py-3 text-gray-700">
                   {isCurrent ? (
                     row.label
                   ) : (
-                    <Link href={`/oet/${row.slug}`} className="text-[#0F2356] underline">
+                    <Link
+                      href={`/oet/${row.slug}`}
+                      className="text-[#0F2356] underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+                    >
                       {row.label}
                     </Link>
                   )}
@@ -57,12 +61,15 @@ export function RegulatorComparisonTable({ currentSlug }: { currentSlug?: string
       <div className="border-t border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500">
         UAE is intentionally left out — DHA, DOH, and MOHAP each set their own requirement and public
         sources conflict, so see the{' '}
-        <Link href="/oet/uae" className="underline">
+        <Link
+          href="/oet/uae"
+          className="underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+        >
           UAE page
         </Link>{' '}
         for why we don&apos;t publish a number there. Grades shown are minimums; confirm the current
         figure on each regulator&apos;s own site before you rely on it.
       </div>
-    </div>
+    </RevealOnScroll>
   )
 }

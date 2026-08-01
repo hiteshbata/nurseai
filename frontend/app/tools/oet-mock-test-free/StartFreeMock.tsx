@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Loader2 } from 'lucide-react'
 import { useSupabaseSession, signInAnonymously } from '@/lib/supabase'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
@@ -63,7 +64,7 @@ export function StartFreeMock() {
         <p className="text-gray-700">{blocked}</p>
         <Link
           href="/auth/register"
-          className="mt-4 inline-flex h-11 items-center justify-center rounded-xl bg-[#0F2356] px-6 text-sm font-semibold text-white hover:bg-[#0F2356]/90 transition"
+          className="mt-4 inline-flex h-11 items-center justify-center rounded-xl bg-[#0F2356] px-6 text-sm font-semibold text-white motion-safe:transition-colors hover:bg-[#0F2356]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
         >
           Create a free account →
         </Link>
@@ -74,6 +75,7 @@ export function StartFreeMock() {
   return (
     <div className="rounded-2xl bg-white shadow-[0_24px_60px_-24px_rgba(15,35,86,0.45)] ring-1 ring-black/5 px-7 py-8 text-center">
       <Button onClick={begin} disabled={busy || status === 'loading'} className="h-12 w-full text-base">
+        {busy && <Loader2 className="w-4 h-4 motion-safe:animate-spin" aria-hidden="true" />}
         {busy ? 'Preparing your test…' : 'Begin Free Mock Test'}
       </Button>
       <p className="mt-3 text-xs text-muted-foreground">

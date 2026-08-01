@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { FALLBACK_PLANS, type Plan } from '@/lib/plans'
 import { SITE_URL, SITE_NAME } from '@/lib/site'
+import { RevealOnScroll } from '@/components/RevealOnScroll'
 
 export const metadata: Metadata = {
   title: 'Pricing — How Much Does OET Practice Cost?',
@@ -296,7 +297,7 @@ export default function PricingPage() {
       />
 
       {/* Hero */}
-      <div className="max-w-3xl mx-auto px-4 pt-20 pb-14 text-center">
+      <div className="max-w-3xl mx-auto px-4 pt-20 pb-14 text-center motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
         <h1 className="font-display text-4xl md:text-6xl font-semibold text-[#0F2356] text-balance leading-[1.05]">
           Pricing built for how you actually prepare
         </h1>
@@ -311,12 +312,12 @@ export default function PricingPage() {
       {/* Plan cards */}
       <div className="max-w-6xl mx-auto px-4 pb-24">
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {FALLBACK_PLANS.map((plan) => {
+          {FALLBACK_PLANS.map((plan, i) => {
             const marketing = PLAN_MARKETING[plan.id]
             return (
+              <RevealOnScroll key={plan.id} delayMs={Math.min(i, 4) * 40} className="block h-full">
               <div
-                key={plan.id}
-                className={`relative rounded-3xl bg-white flex flex-col h-full transition-transform duration-300 ${
+                className={`relative rounded-3xl bg-white flex flex-col h-full motion-safe:transition-transform motion-safe:duration-300 ${
                   plan.highlight
                     ? 'border border-emerald-200 md:-translate-y-3'
                     : 'border border-gray-200 shadow-premium hover:-translate-y-1 hover:shadow-premium-lg'
@@ -368,7 +369,7 @@ export default function PricingPage() {
 
                   <Link
                     href="/auth/register"
-                    className={`block w-full text-center text-sm font-semibold px-6 py-3.5 rounded-xl transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2 ${
+                    className={`block w-full text-center text-sm font-semibold px-6 py-3.5 rounded-xl motion-safe:transition-all motion-safe:duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2 ${
                       plan.highlight
                         ? 'bg-[#047857] text-white hover:bg-[#036546] hover:shadow-premium-lg'
                         : 'bg-transparent text-[#0F2356] border border-gray-200 hover:border-[#0F2356]/30 hover:bg-[#0F2356]/[0.03]'
@@ -378,6 +379,7 @@ export default function PricingPage() {
                   </Link>
                 </div>
               </div>
+              </RevealOnScroll>
             )
           })}
         </div>
@@ -387,12 +389,12 @@ export default function PricingPage() {
       <div className="border-y border-gray-100 bg-[#F8FAFC]">
         <div className="max-w-5xl mx-auto px-4 py-16">
           <div className="grid sm:grid-cols-3 gap-10">
-            {TRUST_POINTS.map(({ icon: Icon, title, body }) => (
-              <div key={title}>
+            {TRUST_POINTS.map(({ icon: Icon, title, body }, i) => (
+              <RevealOnScroll key={title} delayMs={Math.min(i, 4) * 40}>
                 <Icon className="w-6 h-6 text-[#047857] mb-4" strokeWidth={1.75} aria-hidden="true" />
                 <h3 className="font-display text-base font-semibold text-[#0F2356] mb-2">{title}</h3>
                 <p className="text-sm text-gray-500 leading-relaxed">{body}</p>
-              </div>
+              </RevealOnScroll>
             ))}
           </div>
         </div>
@@ -408,7 +410,7 @@ export default function PricingPage() {
             Every plan scores against the same real OET rubric — higher tiers unlock more sub-tests, deeper
             feedback, and exam-day simulation.
           </p>
-          <div className="relative rounded-3xl border border-gray-200 shadow-premium bg-white">
+          <RevealOnScroll className="block relative rounded-3xl border border-gray-200 shadow-premium bg-white">
             <div className="overflow-x-auto rounded-3xl">
             <table className="w-full text-sm min-w-[640px]">
               <thead>
@@ -444,7 +446,7 @@ export default function PricingPage() {
                     </th>
                   </tr>
                   {section.rows.map((row) => (
-                    <tr key={row.label} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors">
+                    <tr key={row.label} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 motion-safe:transition-colors">
                       <th scope="row" className="px-5 py-3.5 text-left font-medium text-gray-700">
                         {row.label}
                       </th>
@@ -462,7 +464,7 @@ export default function PricingPage() {
               aria-hidden="true"
               className="absolute top-0 right-0 bottom-0 w-10 bg-gradient-to-l from-white to-transparent pointer-events-none rounded-r-3xl sm:hidden"
             />
-          </div>
+          </RevealOnScroll>
         </div>
 
         {/* FAQ */}
@@ -471,25 +473,24 @@ export default function PricingPage() {
             Pricing questions
           </h2>
           <div className="flex flex-col gap-3">
-            {PRICING_FAQS.map((faq) => (
-              <details
-                key={faq.q}
-                className="group rounded-2xl border border-gray-200 bg-white open:shadow-premium open:border-[#0F2356]/15 transition-shadow"
-              >
-                <summary className="cursor-pointer list-none flex items-center justify-between gap-4 px-6 py-5 font-semibold text-[#0F2356] rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
-                  {faq.q}
-                  <span className="shrink-0 text-gray-400 transition-transform duration-200 group-open:rotate-45 text-xl leading-none">
-                    +
-                  </span>
-                </summary>
-                <p className="px-6 pb-5 text-gray-600 text-sm leading-relaxed">{faq.a}</p>
-              </details>
+            {PRICING_FAQS.map((faq, i) => (
+              <RevealOnScroll key={faq.q} delayMs={Math.min(i, 4) * 40}>
+                <details className="group rounded-2xl border border-gray-200 bg-white open:shadow-premium open:border-[#0F2356]/15 motion-safe:transition-shadow">
+                  <summary className="cursor-pointer list-none flex items-center justify-between gap-4 px-6 py-5 font-semibold text-[#0F2356] rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
+                    {faq.q}
+                    <span className="shrink-0 text-gray-400 motion-safe:transition-transform motion-safe:duration-200 group-open:rotate-45 text-xl leading-none">
+                      +
+                    </span>
+                  </summary>
+                  <p className="px-6 pb-5 text-gray-600 text-sm leading-relaxed">{faq.a}</p>
+                </details>
+              </RevealOnScroll>
             ))}
           </div>
         </div>
 
         {/* Closing CTA */}
-        <div className="max-w-3xl mx-auto mt-24 text-center rounded-3xl bg-[#0F2356] px-8 py-14">
+        <RevealOnScroll className="block max-w-3xl mx-auto mt-24 text-center rounded-3xl bg-[#0F2356] px-8 py-14">
           <h2 className="font-display text-2xl md:text-3xl font-semibold text-white mb-3 text-balance">
             Start preparing with confidence
           </h2>
@@ -498,11 +499,11 @@ export default function PricingPage() {
           </p>
           <Link
             href="/auth/register"
-            className="inline-block bg-[#047857] text-white font-semibold px-8 py-3.5 rounded-xl hover:bg-[#036546] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0F2356]"
+            className="inline-block bg-[#047857] text-white font-semibold px-8 py-3.5 rounded-xl hover:bg-[#036546] motion-safe:transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0F2356]"
           >
             Start Free
           </Link>
-        </div>
+        </RevealOnScroll>
       </div>
     </main>
   )

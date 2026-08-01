@@ -4,6 +4,12 @@ import { useState, useEffect } from 'react'
 
 let _supabase: SupabaseClient | null = null
 
+// Set while an intentional signOut() is in flight. useSupabaseSession ignores
+// the SIGNED_OUT event during this window so mounted protected pages don't
+// race their own "unauthenticated -> /auth/login" redirect against the
+// caller's post-signOut navigation (e.g. hard nav to '/').
+let loggingOut = false
+
 function getClient(): SupabaseClient | null {
   if (_supabase) return _supabase
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -46,7 +52,10 @@ export function useSupabaseSession() {
     // This is sufficient for routine auth checks on page load.
     getClient()?.auth.getSession().then(({ data: { session: s } }) => applySession(s))
 
-    const { data: { subscription } } = getClient()?.auth.onAuthStateChange((_event, s) => applySession(s)) ?? { data: { subscription: { unsubscribe: () => {} } } }
+    const { data: { subscription } } = getClient()?.auth.onAuthStateChange((_event, s) => {
+      if (loggingOut) return
+      applySession(s)
+    }) ?? { data: { subscription: { unsubscribe: () => {} } } }
 
     return () => {
       cancelled = true
@@ -146,10 +155,13 @@ export async function updatePassword(newPassword: string) {
 export async function signOut() {
   const client = getClient()
   if (client) {
+    loggingOut = true
     try {
       await client.auth.signOut()
     } catch (e) {
       console.error('[supabase] signOut error (non-fatal):', e)
+    } finally {
+      loggingOut = false
     }
   }
 }

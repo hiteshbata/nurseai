@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { LearnCTA } from '@/components/learn/LearnCTA'
 import { ArticleMeta } from '@/components/learn/ArticleMeta'
 import { TableOfContents } from '@/components/learn/TableOfContents'
+import { RevealOnScroll } from '@/components/RevealOnScroll'
 
 export const metadata: Metadata = {
   title: 'OET Band Scores Explained',
@@ -20,17 +21,22 @@ const toc = [
 export default function OetBandScoresPage() {
   return (
     <main className="min-h-screen px-4 py-20 max-w-3xl mx-auto">
-      <Link href="/blog" className="text-sm text-gray-500 hover:text-[#0F2356] transition">
+      <Link
+        href="/blog"
+        className="text-sm text-gray-500 hover:text-[#0F2356] transition rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+      >
         ← All articles
       </Link>
-      <h1 className="text-3xl font-bold text-[#0F2356] mt-4 mb-4">OET Band Scores Explained</h1>
-      <p className="text-gray-500 text-lg mb-2">
-        How OET grading works, and the score most nursing regulators ask for.
-      </p>
+      <div className="motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
+        <h1 className="font-display text-3xl font-semibold text-[#0F2356] mt-4 mb-4">OET Band Scores Explained</h1>
+        <p className="text-gray-500 text-lg mb-2">
+          How OET grading works, and the score most nursing regulators ask for.
+        </p>
+      </div>
       <ArticleMeta date="2026-07-04" />
       <TableOfContents items={toc} />
 
-      <h2 id="grades-and-numeric-scores" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">Grades and numeric scores</h2>
+      <h2 id="grades-and-numeric-scores" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">Grades and numeric scores</h2>
       <p className="text-gray-600 leading-relaxed mb-4">
         Each of the four OET sub-tests — Listening, Reading, Writing, Speaking — is graded
         separately, both as a letter grade (A being the highest, E the lowest) and as a numeric
@@ -47,25 +53,27 @@ export default function OetBandScoresPage() {
 
       <LearnCTA />
 
-      <h2 id="what-score-do-you-need" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">What score do you actually need?</h2>
+      <h2 id="what-score-do-you-need" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">What score do you actually need?</h2>
       <p className="text-gray-600 leading-relaxed mb-4">
         Requirements are set by the regulator you&apos;re registering with — not by OET itself —
         and they do change over time. As a starting point:
       </p>
-      <ul className="list-disc pl-5 space-y-2 text-gray-600 mb-4">
-        <li>
-          <span className="font-semibold text-[#0F2356]">UK (NMC)</span> — typically Grade B or
-          higher in each sub-test.
-        </li>
-        <li>
-          <span className="font-semibold text-[#0F2356]">Australia (Ahpra / NMBA)</span> —
-          typically Grade B or higher in each sub-test.
-        </li>
-        <li>
-          <span className="font-semibold text-[#0F2356]">New Zealand (Nursing Council)</span> —
-          typically Grade B or higher in each sub-test.
-        </li>
-      </ul>
+      <RevealOnScroll>
+        <ul className="list-disc pl-5 space-y-2 text-gray-600 mb-4">
+          <li>
+            <span className="font-semibold text-[#0F2356]">UK (NMC)</span> — typically Grade B or
+            higher in each sub-test.
+          </li>
+          <li>
+            <span className="font-semibold text-[#0F2356]">Australia (Ahpra / NMBA)</span> —
+            typically Grade B or higher in each sub-test.
+          </li>
+          <li>
+            <span className="font-semibold text-[#0F2356]">New Zealand (Nursing Council)</span> —
+            typically Grade B or higher in each sub-test.
+          </li>
+        </ul>
+      </RevealOnScroll>
       <p className="text-gray-600 leading-relaxed mb-4">
         Because these requirements are set by each regulator and can change, always confirm the
         current pass mark on your target regulator&apos;s official website before you sit the
@@ -73,13 +81,16 @@ export default function OetBandScoresPage() {
       </p>
       <p className="text-gray-600 leading-relaxed mb-4">
         Already have a result? Use the free{' '}
-        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline">
+        <Link
+          href="/tools/oet-score-calculator"
+          className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+        >
           OET score calculator
         </Link>{' '}
         to check your grades or numeric scores against NMC, Ahpra, and 5 other regulators at once.
       </p>
 
-      <h2 id="why-speaking-is-hardest" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">Why Speaking is often the hardest sub-test</h2>
+      <h2 id="why-speaking-is-hardest" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">Why Speaking is often the hardest sub-test</h2>
       <p className="text-gray-600 leading-relaxed mb-4">
         Many candidates comfortably clear Grade B on Reading and Listening but stall on Speaking,
         because it&apos;s scored on live, unscripted performance rather than a written answer you

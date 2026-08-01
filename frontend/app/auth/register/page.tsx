@@ -21,11 +21,23 @@ function GoogleIcon() {
   )
 }
 
+function MicrosoftIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21" className="h-4 w-4 shrink-0" aria-hidden="true">
+      <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+      <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+      <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+    </svg>
+  )
+}
+
 export default function RegisterPage() {
   const router = useRouter()
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' })
   const [isLoading, setIsLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [microsoftLoading, setMicrosoftLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
 
@@ -47,6 +59,23 @@ export default function RegisterPage() {
     } catch (error: any) {
       toast.error(error.message || 'Google sign up failed')
       setGoogleLoading(false)
+    }
+  }
+
+  const handleMicrosoftSignUp = async () => {
+    setMicrosoftLoading(true)
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'azure',
+        options: {
+          redirectTo: window.location.origin + '/auth/callback',
+          scopes: 'email',
+        },
+      })
+      if (error) throw error
+    } catch (error: any) {
+      toast.error(error.message || 'Microsoft sign up failed')
+      setMicrosoftLoading(false)
     }
   }
 
@@ -105,19 +134,35 @@ export default function RegisterPage() {
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={handleGoogleSignUp}
-              disabled={googleLoading || isLoading}
-              className="h-11 w-full rounded-xl border border-border bg-card text-sm font-medium text-foreground/80 shadow-sm transition-all duration-150 hover:bg-muted hover:shadow-md flex items-center justify-center gap-2"
-            >
-              {googleLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <GoogleIcon />
-              )}
-              Sign up with Google
-            </button>
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={handleGoogleSignUp}
+                disabled={googleLoading || microsoftLoading || isLoading}
+                className="h-11 w-full rounded-xl border border-border bg-card text-sm font-medium text-foreground/80 shadow-sm transition-all duration-150 hover:bg-muted hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {googleLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <GoogleIcon />
+                )}
+                Sign up with Google
+              </button>
+
+              <button
+                type="button"
+                onClick={handleMicrosoftSignUp}
+                disabled={googleLoading || microsoftLoading || isLoading}
+                className="h-11 w-full rounded-xl border border-border bg-card text-sm font-medium text-foreground/80 shadow-sm transition-all duration-150 hover:bg-muted hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {microsoftLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <MicrosoftIcon />
+                )}
+                Sign up with Microsoft
+              </button>
+            </div>
 
             <div className="flex items-center gap-3" role="separator" aria-label="or">
               <div className="h-px flex-1 bg-border" />
@@ -218,7 +263,7 @@ export default function RegisterPage() {
 
               <button
                 type="submit"
-                disabled={isLoading || googleLoading}
+                disabled={isLoading || googleLoading || microsoftLoading}
                 className="h-11 w-full rounded-xl bg-emerald-500 text-sm font-semibold text-white shadow-sm transition-all duration-150 hover:bg-emerald-600 hover:shadow-md active:scale-[0.99] disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {isLoading ? (

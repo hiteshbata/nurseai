@@ -36,7 +36,7 @@ export default function FAQSection() {
     },
     {
       q: "How much does Pro cost?",
-      a: `Pro is ₹${pro.price} per month — about US$${Math.round(pro.price / 83)}. That is significantly less than one hour with a human OET tutor. You get ${pro.sessions_limit} speaking scenarios per month, all scenarios, progress tracking, and compare attempts.`,
+      a: `Pro is ₹${pro.price} per month, about US$${Math.round(pro.price / 83)}. That is significantly less than one hour with a human OET tutor. You get ${pro.sessions_limit} speaking sessions per month plus Reading, Listening and Writing practice, progress tracking, and compare attempts.`,
     },
     {
       q: "I am an Indian nurse going to Australia or UK — is this right for me?",

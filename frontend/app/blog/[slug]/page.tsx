@@ -28,11 +28,16 @@ export default async function BlogPostPage({ params }: { params: { slug: string 
 
   return (
     <main className="min-h-screen px-4 py-20 max-w-3xl mx-auto">
-      <Link href="/blog" className="text-sm text-gray-500 hover:text-[#0F2356] transition">
+      <Link
+        href="/blog"
+        className="text-sm text-gray-500 motion-safe:transition-colors motion-safe:duration-150 hover:text-[#0F2356] rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+      >
         ← All articles
       </Link>
-      <h1 className="text-3xl font-bold text-[#0F2356] mt-4 mb-4">{post.title}</h1>
-      <ArticleMeta date={post.publishedAt} />
+      <div className="motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
+        <h1 className="font-display text-3xl font-semibold text-[#0F2356] mt-4 mb-4">{post.title}</h1>
+        <ArticleMeta date={post.publishedAt} />
+      </div>
 
       {post.coverImage && (
         <Image

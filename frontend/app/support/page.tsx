@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
+import { Mail, MessageCircle } from 'lucide-react'
+import { RevealOnScroll } from '@/components/RevealOnScroll'
 
 export const metadata: Metadata = {
   title: 'Support',
@@ -28,7 +30,7 @@ const FAQS: { question: string; answer: ReactNode }[] = [
   {
     question: 'Which part of OET does SpeakOET cover?',
     answer:
-      'Speaking. SpeakOET focuses specifically on the OET Speaking sub-test — the roleplay between you and a patient or relative.',
+      'All four: Speaking, Reading, Writing and Listening, plus full Mock Tests. Speaking is our signature feature, an AI patient roleplay scored on all 9 OET criteria, alongside dedicated practice for the other three sub-tests.',
   },
   {
     question: 'How many free sessions do I get?',
@@ -89,49 +91,65 @@ export default function SupportPage() {
   // page -- a second <main> here duplicated that landmark and its id.
   return (
     <div className="max-w-3xl mx-auto py-8 lg:py-12">
-      <h1 className="text-3xl font-bold text-[#0F2356] mb-4">Support</h1>
-      <p className="text-gray-500 text-lg mb-10">
-        We&apos;re here to help — before, during, and after your OET prep.
-      </p>
+      <div className="motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
+        <h1 className="font-display text-3xl font-semibold text-[#0F2356] mb-4">Support</h1>
+        <p className="text-gray-500 text-lg mb-10">
+          We&apos;re here to help — before, during, and after your OET prep.
+        </p>
+      </div>
 
       <section className="grid sm:grid-cols-2 gap-4 mb-12">
-        <a
-          href="mailto:support@speakoet.com"
-          className="rounded-2xl border border-gray-100 bg-white shadow-sm p-6 hover:shadow-md transition"
-        >
-          <p className="font-semibold text-[#0F2356] mb-1">📧 Email</p>
-          <p className="text-gray-500 text-sm mb-2">Best for detailed questions or account issues.</p>
-          <p className="text-[#0F2356] font-semibold text-sm">support@speakoet.com</p>
-        </a>
+        <RevealOnScroll>
+          <a
+            href="mailto:support@speakoet.com"
+            className="block h-full rounded-2xl border border-gray-100 bg-white shadow-premium p-6 motion-safe:transition-shadow motion-safe:duration-200 hover:shadow-premium-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+          >
+            <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-[#0F2356]/[0.06] mb-3">
+              <Mail className="w-5 h-5 text-[#047857]" strokeWidth={1.75} aria-hidden="true" />
+            </div>
+            <p className="font-semibold text-[#0F2356] mb-1">Email</p>
+            <p className="text-gray-500 text-sm mb-2">Best for detailed questions or account issues.</p>
+            <p className="text-[#0F2356] font-semibold text-sm">support@speakoet.com</p>
+          </a>
+        </RevealOnScroll>
         {/* Elite lists "WhatsApp priority support" as a paid feature, so this
             link has to resolve to a real, WhatsApp-active number — an invalid
             one shows "phone number shared via url is invalid" to a paying
             member. Format: country code first, digits only, no + or spaces. */}
-        <a
-          href={`https://wa.me/${WHATSAPP_NUMBER}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded-2xl border border-gray-100 bg-white shadow-sm p-6 hover:shadow-md transition"
-        >
-          <p className="font-semibold text-[#0F2356] mb-1">💬 WhatsApp</p>
-          <p className="text-gray-500 text-sm mb-2">Best for quick questions during your prep.</p>
-          <p className="text-[#0F2356] font-semibold text-sm">Chat with us</p>
-        </a>
+        <RevealOnScroll delayMs={80}>
+          <a
+            href={`https://wa.me/${WHATSAPP_NUMBER}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block h-full rounded-2xl border border-gray-100 bg-white shadow-premium p-6 motion-safe:transition-shadow motion-safe:duration-200 hover:shadow-premium-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+          >
+            <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-[#0F2356]/[0.06] mb-3">
+              <MessageCircle className="w-5 h-5 text-[#047857]" strokeWidth={1.75} aria-hidden="true" />
+            </div>
+            <p className="font-semibold text-[#0F2356] mb-1">WhatsApp</p>
+            <p className="text-gray-500 text-sm mb-2">Best for quick questions during your prep.</p>
+            <p className="text-[#0F2356] font-semibold text-sm">Chat with us</p>
+          </a>
+        </RevealOnScroll>
       </section>
 
       <section>
-        <h2 className="text-xl font-bold text-[#0F2356] mb-4">Frequently asked questions</h2>
+        <h2 className="font-display text-xl font-semibold text-[#0F2356] mb-4">
+          Frequently asked questions
+        </h2>
         <div className="divide-y divide-gray-100 border-y border-gray-100">
-          {FAQS.map(({ question, answer }) => (
-            <details key={question} className="group py-4">
-              <summary className="cursor-pointer list-none flex items-center justify-between font-semibold text-[#0F2356]">
-                {question}
-                <span className="text-gray-400 transition-transform group-open:rotate-45 text-xl leading-none">
-                  +
-                </span>
-              </summary>
-              <div className="text-gray-600 mt-2 leading-relaxed">{answer}</div>
-            </details>
+          {FAQS.map(({ question, answer }, i) => (
+            <RevealOnScroll key={question} delayMs={Math.min(i, 4) * 40}>
+              <details className="group py-4">
+                <summary className="cursor-pointer list-none flex items-center justify-between gap-4 font-semibold text-[#0F2356] rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
+                  {question}
+                  <span className="shrink-0 text-gray-400 motion-safe:transition-transform motion-safe:duration-200 group-open:rotate-45 text-xl leading-none">
+                    +
+                  </span>
+                </summary>
+                <div className="text-gray-600 mt-2 leading-relaxed">{answer}</div>
+              </details>
+            </RevealOnScroll>
           ))}
         </div>
       </section>

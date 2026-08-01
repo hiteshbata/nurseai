@@ -19,16 +19,21 @@ const toc = [
 export default function AccountBillingDocsPage() {
   return (
     <main className="min-h-screen px-4 py-20 max-w-3xl mx-auto">
-      <Link href="/docs" className="text-sm text-gray-500 hover:text-[#0F2356] transition">
+      <Link
+        href="/docs"
+        className="text-sm text-gray-500 hover:text-[#0F2356] rounded motion-safe:transition-colors motion-safe:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+      >
         ← All docs
       </Link>
-      <h1 className="text-3xl font-bold text-[#0F2356] mt-4 mb-4">Account &amp; Billing</h1>
-      <p className="text-gray-500 text-lg mb-10">
-        How plans, sessions, and your account settings work.
-      </p>
+      <div className="motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
+        <h1 className="font-display text-3xl font-semibold text-[#0F2356] mt-4 mb-4">Account &amp; Billing</h1>
+        <p className="text-gray-500 text-lg mb-10">
+          How plans, sessions, and your account settings work.
+        </p>
+      </div>
       <TableOfContents items={toc} />
 
-      <h2 id="plans-and-sessions" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">Plans and session limits</h2>
+      <h2 id="plans-and-sessions" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">Plans and session limits</h2>
       <p className="text-gray-600 leading-relaxed mb-4">
         Every plan includes a fixed number of speaking sessions per billing period. You can see
         your current usage — sessions used and remaining — on your dashboard and in the account
@@ -36,29 +41,38 @@ export default function AccountBillingDocsPage() {
         over.
       </p>
 
-      <h2 id="upgrade-downgrade" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">Upgrading or downgrading</h2>
+      <h2 id="upgrade-downgrade" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">Upgrading or downgrading</h2>
       <p className="text-gray-600 leading-relaxed mb-4">
         Compare plans and change yours anytime from the{' '}
-        <Link href="/upgrade" className="text-[#0F2356] font-semibold underline">
+        <Link
+          href="/upgrade"
+          className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+        >
           Upgrade page
         </Link>
         . Higher plans unlock more sessions and features like Practice Writing.
       </p>
 
-      <h2 id="cancel" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">Cancelling your subscription</h2>
+      <h2 id="cancel" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">Cancelling your subscription</h2>
       <p className="text-gray-600 leading-relaxed mb-4">
         You can cancel anytime from your account settings — there&apos;s no lock-in contract.
         You&apos;ll keep access until the end of the billing period you&apos;ve already paid for.
       </p>
 
-      <h2 id="profile" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">Updating your profile</h2>
+      <h2 id="profile" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">Updating your profile</h2>
       <p className="text-gray-600 leading-relaxed mb-4">
         Update your name and other account details from{' '}
-        <Link href="/profile" className="text-[#0F2356] font-semibold underline">
+        <Link
+          href="/profile"
+          className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+        >
           Profile Settings
         </Link>
         . For anything else — refunds, billing questions, account issues — reach out via{' '}
-        <Link href="/support" className="text-[#0F2356] font-semibold underline">
+        <Link
+          href="/support"
+          className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+        >
           Support
         </Link>
         .

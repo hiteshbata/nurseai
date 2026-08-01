@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { Loader2 } from 'lucide-react'
 import api from '@/lib/api'
 import {
   REGULATORS,
@@ -93,20 +94,20 @@ export function StudyPlanGenerator() {
 
   return (
     <div>
-      <form onSubmit={handleSubmit} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <form onSubmit={handleSubmit} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-premium">
         <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
           <div className="inline-flex rounded-lg border border-gray-200 p-1 text-sm">
             <button
               type="button"
               onClick={() => setMode('grade')}
-              className={`px-3 py-1.5 rounded-md font-medium transition ${mode === 'grade' ? 'bg-[#0F2356] text-white' : 'text-gray-500'}`}
+              className={`px-3 py-1.5 rounded-md font-medium motion-safe:transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2 ${mode === 'grade' ? 'bg-[#0F2356] text-white' : 'text-gray-500'}`}
             >
               I have grades
             </button>
             <button
               type="button"
               onClick={() => setMode('number')}
-              className={`px-3 py-1.5 rounded-md font-medium transition ${mode === 'number' ? 'bg-[#0F2356] text-white' : 'text-gray-500'}`}
+              className={`px-3 py-1.5 rounded-md font-medium motion-safe:transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2 ${mode === 'number' ? 'bg-[#0F2356] text-white' : 'text-gray-500'}`}
             >
               I have numbers (0-500)
             </button>
@@ -202,8 +203,9 @@ export function StudyPlanGenerator() {
         <button
           type="submit"
           disabled={!allFilled || loading}
-          className="mt-6 w-full inline-flex items-center justify-center bg-[#0F2356] text-white font-semibold px-6 py-3 rounded-xl hover:bg-[#0F2356]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="mt-6 w-full inline-flex items-center justify-center gap-2 bg-[#0F2356] text-white font-semibold px-6 py-3 rounded-xl motion-safe:transition-colors hover:bg-[#0F2356]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
+          {loading && <Loader2 className="w-4 h-4 motion-safe:animate-spin" aria-hidden="true" />}
           {loading ? 'Generating your plan…' : 'Generate my AI study plan'}
         </button>
       </form>
@@ -226,8 +228,8 @@ export function StudyPlanGenerator() {
           </div>
 
           {plan.weeks.length > 0 && (
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm mb-8">
-              <h2 className="text-lg font-bold text-[#0F2356] mb-4">Your plan</h2>
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-premium mb-8">
+              <h2 className="font-display text-lg font-semibold text-[#0F2356] mb-4">Your plan</h2>
               <ol className="space-y-5">
                 {plan.weeks.map((week) => (
                   <li key={week.title}>
@@ -247,7 +249,7 @@ export function StudyPlanGenerator() {
               {plan.weakest_module && (
                 <Link
                   href="/auth/register"
-                  className="mt-6 inline-flex items-center justify-center bg-[#0F2356] text-white font-semibold px-6 py-3 rounded-xl hover:bg-[#0F2356]/90 transition-colors"
+                  className="mt-6 inline-flex items-center justify-center bg-[#0F2356] text-white font-semibold px-6 py-3 rounded-xl motion-safe:transition-colors hover:bg-[#0F2356]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
                 >
                   Start practicing {MODULE_LABELS[plan.weakest_module]} free →
                 </Link>
@@ -257,7 +259,7 @@ export function StudyPlanGenerator() {
 
           <p className="text-center text-sm text-gray-500">
             Want a plan that updates automatically as you practice?{' '}
-            <Link href="/pricing" className="text-[#0F2356] font-semibold underline">
+            <Link href="/pricing" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
               Elite includes a live AI coach
             </Link>{' '}
             built from your actual session history.

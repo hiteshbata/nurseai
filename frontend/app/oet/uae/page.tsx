@@ -55,37 +55,39 @@ export default function OetUaePage() {
     <main className="min-h-screen px-4 py-20 max-w-3xl mx-auto">
       <OetPageJsonLd path="/oet/uae" title={TITLE} description={DESCRIPTION} datePublished="2026-07-27" />
 
-      <h1 className="text-3xl font-bold text-[#0F2356] mt-4 mb-4">OET Requirements for the UAE</h1>
-      <p className="text-gray-500 text-lg mb-2">
-        The UAE has three separate health regulators, each setting its own English-language requirement —
-        here's who to check with, and why we're not publishing a single score for all three.
-      </p>
-      <p className="text-gray-600 leading-relaxed mb-4">
-        Yes — OET is accepted for nurse licensing in the UAE, but by three separate authorities
-        depending on which emirate you'll work in.
-      </p>
-      <p className="text-gray-600 leading-relaxed mb-4">
-        Before checking who licenses you, you can estimate your current level using our{' '}
-        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline">
-          OET Score Calculator
-        </Link>{' '}
-        and practise with{' '}
-        <Link href="/auth/register" className="text-[#0F2356] font-semibold underline">
-          free OET Speaking roleplays
-        </Link>
-        .
-      </p>
+      <div className="motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
+        <h1 className="font-display text-3xl font-semibold text-[#0F2356] mt-4 mb-4">OET Requirements for the UAE</h1>
+        <p className="text-gray-500 text-lg mb-2">
+          The UAE has three separate health regulators, each setting its own English-language requirement —
+          here's who to check with, and why we're not publishing a single score for all three.
+        </p>
+        <p className="text-gray-600 leading-relaxed mb-4">
+          Yes — OET is accepted for nurse licensing in the UAE, but by three separate authorities
+          depending on which emirate you'll work in.
+        </p>
+        <p className="text-gray-600 leading-relaxed mb-4">
+          Before checking who licenses you, you can estimate your current level using our{' '}
+          <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
+            OET Score Calculator
+          </Link>{' '}
+          and practise with{' '}
+          <Link href="/auth/register" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
+            free OET Speaking roleplays
+          </Link>
+          .
+        </p>
+      </div>
       <ArticleMeta date="2026-07-27" />
       <TableOfContents items={toc} />
 
-      <h2 id="authorities" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="authorities" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         Which authority licenses you
       </h2>
       <ul className="list-disc pl-5 space-y-2 text-gray-600 mb-4">
         <li>
           <span className="font-semibold text-[#0F2356]">Dubai Health Authority (DHA)</span> — for nurses
           working in Dubai. Official site:{' '}
-          <a href="https://www.dha.gov.ae" target="_blank" rel="noopener noreferrer" className="text-[#0F2356] font-semibold underline">
+          <a href="https://www.dha.gov.ae" target="_blank" rel="noopener noreferrer" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
             dha.gov.ae
           </a>
           , including a self-assessment tool for professional qualification requirements.
@@ -93,7 +95,7 @@ export default function OetUaePage() {
         <li>
           <span className="font-semibold text-[#0F2356]">Department of Health Abu Dhabi (DOH)</span> — for
           nurses working in Abu Dhabi. Official Professional Qualification Requirements for nurses:{' '}
-          <a href="https://www.doh.gov.ae/en/pqr/Nurses" target="_blank" rel="noopener noreferrer" className="text-[#0F2356] font-semibold underline">
+          <a href="https://www.doh.gov.ae/en/pqr/Nurses" target="_blank" rel="noopener noreferrer" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
             doh.gov.ae/en/pqr/Nurses
           </a>
           .
@@ -101,14 +103,14 @@ export default function OetUaePage() {
         <li>
           <span className="font-semibold text-[#0F2356]">Ministry of Health and Prevention (MOHAP)</span> —
           for the other emirates (Sharjah, Ajman, and the rest). Official licensing page:{' '}
-          <a href="https://mohap.gov.ae/en/w/licensing-or-re-licensing-of-health-professional" target="_blank" rel="noopener noreferrer" className="text-[#0F2356] font-semibold underline">
+          <a href="https://mohap.gov.ae/en/w/licensing-or-re-licensing-of-health-professional" target="_blank" rel="noopener noreferrer" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
             mohap.gov.ae
           </a>
           .
         </li>
       </ul>
 
-      <h2 id="score" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="score" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         Minimum OET score
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -120,14 +122,14 @@ export default function OetUaePage() {
       </p>
       <p className="text-gray-600 leading-relaxed mb-4">
         Our{' '}
-        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline">
+        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           free OET Score Calculator
         </Link>{' '}
         deliberately leaves UAE out for the same reason — we'll add it the moment we can verify one
         reliable number per authority.
       </p>
 
-      <h2 id="validity" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="validity" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         How long is my OET score valid?
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -138,7 +140,7 @@ export default function OetUaePage() {
         on an older result.
       </p>
 
-      <h2 id="registration" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="registration" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         Registration process overview
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -153,7 +155,7 @@ export default function OetUaePage() {
 
       <RegulatorCTA regulatorName="UAE nursing license" />
 
-      <h2 id="prepare" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="prepare" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         How to prepare for the UAE OET requirement
       </h2>
       <p className="text-gray-600 leading-relaxed mb-3">
@@ -168,17 +170,17 @@ export default function OetUaePage() {
       <p className="text-gray-600 font-semibold mb-2">Helpful guides:</p>
       <ul className="list-disc pl-5 space-y-2 text-gray-600 mb-4">
         <li>
-          <Link href="/learn/what-is-oet-speaking" className="text-[#0F2356] font-semibold underline">
+          <Link href="/learn/what-is-oet-speaking" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
             What is OET Speaking?
           </Link>
         </li>
         <li>
-          <Link href="/learn/oet-band-scores" className="text-[#0F2356] font-semibold underline">
+          <Link href="/learn/oet-band-scores" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
             OET Band Scores Explained
           </Link>
         </li>
         <li>
-          <Link href="/learn/oet-speaking-tips" className="text-[#0F2356] font-semibold underline">
+          <Link href="/learn/oet-speaking-tips" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
             OET Speaking Tips
           </Link>
         </li>
@@ -188,7 +190,7 @@ export default function OetUaePage() {
         <CommonMistakes />
       </div>
 
-      <h2 id="compare" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="compare" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         UAE compared with other regulators
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">

@@ -18,20 +18,28 @@ const toc = [
 export default function PracticeSpeakingDocsPage() {
   return (
     <main className="min-h-screen px-4 py-20 max-w-3xl mx-auto">
-      <Link href="/docs" className="text-sm text-gray-500 hover:text-[#0F2356] transition">
+      <Link
+        href="/docs"
+        className="text-sm text-gray-500 hover:text-[#0F2356] rounded motion-safe:transition-colors motion-safe:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+      >
         ← All docs
       </Link>
-      <h1 className="text-3xl font-bold text-[#0F2356] mt-4 mb-4">Practice Speaking</h1>
-      <p className="text-gray-500 text-lg mb-10">
-        Roleplay realistic OET patient scenarios out loud with an AI patient, and get instant,
-        criteria-based feedback.
-      </p>
+      <div className="motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
+        <h1 className="font-display text-3xl font-semibold text-[#0F2356] mt-4 mb-4">Practice Speaking</h1>
+        <p className="text-gray-500 text-lg mb-10">
+          Roleplay realistic OET patient scenarios out loud with an AI patient, and get instant,
+          criteria-based feedback.
+        </p>
+      </div>
       <TableOfContents items={toc} />
 
-      <h2 id="how-it-works" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">How a session works</h2>
+      <h2 id="how-it-works" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">How a session works</h2>
       <p className="text-gray-600 leading-relaxed mb-4">
         Open{' '}
-        <Link href="/practice/speaking" className="text-[#0F2356] font-semibold underline">
+        <Link
+          href="/practice/speaking"
+          className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+        >
           Practice Speaking
         </Link>
         , pick a role-play scenario, and take your 2 minutes of prep time to read the card. When
@@ -39,7 +47,7 @@ export default function PracticeSpeakingDocsPage() {
         just like the real exam. Sessions count against your plan&apos;s monthly session limit.
       </p>
 
-      <h2 id="feedback-criteria" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">What the 9 criteria measure</h2>
+      <h2 id="feedback-criteria" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">What the 9 criteria measure</h2>
       <p className="text-gray-600 leading-relaxed mb-4">
         After each session, SpeakOET grades you against the same linguistic and clinical
         communication criteria OET examiners use — things like relationship building, structuring
@@ -48,11 +56,14 @@ export default function PracticeSpeakingDocsPage() {
         names the specific criteria you did well on and the ones to focus on next.
       </p>
 
-      <h2 id="mic-issues" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">Microphone not working</h2>
+      <h2 id="mic-issues" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">Microphone not working</h2>
       <p className="text-gray-600 leading-relaxed mb-4">
         Check your browser has microphone permission for SpeakOET — usually a padlock icon in the
         address bar — close any other app using the mic, and refresh the page. Still stuck?{' '}
-        <Link href="/support" className="text-[#0F2356] font-semibold underline">
+        <Link
+          href="/support"
+          className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+        >
           Contact support
         </Link>{' '}
         with your browser and device.

@@ -58,44 +58,46 @@ export default function OetCanadaPage() {
     <main className="min-h-screen px-4 py-20 max-w-3xl mx-auto">
       <OetPageJsonLd path="/oet/canada" title={TITLE} description={DESCRIPTION} datePublished="2026-07-27" />
 
-      <h1 className="text-3xl font-bold text-[#0F2356] mt-4 mb-4">OET Requirements for Canada</h1>
-      <p className="text-gray-500 text-lg mb-2">
-        What score Canada's provincial and territorial nursing regulators require from OET — the same
-        figure across all 13 — and how to prepare for it.
-      </p>
-      <p className="text-gray-600 leading-relaxed mb-4">
-        Yes — every provincial and territorial nursing regulator in Canada accepts OET as an approved
-        English-language test for internationally-trained nurses.
-      </p>
-      <p className="text-gray-600 leading-relaxed mb-4">
-        Before checking the requirements, you can estimate your current level using our{' '}
-        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline">
-          OET Score Calculator
-        </Link>{' '}
-        and practise with{' '}
-        <Link href="/auth/register" className="text-[#0F2356] font-semibold underline">
-          free OET Speaking roleplays
-        </Link>
-        .
-      </p>
+      <div className="motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
+        <h1 className="font-display text-3xl font-semibold text-[#0F2356] mt-4 mb-4">OET Requirements for Canada</h1>
+        <p className="text-gray-500 text-lg mb-2">
+          What score Canada's provincial and territorial nursing regulators require from OET — the same
+          figure across all 13 — and how to prepare for it.
+        </p>
+        <p className="text-gray-600 leading-relaxed mb-4">
+          Yes — every provincial and territorial nursing regulator in Canada accepts OET as an approved
+          English-language test for internationally-trained nurses.
+        </p>
+        <p className="text-gray-600 leading-relaxed mb-4">
+          Before checking the requirements, you can estimate your current level using our{' '}
+          <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
+            OET Score Calculator
+          </Link>{' '}
+          and practise with{' '}
+          <Link href="/auth/register" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
+            free OET Speaking roleplays
+          </Link>
+          .
+        </p>
+      </div>
       <ArticleMeta date="2026-07-27" />
       <TableOfContents items={toc} />
       <RegulatorAtAGlance regulatorId="canada" />
 
-      <h2 id="requirement" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="requirement" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         Minimum OET score for Canada
       </h2>
       <RegulatorScoreTable regulatorId="canada" />
       <p className="text-gray-600 leading-relaxed mb-4">
         Unlike most countries, nursing licensure in Canada is governed province by province — yet every
         regulator OET lists shows the same requirement. Not sure where your scores stand? Use our free{' '}
-        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline">
+        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
           OET Score Calculator
         </Link>{' '}
         to check instantly against Canada and other regulators.
       </p>
 
-      <h2 id="combining" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="combining" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         Combining two sittings
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -112,7 +114,7 @@ export default function OetCanadaPage() {
 
       <RegulatorCTA regulatorName="Canadian nursing requirement" />
 
-      <h2 id="prepare" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="prepare" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         How to prepare for the Canadian OET requirement
       </h2>
       <p className="text-gray-600 leading-relaxed mb-3">
@@ -127,17 +129,17 @@ export default function OetCanadaPage() {
       <p className="text-gray-600 font-semibold mb-2">Helpful guides:</p>
       <ul className="list-disc pl-5 space-y-2 text-gray-600 mb-4">
         <li>
-          <Link href="/learn/what-is-oet-speaking" className="text-[#0F2356] font-semibold underline">
+          <Link href="/learn/what-is-oet-speaking" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
             What is OET Speaking?
           </Link>
         </li>
         <li>
-          <Link href="/learn/oet-band-scores" className="text-[#0F2356] font-semibold underline">
+          <Link href="/learn/oet-band-scores" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
             OET Band Scores Explained
           </Link>
         </li>
         <li>
-          <Link href="/learn/oet-speaking-tips" className="text-[#0F2356] font-semibold underline">
+          <Link href="/learn/oet-speaking-tips" className="text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2">
             OET Speaking Tips
           </Link>
         </li>
@@ -147,7 +149,7 @@ export default function OetCanadaPage() {
         <CommonMistakes />
       </div>
 
-      <h2 id="compare" className="text-xl font-bold text-[#0F2356] mt-8 mb-3">
+      <h2 id="compare" className="font-display text-xl font-semibold text-[#0F2356] mt-8 mb-3">
         Canada OET requirement compared with other regulators
       </h2>
       <RegulatorComparisonTable currentSlug="canada" />

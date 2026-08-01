@@ -207,8 +207,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [avatarOpen, setAvatarOpen] = useState(false)
   const avatarRef = useRef<HTMLDivElement>(null)
 
+  const isAnonymous = !!session?.user?.is_anonymous
+
   useEffect(() => {
-    if (status !== 'authenticated') {
+    if (status !== 'authenticated' || isAnonymous) {
       setUsage(null)
       return
     }
@@ -222,7 +224,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [status])
+  }, [status, isAnonymous])
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
@@ -258,6 +260,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     (emailLocalPart ? emailLocalPart[0].toUpperCase() + emailLocalPart.slice(1) : '')
 
   const title = pageTitle(pathname)
+
+  // A free-mock-test visitor is a real ("authenticated") session but has no
+  // account -- the full dashboard shell would hand them nav links to Study
+  // Hub / Speaking / Writing / Upgrade etc. that are meaningless before
+  // they've signed up. Keep just enough chrome to orient them inside the
+  // test; the signup moment itself lives in FreeReportGate at the end.
+  if (isAnonymous) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/95 px-4 backdrop-blur sm:px-6 lg:px-8">
+          <Link href="/" className="inline-flex rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
+            <SpeakOETLogo height={26} variant="full" theme="dark" priority />
+          </Link>
+          <h1 className="truncate text-base font-bold text-foreground">{title}</h1>
+          <div className="ml-auto flex items-center gap-3">
+            <ThemeToggle />
+          </div>
+        </header>
+        <main id="main-content" className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+          {children}
+        </main>
+      </div>
+    )
+  }
 
   const sidebarBody = (onNavigate?: () => void) => (
     <>
@@ -446,8 +472,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <button
                       onClick={async () => {
                         setAvatarOpen(false)
-                        router.push('/')
                         await signOut()
+                        window.location.href = '/'
                       }}
                       className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"
                     >

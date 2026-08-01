@@ -7,6 +7,10 @@ import { SummaryBox } from '@/components/learn/SummaryBox'
 import { Callout } from '@/components/learn/Callout'
 import { FaqSection } from '@/components/seo/FaqSection'
 import { OetPageJsonLd } from '@/components/seo/OetPageJsonLd'
+import { RevealOnScroll } from '@/components/RevealOnScroll'
+
+const relatedLinkClass =
+  'text-[#0F2356] font-semibold underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2'
 
 const TITLE = 'OET Writing Guide for Nurses: How to Pass the OET Writing Sub-Test'
 const DESCRIPTION =
@@ -91,17 +95,22 @@ export default function OetWritingPillarPage() {
         datePublished="2026-07-27"
       />
 
-      <Link href="/blog" className="text-sm text-gray-500 hover:text-[#0F2356] transition">
+      <Link
+        href="/blog"
+        className="text-sm text-gray-500 hover:text-[#0F2356] transition rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#047857] focus-visible:ring-offset-2"
+      >
         ← All articles
       </Link>
-      <h1 className="text-3xl font-bold text-[#0F2356] mt-4 mb-4">
-        OET Writing Guide for Nurses
-      </h1>
-      <p className="text-gray-500 text-lg mb-2">
-        Everything a nurse needs to pass OET Writing: the format, all six assessment criteria
-        with real examples, a minute-by-minute strategy, a full worked example, and the mistakes
-        that quietly cap most candidates&rsquo; scores.
-      </p>
+      <div className="motion-safe:animate-[fade-up-in_0.5s_ease-out_both]">
+        <h1 className="font-display text-3xl font-semibold text-[#0F2356] mt-4 mb-4">
+          OET Writing Guide for Nurses
+        </h1>
+        <p className="text-gray-500 text-lg mb-2">
+          Everything a nurse needs to pass OET Writing: the format, all six assessment criteria
+          with real examples, a minute-by-minute strategy, a full worked example, and the mistakes
+          that quietly cap most candidates&rsquo; scores.
+        </p>
+      </div>
       <ArticleMeta date="2026-07-27" />
 
       <p className="text-gray-600 leading-relaxed mb-6">
@@ -128,7 +137,7 @@ export default function OetWritingPillarPage() {
       <TableOfContents items={toc} />
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="what-is-oet-writing" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="what-is-oet-writing" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         What is OET Writing?
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -156,7 +165,7 @@ export default function OetWritingPillarPage() {
       </Callout>
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="format" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="format" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         The format
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -165,63 +174,67 @@ export default function OetWritingPillarPage() {
         OET@Home). Here&rsquo;s how the 45 minutes are structured:
       </p>
 
-      <div className="overflow-x-auto mb-6">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="border-b border-gray-200">
-              <th className="text-left py-2 pr-4 text-[#0F2356] font-semibold">Phase</th>
-              <th className="text-left py-2 pr-4 text-[#0F2356] font-semibold">Time</th>
-              <th className="text-left py-2 text-[#0F2356] font-semibold">What you do</th>
-            </tr>
-          </thead>
-          <tbody className="text-gray-600">
-            <tr className="border-b border-gray-100">
-              <td className="py-2 pr-4">Reading time</td>
-              <td className="py-2 pr-4">5 minutes</td>
-              <td className="py-2">Read the task instructions and case notes; annotate, don&rsquo;t write sentences yet.</td>
-            </tr>
-            <tr className="border-b border-gray-100">
-              <td className="py-2 pr-4">Writing time</td>
-              <td className="py-2 pr-4">40 minutes</td>
-              <td className="py-2">Plan briefly, then write your letter in full.</td>
-            </tr>
-            <tr>
-              <td className="py-2 pr-4">Total</td>
-              <td className="py-2 pr-4 font-semibold text-[#0F2356]">45 minutes</td>
-              <td className="py-2">One task, one letter, no second attempt.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <RevealOnScroll>
+        <div className="overflow-x-auto mb-6">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-2 pr-4 text-[#0F2356] font-semibold">Phase</th>
+                <th className="text-left py-2 pr-4 text-[#0F2356] font-semibold">Time</th>
+                <th className="text-left py-2 text-[#0F2356] font-semibold">What you do</th>
+              </tr>
+            </thead>
+            <tbody className="text-gray-600">
+              <tr className="border-b border-gray-100">
+                <td className="py-2 pr-4">Reading time</td>
+                <td className="py-2 pr-4">5 minutes</td>
+                <td className="py-2">Read the task instructions and case notes; annotate, don&rsquo;t write sentences yet.</td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="py-2 pr-4">Writing time</td>
+                <td className="py-2 pr-4">40 minutes</td>
+                <td className="py-2">Plan briefly, then write your letter in full.</td>
+              </tr>
+              <tr>
+                <td className="py-2 pr-4">Total</td>
+                <td className="py-2 pr-4 font-semibold text-[#0F2356]">45 minutes</td>
+                <td className="py-2">One task, one letter, no second attempt.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </RevealOnScroll>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-6 mb-2">The letter types</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-6 mb-2">The letter types</h3>
       <p className="text-gray-600 leading-relaxed mb-4">
         The task rotates between a few letter types, and each one changes who your reader is and
         what tone you need:
       </p>
-      <ul className="list-disc pl-5 space-y-2 text-gray-600 mb-4">
-        <li>
-          <span className="font-semibold text-[#0F2356]">Referral letter</span> &mdash; to a
-          specialist, GP, or community service, asking them to take over or contribute to a
-          patient&rsquo;s care.
-        </li>
-        <li>
-          <span className="font-semibold text-[#0F2356]">Discharge/transfer letter</span> &mdash;
-          summarising an admission for whoever continues care next, in hospital or the community.
-        </li>
-        <li>
-          <span className="font-semibold text-[#0F2356]">Letter to a patient or carer</span> &mdash;
-          same clinical accuracy, but in plain language, since the reader isn&rsquo;t medically
-          trained.
-        </li>
-      </ul>
+      <RevealOnScroll>
+        <ul className="list-disc pl-5 space-y-2 text-gray-600 mb-4">
+          <li>
+            <span className="font-semibold text-[#0F2356]">Referral letter</span> &mdash; to a
+            specialist, GP, or community service, asking them to take over or contribute to a
+            patient&rsquo;s care.
+          </li>
+          <li>
+            <span className="font-semibold text-[#0F2356]">Discharge/transfer letter</span> &mdash;
+            summarising an admission for whoever continues care next, in hospital or the community.
+          </li>
+          <li>
+            <span className="font-semibold text-[#0F2356]">Letter to a patient or carer</span> &mdash;
+            same clinical accuracy, but in plain language, since the reader isn&rsquo;t medically
+            trained.
+          </li>
+        </ul>
+      </RevealOnScroll>
       <p className="text-gray-600 leading-relaxed mb-4">
         You won&rsquo;t know which one you&rsquo;ll get until you open the case notes, which is why
         memorising one fixed letter (one opening sentence, one structure) is risky &mdash; it fits
         some tasks and visibly doesn&rsquo;t fit others.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-6 mb-2">What examiners expect</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-6 mb-2">What examiners expect</h3>
       <p className="text-gray-600 leading-relaxed mb-4">
         Examiners are trained to read your letter the way your named reader would: someone who has
         never met this patient and needs to act on your letter safely. In practice, that means
@@ -239,7 +252,7 @@ export default function OetWritingPillarPage() {
       />
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="assessment-criteria" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="assessment-criteria" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         The 6 assessment criteria
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -250,7 +263,7 @@ export default function OetWritingPillarPage() {
         turns &ldquo;write a good letter&rdquo; into six concrete, practisable checks.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-8 mb-2">1. Purpose (Overall Task Fulfilment)</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-8 mb-2">1. Purpose (Overall Task Fulfilment)</h3>
       <p className="text-gray-600 leading-relaxed mb-3">
         Does your letter make clear, immediately, why you&rsquo;re writing &mdash; and does it
         restate that purpose as a specific request near the end? Examiners can tell within one
@@ -275,7 +288,7 @@ export default function OetWritingPillarPage() {
         advise on further management&rdquo;), not a vague sign-off.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-8 mb-2">2. Content</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-8 mb-2">2. Content</h3>
       <p className="text-gray-600 leading-relaxed mb-3">
         Everything the reader needs to safely continue care, accurately represented, with nothing
         important left out. This is judged directly against the case notes in front of the
@@ -299,7 +312,7 @@ export default function OetWritingPillarPage() {
         pressure.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-8 mb-2">3. Conciseness &amp; Clarity</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-8 mb-2">3. Conciseness &amp; Clarity</h3>
       <p className="text-gray-600 leading-relaxed mb-3">
         The right length for this case and this reader, with no irrelevant information, and
         everything summarised rather than copied wholesale from the notes. This is the criterion
@@ -320,7 +333,7 @@ export default function OetWritingPillarPage() {
         honest answer is no, cut it &mdash; even if it&rsquo;s interesting, even if it&rsquo;s true.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-8 mb-2">4. Genre &amp; Style</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-8 mb-2">4. Genre &amp; Style</h3>
       <p className="text-gray-600 leading-relaxed mb-3">
         Formal, factual, and appropriate to whoever you&rsquo;re writing to. Clinical language for
         a clinician, plain language for a patient or family member, and a neutral tone throughout
@@ -343,7 +356,7 @@ export default function OetWritingPillarPage() {
         would already know it.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-8 mb-2">5. Organisation &amp; Layout</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-8 mb-2">5. Organisation &amp; Layout</h3>
       <p className="text-gray-600 leading-relaxed mb-3">
         A logical order &mdash; chronological or thematic &mdash; with the most important
         information first, related ideas grouped into paragraphs, and a layout (salutation, body,
@@ -366,7 +379,7 @@ export default function OetWritingPillarPage() {
         they&rsquo;re printed on the page. The case notes are a source of facts, not an outline.
       </p>
 
-      <h3 className="text-lg font-semibold text-[#0F2356] mt-8 mb-2">6. Language</h3>
+      <h3 className="font-display text-lg font-semibold text-[#0F2356] mt-8 mb-2">6. Language</h3>
       <p className="text-gray-600 leading-relaxed mb-3">
         Grammar, vocabulary, spelling, and punctuation, judged by whether an error causes the
         reader real strain or confusion &mdash; not by counting every minor slip. A missing article
@@ -395,7 +408,7 @@ export default function OetWritingPillarPage() {
       />
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="step-by-step-strategy" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="step-by-step-strategy" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         A minute-by-minute exam strategy
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -404,6 +417,7 @@ export default function OetWritingPillarPage() {
         through the task.
       </p>
 
+      <RevealOnScroll>
       <div className="overflow-x-auto mb-6">
         <table className="w-full text-sm border-collapse">
           <thead>
@@ -440,6 +454,7 @@ export default function OetWritingPillarPage() {
           </tbody>
         </table>
       </div>
+      </RevealOnScroll>
 
       <Callout variant="warning" title="If you freeze on the opening line">
         Don&rsquo;t sit staring at a blank first sentence. Skip it, start the body with the most
@@ -454,7 +469,7 @@ export default function OetWritingPillarPage() {
       </Callout>
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="worked-example" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="worked-example" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         A full worked example
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
@@ -462,15 +477,17 @@ export default function OetWritingPillarPage() {
         strong candidate does before writing a single sentence of the letter itself.
       </p>
 
-      <div className="rounded-xl border border-gray-100 bg-[#F8FAFC] p-5 mb-4 text-sm text-gray-700 leading-relaxed">
-        <p className="font-semibold text-[#0F2356] mb-2">Case notes (extract)</p>
-        <p className="mb-1">Patient: Rajesh Kumar, 58</p>
-        <p className="mb-1">Admitted with community-acquired pneumonia, day 5 of 5-day IV antibiotic course, now stepped down to oral antibiotics</p>
-        <p className="mb-1">PMH: Type 2 diabetes (diet-controlled), hypertension (amlodipine 5mg OD)</p>
-        <p className="mb-1">Course: required a short course of oral steroids for wheeze; blood glucose transiently elevated during admission, now settling</p>
-        <p className="mb-1">Social: lives alone, daughter visits weekly</p>
-        <p className="mb-1">Task: write a discharge letter to the patient&rsquo;s GP. Include follow-up chest X-ray in 6 weeks and advise on monitoring blood glucose given the steroid course.</p>
-      </div>
+      <RevealOnScroll>
+        <div className="rounded-xl border border-gray-100 bg-[#F8FAFC] p-5 mb-4 text-sm text-gray-700 leading-relaxed">
+          <p className="font-semibold text-[#0F2356] mb-2">Case notes (extract)</p>
+          <p className="mb-1">Patient: Rajesh Kumar, 58</p>
+          <p className="mb-1">Admitted with community-acquired pneumonia, day 5 of 5-day IV antibiotic course, now stepped down to oral antibiotics</p>
+          <p className="mb-1">PMH: Type 2 diabetes (diet-controlled), hypertension (amlodipine 5mg OD)</p>
+          <p className="mb-1">Course: required a short course of oral steroids for wheeze; blood glucose transiently elevated during admission, now settling</p>
+          <p className="mb-1">Social: lives alone, daughter visits weekly</p>
+          <p className="mb-1">Task: write a discharge letter to the patient&rsquo;s GP. Include follow-up chest X-ray in 6 weeks and advise on monitoring blood glucose given the steroid course.</p>
+        </div>
+      </RevealOnScroll>
 
       <p className="text-gray-600 leading-relaxed mb-3">
         <span className="font-semibold text-[#0F2356]">What a strong candidate notices first:</span>{' '}
@@ -486,34 +503,36 @@ export default function OetWritingPillarPage() {
         (X-ray, glucose monitoring), (4) closing request.
       </p>
 
-      <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-5 mb-4 text-sm text-gray-700 leading-relaxed">
-        <p className="font-semibold text-[#0F2356] mb-2">Letter (188 words)</p>
-        <p className="mb-3">Dear Dr. Sharma,</p>
-        <p className="mb-3">
-          I am writing to inform you of Mr. Rajesh Kumar&rsquo;s recent discharge following
-          admission for community-acquired pneumonia, so that you can continue his follow-up
-          care in the community.
-        </p>
-        <p className="mb-3">
-          Mr. Kumar, 58, was admitted for a 5-day course of intravenous antibiotics, which he has
-          now completed, stepping down to oral antibiotics to finish at home. He has a background
-          of diet-controlled type 2 diabetes and hypertension, managed with amlodipine 5mg once
-          daily. During admission he required a short course of oral steroids for associated
-          wheeze, which caused a transient rise in his blood glucose; this has since begun to
-          settle but has not yet been confirmed as fully resolved.
-        </p>
-        <p className="mb-3">
-          Given this, I would be grateful if you could arrange blood glucose monitoring over the
-          coming weeks to confirm it has returned to his usual baseline. He also requires a
-          follow-up chest X-ray in approximately 6 weeks to confirm radiological resolution. Mr.
-          Kumar lives alone, though his daughter visits weekly and is aware of his current
-          condition.
-        </p>
-        <p className="mb-3">
-          Please do not hesitate to contact the ward if you require any further information.
-        </p>
-        <p>Yours sincerely,</p>
-      </div>
+      <RevealOnScroll>
+        <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-5 mb-4 text-sm text-gray-700 leading-relaxed">
+          <p className="font-semibold text-[#0F2356] mb-2">Letter (188 words)</p>
+          <p className="mb-3">Dear Dr. Sharma,</p>
+          <p className="mb-3">
+            I am writing to inform you of Mr. Rajesh Kumar&rsquo;s recent discharge following
+            admission for community-acquired pneumonia, so that you can continue his follow-up
+            care in the community.
+          </p>
+          <p className="mb-3">
+            Mr. Kumar, 58, was admitted for a 5-day course of intravenous antibiotics, which he has
+            now completed, stepping down to oral antibiotics to finish at home. He has a background
+            of diet-controlled type 2 diabetes and hypertension, managed with amlodipine 5mg once
+            daily. During admission he required a short course of oral steroids for associated
+            wheeze, which caused a transient rise in his blood glucose; this has since begun to
+            settle but has not yet been confirmed as fully resolved.
+          </p>
+          <p className="mb-3">
+            Given this, I would be grateful if you could arrange blood glucose monitoring over the
+            coming weeks to confirm it has returned to his usual baseline. He also requires a
+            follow-up chest X-ray in approximately 6 weeks to confirm radiological resolution. Mr.
+            Kumar lives alone, though his daughter visits weekly and is aware of his current
+            condition.
+          </p>
+          <p className="mb-3">
+            Please do not hesitate to contact the ward if you require any further information.
+          </p>
+          <p>Yours sincerely,</p>
+        </div>
+      </RevealOnScroll>
 
       <p className="text-gray-600 leading-relaxed mb-4">
         Notice what&rsquo;s absent as much as what&rsquo;s present: no description of the
@@ -524,13 +543,14 @@ export default function OetWritingPillarPage() {
       </p>
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="common-mistakes" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="common-mistakes" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         18 mistakes that quietly cap your score
       </h2>
       <p className="text-gray-600 leading-relaxed mb-4">
         Most of these won&rsquo;t make your letter unreadable &mdash; which is exactly why they
         survive candidates&rsquo; own proofreading. They cap a score that otherwise looks fine.
       </p>
+      <RevealOnScroll>
       <ol className="list-decimal pl-5 space-y-3 text-gray-600 mb-4">
         <li>
           <span className="font-semibold text-[#0F2356]">A memorised opening sentence.</span>{' '}
@@ -618,11 +638,13 @@ export default function OetWritingPillarPage() {
           practising one type leaves you unprepared for the others.
         </li>
       </ol>
+      </RevealOnScroll>
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="tutor-tips" className="text-2xl font-bold text-[#0F2356] mt-10 mb-4">
+      <h2 id="tutor-tips" className="font-display text-2xl font-semibold text-[#0F2356] mt-10 mb-4">
         Tips from experienced OET tutors
       </h2>
+      <RevealOnScroll>
       <ul className="list-disc pl-5 space-y-3 text-gray-600 mb-4">
         <li>
           Build 2–3 flexible opening &ldquo;shapes&rdquo; with blanks to fill in from the case
@@ -658,6 +680,7 @@ export default function OetWritingPillarPage() {
           detail with no bearing on what you&rsquo;re asked to do.
         </li>
       </ul>
+      </RevealOnScroll>
 
       <p className="text-gray-600 leading-relaxed mb-8">
         Always check the exact current task format, timing, and marking guide on the official OET
@@ -667,50 +690,52 @@ export default function OetWritingPillarPage() {
       <FaqSection faqs={faqs} />
 
       {/* ---------------------------------------------------------- */}
-      <h2 id="related-guides" className="text-2xl font-bold text-[#0F2356] mt-12 mb-4">
+      <h2 id="related-guides" className="font-display text-2xl font-semibold text-[#0F2356] mt-12 mb-4">
         Related guides
       </h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 mb-4 text-sm">
-        <Link href="/learn/oet-reading" className="text-[#0F2356] font-semibold underline">
-          OET Reading Guide for Nurses
-        </Link>
-        <Link href="/oet/speaking" className="text-[#0F2356] font-semibold underline">
-          OET Speaking: The Complete Guide
-        </Link>
-        <Link href="/learn/what-is-oet-speaking" className="text-[#0F2356] font-semibold underline">
-          What is OET Speaking?
-        </Link>
-        <Link href="/learn/oet-band-scores" className="text-[#0F2356] font-semibold underline">
-          OET Band Scores Explained
-        </Link>
-        <Link href="/learn/oet-speaking-tips" className="text-[#0F2356] font-semibold underline">
-          OET Speaking Tips for Nurses
-        </Link>
-        <Link href="/learn/oet-vs-ielts" className="text-[#0F2356] font-semibold underline">
-          OET vs IELTS
-        </Link>
-        <Link href="/oet/uk" className="text-[#0F2356] font-semibold underline">
-          OET Requirements for the UK (NMC)
-        </Link>
-        <Link href="/oet/australia" className="text-[#0F2356] font-semibold underline">
-          OET Requirements for Australia
-        </Link>
-        <Link href="/oet/ireland" className="text-[#0F2356] font-semibold underline">
-          OET Requirements for Ireland
-        </Link>
-        <Link href="/oet/new-zealand" className="text-[#0F2356] font-semibold underline">
-          OET Requirements for New Zealand
-        </Link>
-        <Link href="/oet/canada" className="text-[#0F2356] font-semibold underline">
-          OET Requirements for Canada
-        </Link>
-        <Link href="/tools/oet-score-calculator" className="text-[#0F2356] font-semibold underline">
-          Free OET Score Calculator
-        </Link>
-        <Link href="/tools/ai-study-plan-generator" className="text-[#0F2356] font-semibold underline">
-          Free AI Study Plan Generator
-        </Link>
-      </div>
+      <RevealOnScroll>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 mb-4 text-sm">
+          <Link href="/learn/oet-reading" className={relatedLinkClass}>
+            OET Reading Guide for Nurses
+          </Link>
+          <Link href="/oet/speaking" className={relatedLinkClass}>
+            OET Speaking: The Complete Guide
+          </Link>
+          <Link href="/learn/what-is-oet-speaking" className={relatedLinkClass}>
+            What is OET Speaking?
+          </Link>
+          <Link href="/learn/oet-band-scores" className={relatedLinkClass}>
+            OET Band Scores Explained
+          </Link>
+          <Link href="/learn/oet-speaking-tips" className={relatedLinkClass}>
+            OET Speaking Tips for Nurses
+          </Link>
+          <Link href="/learn/oet-vs-ielts" className={relatedLinkClass}>
+            OET vs IELTS
+          </Link>
+          <Link href="/oet/uk" className={relatedLinkClass}>
+            OET Requirements for the UK (NMC)
+          </Link>
+          <Link href="/oet/australia" className={relatedLinkClass}>
+            OET Requirements for Australia
+          </Link>
+          <Link href="/oet/ireland" className={relatedLinkClass}>
+            OET Requirements for Ireland
+          </Link>
+          <Link href="/oet/new-zealand" className={relatedLinkClass}>
+            OET Requirements for New Zealand
+          </Link>
+          <Link href="/oet/canada" className={relatedLinkClass}>
+            OET Requirements for Canada
+          </Link>
+          <Link href="/tools/oet-score-calculator" className={relatedLinkClass}>
+            Free OET Score Calculator
+          </Link>
+          <Link href="/tools/ai-study-plan-generator" className={relatedLinkClass}>
+            Free AI Study Plan Generator
+          </Link>
+        </div>
+      </RevealOnScroll>
 
       <LearnCTA
         heading="Ready to write your first letter?"
