@@ -1,8 +1,14 @@
 -- ============================================================
+-- EMERGENCY ROLLBACK ONLY — DO NOT RUN ROUTINELY
+-- ============================================================
 -- NurseAI: Rollback RLS Policy Fix
 -- Reverses supabase-fix-rls-policies.sql — restores original
 -- policies without any TO clause (defaulting to TO PUBLIC).
 -- Run ONLY if the forward migration causes issues.
+--
+-- This DROPS the hardened policies and puts USING(true)/PUBLIC
+-- policies back in place. Anyone can run this: know what you're
+-- undoing before you undo it. See README.md in this directory.
 -- ============================================================
 
 -- ============================================================
