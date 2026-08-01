@@ -13,6 +13,7 @@ from app.core.ai_pricing import estimate_deepgram_cost
 from app.core.supabase import get_supabase, get_auth_client
 from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
+from app.core import cost_circuit_breaker
 from app.core.error_utils import redact_api_keys, classify_http_error
 from app.routers.auth import get_current_user, UserInfo
 from app.routers.admin import require_admin
@@ -71,6 +72,11 @@ PRONUNCIATION_RATE_LIMIT_WINDOW_SECONDS = 600
 _pronunciation_rate_limiter = SlidingWindowRateLimiter(PRONUNCIATION_RATE_LIMIT_MAX_CALLS, PRONUNCIATION_RATE_LIMIT_WINDOW_SECONDS, name="speaking:pronunciation")
 MAX_PRONUNCIATION_AUDIO_BYTES = 25 * 1024 * 1024
 
+# Caps rapid connect/disconnect loops that would otherwise burn Deepgram credits.
+STT_STREAM_RATE_LIMIT_MAX_CALLS = 5
+STT_STREAM_RATE_LIMIT_WINDOW_SECONDS = 60
+_stt_stream_rate_limiter = SlidingWindowRateLimiter(STT_STREAM_RATE_LIMIT_MAX_CALLS, STT_STREAM_RATE_LIMIT_WINDOW_SECONDS, name="speaking:stt_stream")
+
 MAX_CHAT_HISTORY_MESSAGES = 60
 MAX_CHAT_MESSAGE_LENGTH = 2000
 
@@ -99,6 +105,8 @@ async def text_to_speech(
 
     if _tts_rate_limiter.is_rate_limited(current_user.id):
         raise HTTPException(status_code=429, detail="Too many audio requests — please slow down.")
+
+    cost_circuit_breaker.raise_if_tripped()
 
     supabase = get_supabase()
     profile = await get_user_profile(supabase, current_user.id)
@@ -194,6 +202,18 @@ async def stt_deepgram_stream(websocket: WebSocket):
         return
 
     logger.info("STT stream authenticated | user_id=%s", user.id)
+
+    if _stt_stream_rate_limiter.is_rate_limited(user.id):
+        await websocket.send_json({"error": "Too many connection attempts — please slow down.", "is_final": True})
+        await websocket.close(code=4429, reason="rate_limited")
+        return
+
+    try:
+        cost_circuit_breaker.raise_if_tripped()
+    except HTTPException:
+        await websocket.send_json({"error": "Daily AI spend cap reached — please try again later.", "is_final": True})
+        await websocket.close(code=4503, reason="spend_cap_exceeded")
+        return
 
     if not settings.DEEPGRAM_API_KEY:
         await websocket.send_json({"error": "DEEPGRAM_API_KEY not configured", "is_final": True})

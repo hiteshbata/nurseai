@@ -4,6 +4,7 @@ from typing import Optional
 from app.core.config import settings
 from app.core.error_utils import redact_api_keys, classify_http_error
 from app.core.ai_pricing import estimate_deepgram_cost
+from app.core import cost_circuit_breaker
 from app.services.cost_tracking import log_ai_usage
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,8 @@ class SpeechToText:
     ) -> dict:
         if not settings.DEEPGRAM_API_KEY:
             return {"text": "", "provider": "none", "error": "DEEPGRAM_API_KEY not configured"}
+
+        cost_circuit_breaker.raise_if_tripped()
 
         try:
             ext = filename.rsplit(".", 1)[-1] if "." in filename else "webm"

@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
+from app.core import cost_circuit_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -89,3 +90,5 @@ async def log_ai_usage(
         })
     except Exception as e:
         logger.warning("[AI_USAGE_LOG_FAILED] call_type=%s provider=%s detail=%s", call_type, provider, str(e)[:300])
+
+    cost_circuit_breaker.record_spend(cost_usd)

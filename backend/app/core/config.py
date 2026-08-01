@@ -102,5 +102,10 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     EMAIL_FROM: str = "SpeakOET <notifications@speakoet.com>"
     FRONTEND_URL: str = "https://www.speakoet.com"
+    # Hard cap on total AI spend (LLM + STT + TTS + realtime) per UTC day, across
+    # all users -- see app/core/cost_circuit_breaker.py. Blocks new AI calls with
+    # a 503 once tripped, so a bug or an attack can't run up unbounded provider
+    # cost. Adjustable at runtime via PUT /admin/spend-cap (owner-only).
+    MAX_DAILY_AI_SPEND_USD: float = 50.0
 
 settings = Settings()

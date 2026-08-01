@@ -12,6 +12,7 @@ from app.routers.payments import get_current_plan, grant_subscription_period, ge
 from app.services.plan_gating import get_plan_from_profile
 from app.services.founder_metrics import get_founder_metrics
 from app.services.ai_cost_metrics import get_ai_cost_metrics
+from app.core import cost_circuit_breaker
 from app.services.email import send_email, render_expiry_reminder, render_failed_payment_reminder
 from app.services.reminders import rows_due_for_expiry_reminder, rows_due_for_failed_payment_reminder
 from app.routers.profile import _USER_OWNED_TABLES
@@ -388,6 +389,44 @@ def admin_update_setting(
         target_id=key, target_label=key, detail={"value": setting.value},
     )
     return data.data[0]
+
+
+# ── AI SPEND CIRCUIT BREAKER ─────────────────────────────────────────
+# See app/core/cost_circuit_breaker.py -- global daily cap on AI provider
+# spend (LLM + STT + TTS + realtime), resets at UTC midnight.
+
+class SpendCapUpdate(BaseModel):
+    cap_usd: Optional[float] = Field(
+        default=None, description="null restores the MAX_DAILY_AI_SPEND_USD env default"
+    )
+
+
+@router.get("/spend-cap")
+def admin_get_spend_cap(current_user: UserInfo = Depends(require_admin)):
+    return {
+        "cap_usd": cost_circuit_breaker.get_cap(),
+        "spent_today_usd": cost_circuit_breaker.get_daily_total(),
+        "tripped": cost_circuit_breaker.is_tripped(),
+    }
+
+
+@router.put("/spend-cap")
+def admin_set_spend_cap(
+    req: SpendCapUpdate,
+    current_user: UserInfo = Depends(require_owner),
+):
+    if req.cap_usd is not None and req.cap_usd <= 0:
+        raise HTTPException(status_code=400, detail="cap_usd must be positive")
+    cost_circuit_breaker.set_cap_override(req.cap_usd)
+    _write_audit_log(
+        get_supabase(), current_user, "spend_cap_updated", "spend_cap",
+        detail={"cap_usd": req.cap_usd},
+    )
+    return {
+        "cap_usd": cost_circuit_breaker.get_cap(),
+        "spent_today_usd": cost_circuit_breaker.get_daily_total(),
+        "tripped": cost_circuit_breaker.is_tripped(),
+    }
 
 
 # ── FEATURE FLAGS / KILL SWITCHES ────────────────────────────────────

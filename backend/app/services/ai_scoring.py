@@ -10,6 +10,7 @@ from app.core.error_utils import redact_api_keys
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
 from app.core.ai_pricing import estimate_llm_cost
+from app.core import cost_circuit_breaker
 from app.services.cost_tracking import log_ai_usage
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ async def _call_ai(
 ) -> Dict[str, Any]:
     """Call AI via the configured or specified provider. Always falls back through all
     available providers: OpenRouter → OpenAI → Gemini (in that priority order)."""
+    cost_circuit_breaker.raise_if_tripped()
     provider = provider or settings.AI_PROVIDER
     gemini_key = settings.GEMINI_API_KEY
     openai_key = settings.OPENAI_API_KEY

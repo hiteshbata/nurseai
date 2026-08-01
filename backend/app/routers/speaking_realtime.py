@@ -48,6 +48,8 @@ import websockets.exceptions as ws_exc
 from app.core.config import settings
 from app.core.supabase import get_supabase, get_auth_client
 from app.core.threading import run_sync
+from app.core.rate_limit import SlidingWindowRateLimiter
+from app.core import cost_circuit_breaker
 from app.routers.auth import UserInfo
 from app.routers.sessions import check_and_increment_session, validate_session
 from app.core.error_utils import redact_api_keys
@@ -81,6 +83,11 @@ router = APIRouter(prefix="/speaking", tags=["speaking"])
 
 REALTIME_HANDSHAKE_TIMEOUT_SECONDS = 10
 PCM16_BYTES_PER_SAMPLE = 2
+
+# Caps rapid connect/disconnect loops that would otherwise burn OpenAI/Gemini realtime credits.
+REALTIME_STREAM_RATE_LIMIT_MAX_CALLS = 5
+REALTIME_STREAM_RATE_LIMIT_WINDOW_SECONDS = 60
+_realtime_stream_rate_limiter = SlidingWindowRateLimiter(REALTIME_STREAM_RATE_LIMIT_MAX_CALLS, REALTIME_STREAM_RATE_LIMIT_WINDOW_SECONDS, name="speaking:realtime_stream")
 
 
 def _map_gender_to_openai_voice(gender: str | None) -> str:
@@ -357,6 +364,18 @@ async def realtime_stream(websocket: WebSocket):
         return
 
     logger.info("Realtime stream authenticated | user_id=%s scenario_id=%s", user.id, scenario_id)
+
+    if _realtime_stream_rate_limiter.is_rate_limited(user.id):
+        await _send_json_safe(websocket, {"type": "error", "error": "Too many connection attempts — please slow down."})
+        await websocket.close(code=4429, reason="rate_limited")
+        return
+
+    try:
+        cost_circuit_breaker.raise_if_tripped()
+    except HTTPException:
+        await _send_json_safe(websocket, {"type": "error", "error": "Daily AI spend cap reached — please try again later."})
+        await websocket.close(code=4503, reason="spend_cap_exceeded")
+        return
 
     provider = _get_voice_provider()
     try:
