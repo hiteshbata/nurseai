@@ -39,10 +39,7 @@ MAX_IMAGE_BASE64_CHARS = MAX_IMAGE_BYTES * 4 // 3 + 4
 
 MAX_PDF_BYTES = 10 * 1024 * 1024
 
-# ponytail: TEMP — writing is normally Pro/Elite only. Set to True to re-lock
-# before launch. Off right now so the upload/photo/scoring flow can be tested
-# on any account. This is the single switch — flip it back and the gate returns.
-WRITING_PLAN_GATE_ENABLED = False
+WRITING_PLAN_GATE_ENABLED = True
 
 
 class WritingSubmitRequest(BaseModel):
