@@ -15,7 +15,7 @@ from app.services.ai_cost_metrics import get_ai_cost_metrics
 from app.core import cost_circuit_breaker
 from app.services.email import send_email, render_expiry_reminder, render_failed_payment_reminder
 from app.services.reminders import rows_due_for_expiry_reminder, rows_due_for_failed_payment_reminder
-from app.routers.profile import _USER_OWNED_TABLES
+from app.routers.profile import _delete_user_owned_rows
 from app.routers.auth import get_current_user, UserInfo
 from app.core.feature_flags import FEATURE_FLAGS, is_feature_enabled
 
@@ -1009,8 +1009,7 @@ def admin_delete_user(
         "reason": req.reason.strip(),
     }).execute()
 
-    for table in _USER_OWNED_TABLES:
-        supabase.table(table).delete().eq("user_id", user_id).execute()
+    _delete_user_owned_rows(supabase, user_id)
 
     try:
         supabase.auth.admin.delete_user(user_id)
@@ -1291,6 +1290,47 @@ def admin_prune_transcripts(_=Depends(require_admin_or_cron)):
         raise HTTPException(status_code=502, detail="Transcript prune failed")
     count = len(deleted.data or [])
     logger.info("transcripts/prune deleted %d rows older than %s", count, cutoff)
+    return {"deleted": count}
+
+
+AI_USAGE_EVENTS_RETENTION_DAYS = 90
+
+
+@router.post("/ai-usage-events/prune")
+def admin_prune_ai_usage_events(_=Depends(require_admin_or_cron)):
+    """Delete ai_usage_events rows older than AI_USAGE_EVENTS_RETENTION_DAYS.
+    Wired to run via external cron, same as logs/prune -- per-call cost log
+    has no other retention and grows unbounded otherwise. Safe to re-run."""
+    supabase = get_supabase()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=AI_USAGE_EVENTS_RETENTION_DAYS)).isoformat()
+    try:
+        deleted = supabase.table("ai_usage_events").delete().lt("created_at", cutoff).execute()
+    except Exception:
+        logger.exception("ai-usage-events/prune failed")
+        raise HTTPException(status_code=502, detail="AI usage events prune failed")
+    count = len(deleted.data or [])
+    logger.info("ai-usage-events/prune deleted %d rows older than %s", count, cutoff)
+    return {"deleted": count}
+
+
+REALTIME_SESSION_METRICS_RETENTION_DAYS = 180
+
+
+@router.post("/realtime-session-metrics/prune")
+def admin_prune_realtime_session_metrics(_=Depends(require_admin_or_cron)):
+    """Delete realtime_session_metrics rows older than
+    REALTIME_SESSION_METRICS_RETENTION_DAYS. Wired to run via external cron,
+    same as logs/prune -- per-connection detail table has no other retention
+    and grows unbounded otherwise. Safe to re-run."""
+    supabase = get_supabase()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=REALTIME_SESSION_METRICS_RETENTION_DAYS)).isoformat()
+    try:
+        deleted = supabase.table("realtime_session_metrics").delete().lt("created_at", cutoff).execute()
+    except Exception:
+        logger.exception("realtime-session-metrics/prune failed")
+        raise HTTPException(status_code=502, detail="Realtime session metrics prune failed")
+    count = len(deleted.data or [])
+    logger.info("realtime-session-metrics/prune deleted %d rows older than %s", count, cutoff)
     return {"deleted": count}
 
 
