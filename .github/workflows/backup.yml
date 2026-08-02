@@ -1,0 +1,30 @@
+name: Weekly DB Backup
+
+on:
+  schedule:
+    - cron: '0 3 * * 0' # Sunday 03:00 UTC
+  workflow_dispatch: {} # lets you trigger a one-off backup manually from the Actions tab
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: pg_dump Supabase database
+        run: |
+          pg_dump "$SUPABASE_DB_URL" -Fc -f "backup-$(date +%Y-%m-%d).dump"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+
+      - name: Verify backup integrity
+        run: |
+          FILE=$(ls backup-*.dump)
+          test -s "$FILE"
+          pg_restore --list "$FILE" > /dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: backup-*.dump
+          retention-days: 90
+          if-no-files-found: error
