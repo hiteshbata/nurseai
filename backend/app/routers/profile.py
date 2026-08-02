@@ -13,7 +13,25 @@ router = APIRouter(prefix="/profile", tags=["profile"])
 # Tables that store rows keyed by user_id and aren't already guaranteed to
 # cascade-delete at the DB level -- cleaned up explicitly so account deletion
 # doesn't leave orphaned rows regardless of how FKs are configured in Supabase.
-_USER_OWNED_TABLES = ["submissions", "session_usage", "user_profiles", "user_roles"]
+# session_transcripts must come before session_usage: it has a NOT NULL FK
+# to session_usage.id, so deleting the parent first violates that constraint.
+_USER_OWNED_TABLES = [
+    "submissions",
+    "session_transcripts",
+    "session_usage",
+    "user_profiles",
+    "user_roles",
+    "payments",
+    "failed_payments",
+]
+
+
+def _delete_user_owned_rows(supabase, user_id: str) -> None:
+    for table in _USER_OWNED_TABLES:
+        supabase.table(table).delete().eq("user_id", user_id).execute()
+    # referrals has two FK columns (referrer_id, referred_id), no single user_id
+    supabase.table("referrals").delete().eq("referrer_id", user_id).execute()
+    supabase.table("referrals").delete().eq("referred_id", user_id).execute()
 
 
 class PracticePlanUpdate(BaseModel):
@@ -61,8 +79,7 @@ def delete_account(
 ):
     supabase = get_supabase()
 
-    for table in _USER_OWNED_TABLES:
-        supabase.table(table).delete().eq("user_id", current_user.id).execute()
+    _delete_user_owned_rows(supabase, current_user.id)
 
     try:
         supabase.auth.admin.delete_user(current_user.id)
