@@ -45,6 +45,11 @@ from app.services.realtime.events import (
 
 logger = logging.getLogger(__name__)
 
+# websockets logs the full connect URI (incl. ?key=...) at DEBUG; keep that
+# logger above DEBUG so the API key never lands in logs regardless of root
+# log level.
+logging.getLogger("websockets.client").setLevel(logging.INFO)
+
 GEMINI_LIVE_WS_URL = (
     "wss://generativelanguage.googleapis.com/ws/"
     "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
@@ -78,6 +83,7 @@ class GeminiLiveAdapter(RealtimeProviderAdapter):
         self._nurse_transcript_buffer = ""
 
     async def connect(self) -> None:
+        # Never log this URL raw -- it carries api_key in the query string.
         url = f"{GEMINI_LIVE_WS_URL}?key={self.api_key}"
         try:
             self._ws = await ws_lib.connect(
@@ -186,10 +192,15 @@ class GeminiLiveAdapter(RealtimeProviderAdapter):
 
                 output_transcription = server_content.get("outputTranscription")
                 if output_transcription and output_transcription.get("text"):
+                    # TEMP: remove once the incremental-vs-cumulative
+                    # question in capabilities.GEMINI_LIVE_CAPABILITIES.
+                    # unverified is confirmed via a manual live session.
+                    logger.debug("[GEMINI_LIVE_RAW_OUTPUT_TRANSCRIPT] %r", output_transcription["text"])
                     yield TranscriptDelta(role="patient", delta=output_transcription["text"])
 
                 input_transcription = server_content.get("inputTranscription")
                 if input_transcription and input_transcription.get("text"):
+                    logger.debug("[GEMINI_LIVE_RAW_INPUT_TRANSCRIPT] %r", input_transcription["text"])
                     self._nurse_transcript_buffer += input_transcription["text"]
 
                 if server_content.get("turnComplete"):
@@ -201,5 +212,5 @@ class GeminiLiveAdapter(RealtimeProviderAdapter):
             logger.warning("Gemini Live connection closed: code=%s reason=%s", e.code, e.reason)
             yield ProviderError(message="Gemini Live connection closed", code=str(e.code), recoverable=False)
         except Exception as e:
-            logger.error("Gemini Live receive_events error: type=%s detail=%s", type(e).__name__, str(e)[:500])
+            logger.error("Gemini Live receive_events error: type=%s detail=%s", type(e).__name__, _redact(str(e)[:500]))
             yield ProviderError(message="Realtime connection error", recoverable=False)

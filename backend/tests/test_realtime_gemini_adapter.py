@@ -259,3 +259,14 @@ def test_receive_events_connection_closed_is_unrecoverable():
     err = events[0]
     assert isinstance(err, ProviderError)
     assert err.recoverable is False
+
+
+def test_redact_strips_api_key_from_url():
+    url = f"{ga.GEMINI_LIVE_WS_URL}?key=AIzaSyD-fakekeyfakekeyfakekeyfake123"
+    assert "AIzaSy" not in ga._redact(url)
+    assert "***REDACTED***" in ga._redact(url)
+
+
+def test_websockets_client_logger_silenced_below_info():
+    import logging
+    assert logging.getLogger("websockets.client").getEffectiveLevel() >= logging.INFO
