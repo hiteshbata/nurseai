@@ -680,6 +680,122 @@ def cancel_subscription(
     )
 
 
+def _process_refund(
+    *,
+    razorpay_refund_id: str,
+    payment_id: str,
+    amount: int,
+    reason: Optional[str],
+    initiated_by: str,  # "admin" or "webhook"
+    admin: Optional[UserInfo] = None,
+) -> dict:
+    """Shared tail for admin-initiated refunds (see admin.py) and the
+    refund.created webhook below. The webhook is the actual safety net --
+    it catches refunds issued directly from the Razorpay dashboard,
+    bypassing our admin endpoint entirely.
+
+    Idempotent on razorpay_refund_id via upsert+ignore_duplicates (same
+    ON-CONFLICT-DO-NOTHING shape as process_payment's insert), so an admin
+    refund followed by the webhook confirming the same refund -- or a
+    retried webhook delivery -- can't double-downgrade the user.
+    """
+    supabase = get_supabase()
+
+    payment_row = (
+        supabase.table("payments")
+        .select("user_id, plan_id")
+        .eq("payment_id", payment_id)
+        .limit(1)
+        .execute()
+    )
+    if not payment_row.data:
+        logger.warning(
+            "refund for unknown payment_id=%s razorpay_refund_id=%s", payment_id, razorpay_refund_id,
+        )
+        return {"success": False, "reason": "unknown_payment"}
+
+    user_id = payment_row.data[0]["user_id"]
+    plan_id = payment_row.data[0]["plan_id"]
+
+    inserted = supabase.table("refunds").upsert({
+        "razorpay_refund_id": razorpay_refund_id,
+        "payment_id": payment_id,
+        "user_id": user_id,
+        "amount": amount,
+        "reason": reason,
+        "initiated_by": initiated_by,
+        "admin_id": admin.id if admin else None,
+    }, on_conflict="razorpay_refund_id", ignore_duplicates=True).execute()
+
+    if not inserted.data:
+        logger.info("Refund %s already processed — skipping", razorpay_refund_id)
+        return {"success": True, "already_processed": True}
+
+    supabase.table("payments").update({"status": "refunded"}).eq("payment_id", payment_id).execute()
+
+    # Only downgrade if this refunded payment is still what's granting the
+    # user's current plan -- if they've since paid for a further upgrade,
+    # refunding an old payment shouldn't silently knock out the new one.
+    downgraded = False
+    if get_current_plan(user_id) == plan_id:
+        profile = (
+            supabase.table("user_profiles")
+            .select("razorpay_subscription_id")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        subscription_id = profile.data[0].get("razorpay_subscription_id") if profile.data else None
+        if subscription_id:
+            try:
+                get_razorpay_client().subscription.cancel(subscription_id, {"cancel_at_cycle_end": 0})
+            except Exception:
+                logger.exception(
+                    "refund: failed to cancel subscription %s for user %s", subscription_id, user_id,
+                )
+        supabase.table("user_profiles").update({
+            "plan": "free",
+            "subscription_status": "none",
+            "plan_expires_at": None,
+            "auto_renew_enabled": False,
+        }).eq("user_id", user_id).execute()
+        downgraded = True
+    else:
+        logger.info(
+            "refund for payment_id=%s: user %s already on a different plan — skipping downgrade",
+            payment_id, user_id,
+        )
+
+    track_event(user_id, "payment_refunded", {
+        "payment_id": payment_id,
+        "amount_paise": amount,
+        "plan_id": plan_id,
+        "downgraded": downgraded,
+        "initiated_by": initiated_by,
+    })
+
+    # Local import: admin.py imports from this module at top level, so a
+    # module-level import here would be circular.
+    from app.routers.admin import _write_audit_log
+    audit_admin = admin or UserInfo(id="00000000-0000-0000-0000-000000000000", email="system:razorpay_webhook")
+    _write_audit_log(
+        supabase, audit_admin, "payment_refunded", "payment", target_id=payment_id,
+        detail={
+            "razorpay_refund_id": razorpay_refund_id,
+            "user_id": user_id,
+            "amount_paise": amount,
+            "reason": reason,
+            "downgraded": downgraded,
+            "initiated_by": initiated_by,
+        },
+    )
+
+    logger.info(
+        "Refund %s processed | payment_id=%s user_id=%s amount=%s downgraded=%s initiated_by=%s",
+        razorpay_refund_id, payment_id, user_id, amount, downgraded, initiated_by,
+    )
+    return {"success": True, "downgraded": downgraded}
+
+
 @router.post("/webhook")
 async def razorpay_webhook(request: Request):
     body = await request.body()
@@ -949,6 +1065,26 @@ def _process_webhook_body(body_str: str, signature: str) -> Response:
             },
             extra_event_fields={"auto_renew": True},
         )
+
+    elif event_type == "refund.created":
+        refund = event.get("payload", {}).get("refund", {}).get("entity", {})
+        refund_id = refund.get("id")
+        payment_id = refund.get("payment_id")
+        amount = refund.get("amount", 0)
+        reason = get_notes(refund).get("reason") or "razorpay_dashboard"
+
+        if not refund_id or not payment_id:
+            logger.warning("refund.created missing refund_id or payment_id")
+            return Response(status_code=200)
+
+        _process_refund(
+            razorpay_refund_id=refund_id,
+            payment_id=payment_id,
+            amount=amount,
+            reason=reason,
+            initiated_by="webhook",
+        )
+        return Response(status_code=200)
 
     elif event_type in ("subscription.cancelled", "subscription.completed", "subscription.halted"):
         # halted = repeated renewal charge failures (e.g. card declined) --

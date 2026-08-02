@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from app.core.config import settings
 from app.core.supabase import get_supabase, get_auth_client
 from app.core.plans import GRACE_PERIOD_DAYS, PLAN_PERIOD_DAYS, PLAN_PRICE_INR
-from app.routers.payments import get_current_plan, grant_subscription_period, get_razorpay_client
+from app.routers.payments import get_current_plan, grant_subscription_period, get_razorpay_client, _process_refund
 from app.services.plan_gating import get_plan_from_profile
 from app.services.founder_metrics import get_founder_metrics
 from app.services.ai_cost_metrics import get_ai_cost_metrics
@@ -1501,3 +1501,73 @@ def admin_cancel_user_subscription(
     )
     logger.info("admin cancel-subscription | admin=%s target=%s", current_user.id, user_id)
     return {"success": True, "message": "Auto-renew turned off. Plan stays active until it expires."}
+
+
+# ── REFUNDS ───────────────────────────────────────────────────────────
+
+class RefundRequest(BaseModel):
+    amount: Optional[int] = None  # paise; defaults to the full original payment
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/payments/{payment_id}/refund")
+def admin_refund_payment(
+    payment_id: str,
+    req: RefundRequest,
+    current_user: UserInfo = Depends(require_admin),
+):
+    """Issue a real Razorpay refund for one payment and roll back the plan
+    it granted. Admin-tier (not support) since this moves real money,
+    unlike the free-plan comp path in admin_set_user_plan.
+
+    Downgrade/audit-log/idempotency all live in payments._process_refund,
+    shared with the refund.created webhook -- that webhook is what catches
+    a refund issued directly from the Razorpay dashboard instead of here.
+    """
+    supabase = get_supabase()
+    payment_row = (
+        supabase.table("payments")
+        .select("amount, currency")
+        .eq("payment_id", payment_id)
+        .limit(1)
+        .execute()
+    )
+    if not payment_row.data:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    amount = req.amount if req.amount is not None else payment_row.data[0]["amount"]
+    if amount <= 0 or amount > payment_row.data[0]["amount"]:
+        raise HTTPException(status_code=400, detail="Invalid refund amount")
+
+    client = get_razorpay_client()
+    try:
+        refund = client.payment.refund(payment_id, {
+            "amount": amount,
+            "speed": "normal",
+            "notes": {"reason": req.reason, "admin_id": current_user.id},
+        })
+    except Exception:
+        logger.exception(
+            "admin refund failed | admin=%s payment_id=%s amount=%s", current_user.id, payment_id, amount,
+        )
+        raise HTTPException(status_code=500, detail="Could not process refund with Razorpay. Please try again.")
+
+    result = _process_refund(
+        razorpay_refund_id=refund["id"],
+        payment_id=payment_id,
+        amount=refund["amount"],
+        reason=req.reason,
+        initiated_by="admin",
+        admin=current_user,
+    )
+
+    logger.info(
+        "admin refund | admin=%s payment_id=%s razorpay_refund_id=%s amount=%s",
+        current_user.id, payment_id, refund["id"], amount,
+    )
+    return {
+        "success": True,
+        "razorpay_refund_id": refund["id"],
+        "amount": refund["amount"],
+        "downgraded": result.get("downgraded", False),
+    }
