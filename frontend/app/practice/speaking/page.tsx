@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import api from '@/lib/api'
+import api, { isUpgradeRequiredError } from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
 import { getMockId } from '@/lib/mock'
+import { UpgradeRequired } from '@/components/UpgradeRequired'
 import SelectPhase from './SelectPhase'
 import {
   Scenario,
@@ -46,6 +47,7 @@ export default function SpeakingPage() {
   const [completedScenarioIds, setCompletedScenarioIds] = useState<Set<number>>(new Set())
   const [recommendedScenarios, setRecommendedScenarios] = useState<RecommendedScenario[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [upgradeRequired, setUpgradeRequired] = useState(false)
   const [history, setHistory] = useState<ChatMessage[]>([])
   const [feedback, setFeedback] = useState<any>(null)
   const [pastSubmissions, setPastSubmissions] = useState<Submission[]>([])
@@ -238,6 +240,7 @@ export default function SpeakingPage() {
       setScenarios(res.data || [])
     } catch (e) {
       console.error('Failed to load scenarios:', e)
+      if (isUpgradeRequiredError(e)) setUpgradeRequired(true)
     } finally {
       setIsLoading(false)
     }
@@ -416,6 +419,19 @@ export default function SpeakingPage() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#0F2356] text-white gap-4">
         <div className="w-8 h-8 rounded-full border-2 border-white/30 border-t-white animate-spin" />
         <p className="text-sm text-blue-100 tracking-wide">{message}</p>
+      </div>
+    )
+  }
+
+  if (phase === 'select' && upgradeRequired) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 px-4">
+        <div className="max-w-4xl mx-auto">
+          <UpgradeRequired
+            title="Speaking practice is a Pro/Elite feature"
+            message="Upgrade your plan to unlock full OET speaking scenarios."
+          />
+        </div>
       </div>
     )
   }

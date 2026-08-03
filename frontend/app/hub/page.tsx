@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import api from '@/lib/api'
+import api, { isUpgradeRequiredError } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { Card } from '@/components/ui/card'
+import { UpgradeRequired } from '@/components/UpgradeRequired'
 
 interface PlanItem {
   skill_tag: string
@@ -35,6 +36,7 @@ export default function StudyHubPage() {
   const [today, setToday] = useState<TodayResponse | null>(null)
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [upgradeRequired, setUpgradeRequired] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -47,7 +49,10 @@ export default function StudyHubPage() {
           setToday(t.data)
           setQueue(q.data || [])
         })
-        .catch(() => toast.error('Failed to load your study hub'))
+        .catch((error) => {
+          if (isUpgradeRequiredError(error)) setUpgradeRequired(true)
+          else toast.error('Failed to load your study hub')
+        })
         .finally(() => setIsLoading(false))
     }
   }, [status])
@@ -57,8 +62,8 @@ export default function StudyHubPage() {
     setToday({ ...today, plan: today.plan.map((p) => (p.skill_tag === taskKey ? { ...p, completed: true } : p)) })
     try {
       await api.post('/hub/goal-complete', { task_key: taskKey })
-    } catch {
-      toast.error('Failed to save — try again')
+    } catch (error) {
+      if (!isUpgradeRequiredError(error)) toast.error('Failed to save — try again')
     }
   }
 
@@ -93,6 +98,13 @@ export default function StudyHubPage() {
           </div>
         </div>
 
+        {upgradeRequired ? (
+          <UpgradeRequired
+            title="Study Hub is a Pro/Elite feature"
+            message="Upgrade your plan to unlock your daily personalized study plan."
+          />
+        ) : (
+        <>
         <Card className="p-6">
           <h2 className="font-bold text-lg mb-4">Today's plan</h2>
           <div className="space-y-3">
@@ -145,6 +157,8 @@ export default function StudyHubPage() {
             </div>
           )}
         </Card>
+        </>
+        )}
       </div>
     </div>
   )

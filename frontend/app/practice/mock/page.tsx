@@ -4,9 +4,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useSupabaseSession, linkAnonymousAccount, getCurrentSession, humanizeAuthError } from '@/lib/supabase'
-import api from '@/lib/api'
+import api, { isUpgradeRequiredError } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
+import { UpgradeRequired } from '@/components/UpgradeRequired'
 import { FOUR_WEEK_PLANS, type OetModule } from '@/lib/oetScoring'
 
 // Phase 1 sitting: Listening -> Reading -> Writing, then Speaking separately.
@@ -70,6 +71,7 @@ export default function MockTestPage() {
   const [packs, setPacks] = useState<MockTestPack[]>([])
   const [selectedPack, setSelectedPack] = useState<MockTestPack | null>(null)
   const [starting, setStarting] = useState(false)
+  const [upgradeRequired, setUpgradeRequired] = useState(false)
   const enteredRef = useRef(false) // guard against a double redirect in strict-mode remounts
 
   const routeInto = (s: MockState) => {
@@ -82,7 +84,12 @@ export default function MockTestPage() {
   const showPicker = () => {
     setSelectedPack(null)
     setView('picker')
-    api.get('/mock/tests').then((res) => setPacks(res.data || [])).catch(() => setPacks([]))
+    api.get('/mock/tests')
+      .then((res) => setPacks(res.data || []))
+      .catch((error) => {
+        if (isUpgradeRequiredError(error)) setUpgradeRequired(true)
+        setPacks([])
+      })
   }
 
   useEffect(() => {
@@ -120,8 +127,10 @@ export default function MockTestPage() {
       if (s.current_section) return routeInto(s)
       setView('sealed') // already past LRW somehow — show the sealed screen
     } catch (err: any) {
-      const detail = err?.response?.data?.detail
-      toast.error(typeof detail === 'string' ? detail : 'Could not start your mock test. Please try again.')
+      if (!isUpgradeRequiredError(err)) {
+        const detail = err?.response?.data?.detail
+        toast.error(typeof detail === 'string' ? detail : 'Could not start your mock test. Please try again.')
+      }
       setStarting(false)
     }
   }
@@ -130,6 +139,7 @@ export default function MockTestPage() {
     return (
       <PickerScreen
         packs={packs}
+        upgradeRequired={upgradeRequired}
         onSelect={pickPack}
         onDashboard={() => router.push('/dashboard')}
       />
@@ -247,10 +257,12 @@ export default function MockTestPage() {
 // so there's no "Assembling your paper…" wait once a pack exists.
 function PickerScreen({
   packs,
+  upgradeRequired,
   onSelect,
   onDashboard,
 }: {
   packs: MockTestPack[]
+  upgradeRequired: boolean
   onSelect: (pack: MockTestPack) => void
   onDashboard: () => void
 }) {
@@ -265,7 +277,12 @@ function PickerScreen({
           </div>
 
           <div className="px-7 py-7 sm:px-9">
-            {packs.length === 0 ? (
+            {upgradeRequired ? (
+              <UpgradeRequired
+                title="Full Mock Test is a Pro/Elite feature"
+                message="Upgrade your plan to unlock the full timed OET mock test."
+              />
+            ) : packs.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-6">
                 No mock tests are available yet. Check back soon.
               </p>

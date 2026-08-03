@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import api from '@/lib/api'
+import api, { isUpgradeRequiredError } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { UpgradeRequired } from '@/components/UpgradeRequired'
 
 interface Mistake {
   questionId: number
@@ -25,6 +26,7 @@ export default function ListeningMistakesPage() {
   const [mistakes, setMistakes] = useState<Mistake[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [explaining, setExplaining] = useState<number | null>(null)
+  const [upgradeRequired, setUpgradeRequired] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -34,7 +36,10 @@ export default function ListeningMistakesPage() {
     if (status === 'authenticated') {
       api.get('/listening/mistakes')
         .then((res) => setMistakes(res.data || []))
-        .catch(() => toast.error('Failed to load your mistakes'))
+        .catch((error) => {
+          if (isUpgradeRequiredError(error)) setUpgradeRequired(true)
+          else toast.error('Failed to load your mistakes')
+        })
         .finally(() => setIsLoading(false))
     }
   }, [status])
@@ -46,8 +51,8 @@ export default function ListeningMistakesPage() {
       setMistakes((prev) =>
         prev.map((m) => (m.questionId === questionId ? { ...m, explanation: res.data.explanation } : m))
       )
-    } catch {
-      toast.error('Failed to load explanation — try again')
+    } catch (error) {
+      if (!isUpgradeRequiredError(error)) toast.error('Failed to load explanation — try again')
     } finally {
       setExplaining(null)
     }
@@ -70,7 +75,13 @@ export default function ListeningMistakesPage() {
         <h1 className="text-3xl font-bold text-[#0F2356]">Wrong-Answer Notebook</h1>
         <p className="text-gray-500 mt-1">Every question you've missed, most recent attempt only — fixed ones drop off automatically.</p>
 
-        {mistakes.length === 0 ? (
+        {upgradeRequired ? (
+          <UpgradeRequired
+            className="mt-8"
+            title="Listening practice is a Pro/Elite feature"
+            message="Upgrade your plan to unlock your listening mistake history."
+          />
+        ) : mistakes.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-lg shadow mt-8">
             <p className="text-xl text-gray-500 mb-2">No mistakes on record</p>
             <p className="text-muted-foreground">Take a listening test and anything you get wrong will show up here for review.</p>

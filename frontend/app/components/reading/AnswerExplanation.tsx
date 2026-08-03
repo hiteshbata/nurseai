@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import api from '@/lib/api'
+import api, { isUpgradeRequiredError } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { locateEvidence } from '@/lib/utils'
 
@@ -36,8 +36,8 @@ export default function AnswerExplanation({
       const res = await api.get(`/reading/questions/${questionId}/explanation`)
       setExplanation(res.data.explanation || 'No explanation available.')
       setEvidence(res.data.evidence || null)
-    } catch {
-      toast.error('Could not load explanation — try again')
+    } catch (error) {
+      if (!isUpgradeRequiredError(error)) toast.error('Could not load explanation — try again')
     } finally {
       setLoading(false)
     }

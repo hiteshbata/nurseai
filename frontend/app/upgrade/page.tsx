@@ -10,6 +10,13 @@ import { trackEvent } from '@/lib/analytics'
 
 const ANNUAL_MULTIPLIER = 10 // 2 months free vs. paying monthly
 
+// Only ever a same-origin path the app itself generated (e.g. `/practice/reading/test/7`)
+// -- reject anything else so a crafted `next` can't bounce a user off-site post-payment.
+function safeNextPath(value: string | null): string | null {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return null
+  return value
+}
+
 export default function UpgradePage() {
   const { status } = useSupabaseSession()
   const router = useRouter()
@@ -17,6 +24,14 @@ export default function UpgradePage() {
   const [plans, setPlans] = useState<Plan[] | null>(null)
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly')
   const [couponCode, setCouponCode] = useState('')
+  // Read off the URL directly (not useSearchParams) to avoid Next's Suspense-boundary
+  // requirement on this already client-only page -- same convention as the reading/
+  // listening test pages.
+  const [nextPath, setNextPath] = useState<string | null>(null)
+
+  useEffect(() => {
+    setNextPath(safeNextPath(new URLSearchParams(window.location.search).get('next')))
+  }, [])
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -55,10 +70,10 @@ export default function UpgradePage() {
               Your payment was successful. You now have unlimited access.
             </p>
             <button
-              onClick={() => router.push('/practice/speaking')}
+              onClick={() => router.push(nextPath || '/practice/speaking')}
               className="bg-emerald-600 text-white rounded-xl px-6 py-3 font-semibold hover:bg-emerald-700 transition"
             >
-              Start Practicing
+              {nextPath ? 'Continue' : 'Start Practicing'}
             </button>
           </div>
         )}

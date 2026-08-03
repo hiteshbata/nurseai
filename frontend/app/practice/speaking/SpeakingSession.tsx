@@ -7,7 +7,7 @@ import { Separator } from '@/components/ui/separator'
 import { CheckCircle2, Mic, Trophy, Target, Captions, PartyPopper, MessageSquareText, Download } from 'lucide-react'
 import VoiceOrb from '@/components/VoiceOrb'
 import PlanUsageBanner from '@/components/PlanUsageBanner'
-import api from '@/lib/api'
+import api, { isUpgradeRequiredError } from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
 import { useMicrophone } from '@/app/hooks/useMicrophone'
 import { useSpeakingSession } from '@/app/hooks/useSpeakingSession'
@@ -301,13 +301,20 @@ export default function SpeakingSession({
       } catch (pronError) {
         console.error('Pronunciation assessment failed:', pronError)
         // Non-critical — don't block results display
-        setPronunciationError(true)
+        if (!isUpgradeRequiredError(pronError)) setPronunciationError(true)
       } finally {
         setIsAssessingPronunciation(false)
       }
     } catch (e: any) {
       console.error('Score error:', e)
-      onSessionEnd(convHistory, null)
+      if (isUpgradeRequiredError(e)) {
+        // Stay on the conversation screen instead of transitioning to a
+        // results view with no real score to show.
+        setIsEnding(false)
+        setConversationError('Scoring this session requires a paid plan — see the upgrade prompt above.')
+      } else {
+        onSessionEnd(convHistory, null)
+      }
     } finally {
       setIsScoring(false)
     }
@@ -376,8 +383,13 @@ export default function SpeakingSession({
       setComparisonResult(res.data)
     } catch (e: any) {
       console.error('Comparison failed:', e)
-      if (e?.response?.status === 403) {
-        setComparisonError('That attempt is outside your plan’s comparison window — upgrade to Pro for unlimited attempt comparison.')
+      if (isUpgradeRequiredError(e)) {
+        const message = e.response?.data?.detail?.message
+        setComparisonError(
+          typeof message === 'string'
+            ? message
+            : 'That attempt is outside your plan’s comparison window — upgrade to Pro for unlimited attempt comparison.'
+        )
       } else {
         setComparisonError('Comparison failed. Please try again.')
       }

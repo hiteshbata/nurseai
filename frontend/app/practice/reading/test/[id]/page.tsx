@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSupabaseSession } from '@/lib/supabase'
-import api from '@/lib/api'
+import api, { isUpgradeRequiredError } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { UpgradeRequired } from '@/components/UpgradeRequired'
 import { stripLeadingQuestionNumber, partASubgroup, PART_A_SUBGROUP_LABEL, splitPartATexts } from '@/lib/utils'
 import { getMockId, finishMockSection } from '@/lib/mock'
 import AnswerExplanation from '@/components/reading/AnswerExplanation'
@@ -182,6 +183,7 @@ export default function ReadingTestSessionPage() {
   const [stepIdx, setStepIdx] = useState(0) // index into PARTS present in this test
   const [result, setResult] = useState<SubmitResult | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [upgradeRequired, setUpgradeRequired] = useState(false)
   // Admin preview (?preview=1): load the test via the admin preview endpoint so it
   // renders even while it's still a draft. Read-only — submitting is disabled.
   const [isPreview, setIsPreview] = useState(false)
@@ -210,7 +212,10 @@ export default function ReadingTestSessionPage() {
       const url = preview ? `/reading/admin/tests/${id}/preview` : `/reading/tests/${id}`
       api.get(url)
         .then((res) => setTest(res.data))
-        .catch(() => toast.error(preview ? 'Preview failed — admin access required' : 'Failed to load test'))
+        .catch((error) => {
+          if (isUpgradeRequiredError(error)) setUpgradeRequired(true)
+          else toast.error(preview ? 'Preview failed — admin access required' : 'Failed to load test')
+        })
         .finally(() => setIsLoading(false))
     }
   }, [status, id])
@@ -276,8 +281,8 @@ export default function ReadingTestSessionPage() {
       }
       setResult(res.data)
       window.scrollTo(0, 0)
-    } catch {
-      toast.error('Failed to submit test')
+    } catch (error) {
+      if (!isUpgradeRequiredError(error)) toast.error('Failed to submit test')
     } finally {
       setIsSubmitting(false)
     }
@@ -307,6 +312,19 @@ export default function ReadingTestSessionPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl text-gray-600">Loading test…</div>
+      </div>
+    )
+  }
+
+  if (upgradeRequired) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 px-4">
+        <div className="max-w-lg mx-auto">
+          <UpgradeRequired
+            title="Reading tests are a Pro/Elite feature"
+            message="Upgrade your plan to unlock full OET reading tests."
+          />
+        </div>
       </div>
     )
   }

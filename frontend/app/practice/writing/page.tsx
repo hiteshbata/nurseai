@@ -5,11 +5,12 @@ import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import { compressImageToBase64 } from '@/lib/imageCompress'
-import api from '@/lib/api'
+import api, { isUpgradeRequiredError } from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { UpgradeRequired } from '@/components/UpgradeRequired'
 import { getMockId, finishMockSection } from '@/lib/mock'
 import { WRITING_CRITERIA } from '@/components/SessionFeedback'
 
@@ -78,6 +79,7 @@ export default function WritingPracticePage() {
   const [scenarios, setScenarios] = useState<Scenario[]>([])
   const [selectedScenario, setSelectedScenario] = useState<Scenario | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [upgradeRequired, setUpgradeRequired] = useState(false)
   const [writingText, setWritingText] = useState('')
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -141,7 +143,8 @@ export default function WritingPracticePage() {
       setScenarios(response.data || [])
     } catch (error) {
       console.error('Failed to fetch scenarios:', error)
-      toast.error('Failed to load writing scenarios')
+      if (isUpgradeRequiredError(error)) setUpgradeRequired(true)
+      else toast.error('Failed to load writing scenarios')
     } finally {
       setIsLoading(false)
     }
@@ -161,8 +164,8 @@ export default function WritingPracticePage() {
       if (cur.data.deadline) setDeadlineMs(new Date(cur.data.deadline).getTime())
       setInputMode('type')
       setPhase('write')
-    } catch {
-      toast.error('Could not load your mock writing task.')
+    } catch (error) {
+      if (!isUpgradeRequiredError(error)) toast.error('Could not load your mock writing task.')
       router.replace('/practice/mock')
     } finally {
       setIsLoading(false)
@@ -246,10 +249,8 @@ export default function WritingPracticePage() {
       setOcrDone(true)
       toast.success('Read your handwriting — check it for mistakes below')
     } catch (error: any) {
-      const errData = error.response?.data?.detail
-      if (error.response?.status === 403 && errData?.upgrade_required) {
-        toast.error('Uploading handwriting requires Pro or Elite — please upgrade.')
-      } else {
+      if (!isUpgradeRequiredError(error)) {
+        const errData = error.response?.data?.detail
         toast.error(typeof errData === 'string' ? errData : 'Could not read the photos — try clearer, well-lit images.')
       }
     } finally {
@@ -290,12 +291,7 @@ export default function WritingPracticePage() {
         }
       }, 3000)
     } catch (error: any) {
-      const errData = error.response?.data?.detail
-      if (error.response?.status === 403 && errData?.upgrade_required) {
-        toast.error('Uploading handwriting requires Pro or Elite — please upgrade.')
-      } else {
-        toast.error('Could not start the phone link — please try again.')
-      }
+      if (!isUpgradeRequiredError(error)) toast.error('Could not start the phone link — please try again.')
     }
   }
 
@@ -357,21 +353,8 @@ export default function WritingPracticePage() {
       }
     } catch (error: any) {
       console.error('Failed to submit:', error)
-      const errData = error.response?.data?.detail
-      if (error.response?.status === 403 && errData?.upgrade_required) {
-        toast.error(
-          <div>
-            <p className="font-semibold">Writing practice requires Pro or Elite plan</p>
-            <a
-              href="/upgrade"
-              className="inline-block mt-2 bg-[#0F2356] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#0F2356]/90"
-            >
-              Upgrade to Pro →
-            </a>
-          </div>,
-          { duration: 8000 }
-        )
-      } else {
+      if (!isUpgradeRequiredError(error)) {
+        const errData = error.response?.data?.detail
         toast.error(errData?.error || errData?.message || error.response?.data?.detail || 'Failed to submit response')
       }
     } finally {
@@ -394,7 +377,13 @@ export default function WritingPracticePage() {
           <h1 className="text-3xl font-bold text-[#0F2356]">Writing Practice</h1>
           <p className="text-gray-500 mt-1">Choose a scenario to write an OET-style letter</p>
 
-          {scenarios.length === 0 ? (
+          {upgradeRequired ? (
+            <UpgradeRequired
+              className="mt-8"
+              title="Writing practice is a Pro/Elite feature"
+              message="Upgrade your plan to unlock full OET writing scenarios."
+            />
+          ) : scenarios.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-lg shadow mt-8">
               <p className="text-xl text-gray-500 mb-2">No writing scenarios available</p>
               <p className="text-muted-foreground">Ask an admin to create writing scenarios</p>

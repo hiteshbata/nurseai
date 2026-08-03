@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import api from '@/lib/api'
+import api, { isUpgradeRequiredError } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { UpgradeRequired } from '@/components/UpgradeRequired'
 
 interface TestSummary {
   id: number
@@ -20,6 +21,7 @@ export default function ListeningPracticePage() {
   const router = useRouter()
   const [tests, setTests] = useState<TestSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [upgradeRequired, setUpgradeRequired] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -29,7 +31,10 @@ export default function ListeningPracticePage() {
     if (status === 'authenticated') {
       api.get('/listening/tests')
         .then((res) => setTests(res.data || []))
-        .catch(() => toast.error('Failed to load listening tests'))
+        .catch((error) => {
+          if (isUpgradeRequiredError(error)) setUpgradeRequired(true)
+          else toast.error('Failed to load listening tests')
+        })
         .finally(() => setIsLoading(false))
     }
   }, [status])
@@ -55,7 +60,13 @@ export default function ListeningPracticePage() {
           </Link>
         </div>
 
-        {tests.length === 0 ? (
+        {upgradeRequired ? (
+          <UpgradeRequired
+            className="mt-8"
+            title="Listening practice is a Pro/Elite feature"
+            message="Upgrade your plan to unlock full OET listening tests."
+          />
+        ) : tests.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-lg shadow mt-8">
             <p className="text-xl text-gray-500 mb-2">No listening tests available yet</p>
             <p className="text-muted-foreground">Check back soon — new tests are added regularly.</p>

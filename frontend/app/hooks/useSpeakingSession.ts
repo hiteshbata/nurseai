@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, Dispatch, SetStateAction } from 'react'
-import api from '@/lib/api'
+import api, { isUpgradeRequiredError } from '@/lib/api'
 import { getCurrentSession } from '@/lib/supabase'
 import { useMicrophone } from './useMicrophone'
 import { useAudioPlayback } from './useAudioPlayback'
@@ -225,7 +225,11 @@ export function useSpeakingSession({
       }
     } catch (e: any) {
       console.error('Chat error:', e)
-      setSttError("The patient couldn't respond — please try again.")
+      setSttError(
+        isUpgradeRequiredError(e)
+          ? 'This conversation requires a paid plan — see the upgrade prompt above.'
+          : "The patient couldn't respond — please try again."
+      )
     } finally {
       setIsProcessing(false)
     }

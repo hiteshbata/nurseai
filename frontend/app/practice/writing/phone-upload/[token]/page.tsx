@@ -72,6 +72,10 @@ export default function PhoneUploadPage() {
         toast.error(`Couldn't reach the server (after ${elapsedSec}s) at ${phoneApiBase()}. Check your phone is on the same Wi-Fi as your computer.`, { duration: 7000 })
       } else {
         const detail = error.response.data?.detail
+        if (error.response.status === 403 && detail && typeof detail === 'object' && detail.upgrade_required) {
+          toast.error('This plan doesn’t include phone handoff — upgrade from your computer to use it.', { duration: 7000 })
+          return
+        }
         const message = typeof detail === 'string'
           ? detail
           : Array.isArray(detail)

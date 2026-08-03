@@ -4,10 +4,11 @@ import { useState, useEffect, useRef } from 'react'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import api from '@/lib/api'
+import api, { isUpgradeRequiredError } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { UpgradeRequired } from '@/components/UpgradeRequired'
 import DictionaryLookup from '@/components/DictionaryLookup'
 import AnswerExplanation from '@/components/reading/AnswerExplanation'
 import WeakSpots from '@/components/reading/WeakSpots'
@@ -108,6 +109,7 @@ export default function ReadingPracticePage() {
   const [highlights, setHighlights] = useState<Highlight[]>([])
   const [note, setNote] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
+  const [upgradeRequired, setUpgradeRequired] = useState(false)
   const bodyRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -118,7 +120,10 @@ export default function ReadingPracticePage() {
     if (status === 'authenticated') {
       api.get('/reading/passages')
         .then((res) => setPassages(res.data || []))
-        .catch(() => toast.error('Failed to load reading passages'))
+        .catch((error) => {
+          if (isUpgradeRequiredError(error)) setUpgradeRequired(true)
+          else toast.error('Failed to load reading passages')
+        })
         .finally(() => setIsLoading(false))
       api.get('/reading/tests')
         .then((res) => setTests(res.data || []))
@@ -143,8 +148,8 @@ export default function ReadingPracticePage() {
         setHighlights([])
         setNote('')
       }
-    } catch {
-      toast.error('Failed to open passage')
+    } catch (error) {
+      if (!isUpgradeRequiredError(error)) toast.error('Failed to open passage')
     } finally {
       setIsLoading(false)
     }
@@ -164,8 +169,8 @@ export default function ReadingPracticePage() {
     setSavingNotes(true)
     try {
       await api.put(`/reading/passages/${passage.id}/notes`, { highlights: nextHighlights, note: nextNote })
-    } catch {
-      toast.error('Failed to save your notes')
+    } catch (error) {
+      if (!isUpgradeRequiredError(error)) toast.error('Failed to save your notes')
     } finally {
       setSavingNotes(false)
     }
@@ -215,8 +220,8 @@ export default function ReadingPracticePage() {
       })
       setResult(res.data)
       setPhase('result')
-    } catch {
-      toast.error('Failed to submit answers')
+    } catch (error) {
+      if (!isUpgradeRequiredError(error)) toast.error('Failed to submit answers')
     } finally {
       setIsSubmitting(false)
     }
@@ -246,7 +251,13 @@ export default function ReadingPracticePage() {
 
           <WeakSpots />
 
-          {tests.length === 0 ? (
+          {upgradeRequired ? (
+            <UpgradeRequired
+              className="mt-8"
+              title="Reading practice is a Pro/Elite feature"
+              message="Upgrade your plan to unlock full OET reading passages and tests."
+            />
+          ) : tests.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-lg shadow mt-8">
               <p className="text-xl text-gray-500 mb-2">No reading tests available yet</p>
               <p className="text-muted-foreground">Check back soon — new tests are added regularly.</p>

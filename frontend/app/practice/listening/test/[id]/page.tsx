@@ -3,10 +3,11 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSupabaseSession } from '@/lib/supabase'
-import api from '@/lib/api'
+import api, { isUpgradeRequiredError } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { UpgradeRequired } from '@/components/UpgradeRequired'
 import ListeningAudioPlayer from '@/components/ListeningAudioPlayer'
 import DictionaryLookup from '@/components/DictionaryLookup'
 import { stripLeadingQuestionNumber } from '@/lib/utils'
@@ -123,6 +124,7 @@ export default function ListeningTestSessionPage() {
   const [result, setResult] = useState<SubmitResult | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isPreview, setIsPreview] = useState(false)
+  const [upgradeRequired, setUpgradeRequired] = useState(false)
   // Full Mock Test mode (?mock=<id>): a strict server-anchored countdown runs,
   // the section auto-submits at 0, the score is hidden, and the section is
   // reported to the mock orchestrator instead of showing a result.
@@ -143,7 +145,10 @@ export default function ListeningTestSessionPage() {
       const url = preview ? `/listening/admin/tests/${id}/preview` : `/listening/tests/${id}`
       api.get(url)
         .then((res) => setTest(res.data))
-        .catch(() => toast.error(preview ? 'Preview failed — admin access required' : 'Failed to load test'))
+        .catch((error) => {
+          if (isUpgradeRequiredError(error)) setUpgradeRequired(true)
+          else toast.error(preview ? 'Preview failed — admin access required' : 'Failed to load test')
+        })
         .finally(() => setIsLoading(false))
     }
   }, [status, id])
@@ -186,8 +191,8 @@ export default function ListeningTestSessionPage() {
       }
       setResult(res.data)
       window.scrollTo(0, 0)
-    } catch {
-      toast.error('Failed to submit test')
+    } catch (error) {
+      if (!isUpgradeRequiredError(error)) toast.error('Failed to submit test')
     } finally {
       setIsSubmitting(false)
     }
@@ -214,6 +219,19 @@ export default function ListeningTestSessionPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl text-gray-600">Loading test…</div>
+      </div>
+    )
+  }
+
+  if (upgradeRequired) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 px-4">
+        <div className="max-w-lg mx-auto">
+          <UpgradeRequired
+            title="Listening tests are a Pro/Elite feature"
+            message="Upgrade your plan to unlock full OET listening tests."
+          />
+        </div>
       </div>
     )
   }

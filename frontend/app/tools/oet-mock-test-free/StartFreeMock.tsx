@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Loader2 } from 'lucide-react'
 import { useSupabaseSession, signInAnonymously } from '@/lib/supabase'
-import api from '@/lib/api'
+import api, { isUpgradeRequiredError } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 
@@ -46,6 +46,10 @@ export function StartFreeMock() {
       await api.post('/mock/start', { mock_test_id: packs[0].id })
       router.push('/practice/mock')
     } catch (err: any) {
+      if (isUpgradeRequiredError(err)) {
+        setBlocked("You've used your free mock test — sign up to keep practising.")
+        return
+      }
       const detail = err?.response?.data?.detail
       const message = typeof detail === 'string' ? detail : detail?.error
       if (message) {

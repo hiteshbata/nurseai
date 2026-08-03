@@ -1,5 +1,7 @@
 import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, AxiosResponse } from 'axios'
 import * as Sentry from '@sentry/nextjs'
+import { createElement } from 'react'
+import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import type { Plan } from './plans'
 
@@ -64,6 +66,21 @@ function describePayload(data: unknown): string | undefined {
   return typeof data
 }
 
+// A 403 with this shape means the user hit a plan gate, not a real failure --
+// every page should show the same upgrade prompt instead of its own
+// "failed to load" / empty-state fallback. See isUpgradeRequiredError below.
+function upgradeDetail(error: AxiosError): { upgrade_required: true; current_plan?: string } | null {
+  const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
+  if (error.response?.status === 403 && detail && typeof detail === 'object' && (detail as any).upgrade_required) {
+    return detail as { upgrade_required: true; current_plan?: string }
+  }
+  return null
+}
+
+export function isUpgradeRequiredError(error: unknown): boolean {
+  return !!upgradeDetail(error as AxiosError)
+}
+
 // Handle errors
 api.interceptors.response.use(
   (response) => response,
@@ -77,6 +94,30 @@ api.interceptors.response.use(
           window.location.href = '/auth/login'
         }
       }
+    }
+
+    if (upgradeDetail(error) && typeof window !== 'undefined') {
+      // Round-trip back to whatever the user was trying to reach (e.g. a specific
+      // reading test) instead of dropping them on a generic page post-upgrade.
+      const next = window.location.pathname + window.location.search
+      const upgradeHref = `/upgrade?next=${encodeURIComponent(next)}`
+      toast.error(
+        createElement(
+          'div',
+          null,
+          createElement('p', { className: 'font-semibold' }, 'This feature requires a paid plan'),
+          createElement(
+            'a',
+            {
+              href: upgradeHref,
+              className:
+                'inline-block mt-2 bg-[#0F2356] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#0F2356]/90',
+            },
+            'Upgrade to Pro →'
+          )
+        ),
+        { id: 'upgrade-required', duration: 8000 }
+      )
     }
 
     Sentry.captureException(error, {
