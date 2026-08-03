@@ -13,7 +13,13 @@ export function initAnalytics() {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY
   if (!key) return
   posthog.init(key, {
-    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com',
+    // Managed reverse proxy (data.speakoet.com) -- routes around ad blockers
+    // that blocklist posthog's direct domains. ui_host stays PostHog's own
+    // domain since it's just used for toolbar links, not data capture.
+    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://data.speakoet.com',
+    ui_host: 'https://us.posthog.com',
+    defaults: '2026-05-30',
+    person_profiles: 'identified_only',
     capture_pageview: true,
     persistence: 'localStorage+cookie',
   })

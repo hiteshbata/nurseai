@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from typing import List
+from pydantic import BaseModel, Field, StringConstraints
+from typing import Annotated, List
 from app.core.supabase import get_supabase
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo
@@ -13,9 +13,17 @@ TEACH_RATE_LIMIT_MAX_CALLS = 30
 TEACH_RATE_LIMIT_WINDOW_SECONDS = 600
 _teach_rate_limiter = SlidingWindowRateLimiter(TEACH_RATE_LIMIT_MAX_CALLS, TEACH_RATE_LIMIT_WINDOW_SECONDS, name="grammar:teach")
 
+# A real detected-mistakes list from one scoring pass runs to a handful of
+# short phrases -- bounds both list length and per-item length before they're
+# concatenated raw into the teaching prompt.
+MAX_MISTAKES = 20
+MAX_MISTAKE_CHARS = 300
+
+Mistake = Annotated[str, StringConstraints(max_length=MAX_MISTAKE_CHARS)]
+
 
 class GrammarRequest(BaseModel):
-    mistakes: List[str]
+    mistakes: List[Mistake] = Field(max_length=MAX_MISTAKES)
     student_level: str = "intermediate"
 
 

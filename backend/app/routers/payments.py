@@ -1,18 +1,25 @@
 import hashlib
 import hmac
+import io
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas
 import razorpay
+import requests
 from razorpay.errors import SignatureVerificationError
 from app.core.config import settings
 from app.core.plans import PLANS, PLAN_PERIOD_DAYS, GRACE_PERIOD_DAYS
+from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
 from app.core.analytics import track_event
+from app.services.alerts import send_alert
 import json
 from datetime import datetime, timezone
 from typing import Optional
@@ -20,6 +27,11 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/payments", tags=["payments"])
+
+# A real customer never creates dozens of checkout sessions -- caps
+# create-order/create-subscription against Razorpay-API-spam from a single
+# scripted account (each call hits Razorpay, not just our DB).
+_checkout_rate_limiter = SlidingWindowRateLimiter(10, 3600, name="payments:checkout")
 
 PLAN_TO_PROFILE = {
     "basic": "basic",
@@ -78,7 +90,7 @@ def get_coupon(code: str) -> Optional[dict]:
     supabase = get_supabase()
     result = (
         supabase.table("coupon_codes")
-        .select("*")
+        .select("code, active, discount_type, discount_value, max_redemptions, times_redeemed, expires_at, razorpay_offer_id")
         .eq("code", code.strip().upper())
         .limit(1)
         .execute()
@@ -232,21 +244,60 @@ def grant_subscription_period(
     webhook racing each other.
     """
     supabase = get_supabase()
-    result = supabase.rpc("grant_subscription_period", {
-        "p_user_id": user_id,
-        "p_new_plan": profile_plan,
-        "p_previous_plan": previous_plan,
-        "p_period_days": period_days,
-        "p_grace_days": GRACE_PERIOD_DAYS,
-    }).execute()
+    try:
+        result = supabase.rpc("grant_subscription_period", {
+            "p_user_id": user_id,
+            "p_new_plan": profile_plan,
+            "p_previous_plan": previous_plan,
+            "p_period_days": period_days,
+            "p_grace_days": GRACE_PERIOD_DAYS,
+        }).execute()
+    except Exception:
+        # process_payment_rpc already committed user_profiles.plan before this
+        # runs (separate PostgREST call, not one transaction) -- if this RPC
+        # fails, best-effort revert plan so the user isn't left permanently
+        # upgraded with no plan_expires_at ever set. Re-raise so the caller
+        # still surfaces/retries the failure. plan_gating.py additionally
+        # treats a non-free plan with a null plan_expires_at as expired, as a
+        # second line of defense if this revert itself can't complete.
+        logger.exception(
+            "grant_subscription_period RPC failed, reverting plan | user_id=%s attempted_plan=%s",
+            user_id, profile_plan,
+        )
+        try:
+            supabase.table("user_profiles").update(
+                {"plan": previous_plan or "free"}
+            ).eq("user_id", user_id).execute()
+        except Exception:
+            logger.exception("grant_subscription_period: plan revert also failed | user_id=%s", user_id)
+        raise
     if not result.data:
         raise RuntimeError(f"grant_subscription_period: no user_profiles row for user_id {user_id}")
+
+
+RAZORPAY_REQUEST_TIMEOUT_SECONDS = 15
+
+
+class _TimeoutSession(requests.Session):
+    """The razorpay SDK's Client accepts a custom requests.Session but has no
+    timeout option of its own -- every call (order/subscription/payment
+    create/fetch/cancel/verify) goes through self.session.<method>(...),
+    which all route through Session.request(), so overriding it here is the
+    single place that bounds every Razorpay call instead of a stalled
+    connection hanging the request indefinitely."""
+
+    def request(self, *args, **kwargs):
+        kwargs.setdefault("timeout", RAZORPAY_REQUEST_TIMEOUT_SECONDS)
+        return super().request(*args, **kwargs)
 
 
 def get_razorpay_client():
     if not settings.RAZORPAY_KEY_ID or not settings.RAZORPAY_KEY_SECRET:
         raise HTTPException(status_code=500, detail="Razorpay not configured")
-    return razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+    return razorpay.Client(
+        session=_TimeoutSession(),
+        auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET),
+    )
 
 
 def get_razorpay_plan_id(plan_id: str) -> str:
@@ -290,6 +341,8 @@ def create_order(
     req: CreateOrderRequest,
     current_user: UserInfo = Depends(get_current_user),
 ):
+    if _checkout_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many requests -- please try again in a while.")
     validate_plan_id(req.plan_id)
     billing_cycle = validate_billing_cycle(req.billing_cycle)
     amount_paise = get_expected_amount_paise(req.plan_id, billing_cycle)
@@ -429,6 +482,10 @@ def verify_payment(
             "verify-payment amount mismatch | order_id=%s plan_id=%s expected=%s got=%s user_id=%s",
             req.razorpay_order_id, plan_id, expected_amount, amount, current_user.id,
         )
+        send_alert(
+            "Payment amount mismatch",
+            f"order_id={req.razorpay_order_id} plan_id={plan_id} expected={expected_amount} got={amount} user_id={current_user.id}",
+        )
         raise HTTPException(status_code=400, detail="Payment amount does not match plan price")
 
     previous_plan = get_current_plan(str(current_user.id))
@@ -481,8 +538,27 @@ def create_subscription(
     req: CreateSubscriptionRequest,
     current_user: UserInfo = Depends(get_current_user),
 ):
+    if _checkout_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many requests -- please try again in a while.")
     validate_plan_id(req.plan_id)
     razorpay_plan_id = get_razorpay_plan_id(req.plan_id)
+
+    # auto_renew_enabled only goes True once verify-subscription-payment
+    # confirms a paid subscription (see below) and only goes False again via
+    # cancel-subscription -- a live one here means a second create call
+    # (double-click, retry) would leave the user paying two active
+    # recurring subscriptions. Doesn't cover the narrower race of two
+    # clicks before either payment completes -- both cost nothing at
+    # Razorpay until paid, and the checkout rate limiter above already
+    # bounds that.
+    existing = get_supabase().table("user_profiles").select(
+        "razorpay_subscription_id, auto_renew_enabled"
+    ).eq("user_id", current_user.id).execute()
+    if existing.data and existing.data[0].get("auto_renew_enabled") and existing.data[0].get("razorpay_subscription_id"):
+        raise HTTPException(
+            status_code=400,
+            detail="You already have an active subscription. Cancel it before starting a new one.",
+        )
 
     # Razorpay only lets discounts be created as an "Offer" from their
     # Dashboard (no API for it) -- a coupon usable on recurring billing
@@ -597,6 +673,10 @@ def verify_subscription_payment(
                 "verify-subscription-payment amount mismatch | subscription_id=%s plan_id=%s expected=%s got=%s user_id=%s",
                 req.razorpay_subscription_id, plan_id, expected_amount, amount, current_user.id,
             )
+            send_alert(
+                "Payment amount mismatch",
+                f"subscription_id={req.razorpay_subscription_id} plan_id={plan_id} expected={expected_amount} got={amount} user_id={current_user.id}",
+            )
             raise HTTPException(status_code=400, detail="Payment amount does not match plan price")
 
     previous_plan = get_current_plan(str(current_user.id))
@@ -677,6 +757,109 @@ def cancel_subscription(
     return CancelSubscriptionResponse(
         success=True,
         message="Auto-renew turned off. Your current plan stays active until it expires.",
+    )
+
+
+RECEIPT_PLAN_NAMES = {plan["id"]: plan["name"] for plan in PLANS}
+
+
+class ReceiptSummary(BaseModel):
+    payment_id: str
+    plan_id: str
+    plan_name: str
+    amount: int
+    currency: str
+    status: str
+    created_at: Optional[str] = None
+
+
+@router.get("/receipts", response_model=list[ReceiptSummary])
+def list_receipts(current_user: UserInfo = Depends(get_current_user)):
+    result = (
+        get_supabase()
+        .table("payments")
+        .select("*")
+        .eq("user_id", current_user.id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return [
+        ReceiptSummary(
+            payment_id=row["payment_id"],
+            plan_id=row.get("plan_id", ""),
+            plan_name=RECEIPT_PLAN_NAMES.get(row.get("plan_id"), row.get("plan_id", "")),
+            amount=row.get("amount", 0),
+            currency=row.get("currency", "INR"),
+            status=row.get("status", ""),
+            created_at=row.get("created_at"),
+        )
+        for row in (result.data or [])
+    ]
+
+
+def _build_receipt_pdf(row: dict) -> bytes:
+    # Plain payment receipt, not a GST tax invoice -- SpeakOET isn't
+    # GST-registered, so a GSTIN/tax breakup would be both unnecessary and
+    # legally wrong to print. Revisit once GST registration happens.
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    width, height = A4
+    y = height - 30 * mm
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(20 * mm, y, "SpeakOET")
+    y -= 7 * mm
+    c.setFont("Helvetica", 10)
+    c.drawString(20 * mm, y, "support@speakoet.com")
+
+    y -= 15 * mm
+    c.setFont("Helvetica-Bold", 13)
+    c.drawString(20 * mm, y, "Payment Receipt")
+
+    y -= 12 * mm
+    c.setFont("Helvetica", 10)
+    created_at = row.get("created_at") or ""
+    fields = [
+        ("Receipt ID", row.get("payment_id", "")),
+        ("Date", created_at[:10] if created_at else "—"),
+        ("Plan", RECEIPT_PLAN_NAMES.get(row.get("plan_id"), row.get("plan_id", ""))),
+        ("Amount", f'{row.get("currency", "INR")} {row.get("amount", 0) / 100:.2f}'),
+        ("Payment status", row.get("status", "")),
+        ("Order ID", row.get("order_id", "")),
+    ]
+    for label, value in fields:
+        c.drawString(20 * mm, y, f"{label}:")
+        c.drawString(70 * mm, y, str(value))
+        y -= 8 * mm
+
+    y -= 5 * mm
+    c.setFont("Helvetica-Oblique", 8)
+    c.drawString(20 * mm, y, "This is a payment receipt, not a GST tax invoice. SpeakOET is not GST-registered.")
+
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+@router.get("/receipts/{payment_id}/pdf")
+def download_receipt(payment_id: str, current_user: UserInfo = Depends(get_current_user)):
+    result = (
+        get_supabase()
+        .table("payments")
+        .select("*")
+        .eq("payment_id", payment_id)
+        .eq("user_id", current_user.id)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    pdf_bytes = _build_receipt_pdf(result.data[0])
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="receipt-{payment_id}.pdf"'},
     )
 
 
@@ -849,6 +1032,10 @@ def _finalize_payment(
         logger.error(
             "%s amount mismatch | plan_id=%s expected=%s got=%s user_id=%s — refusing to grant plan",
             label, plan_id, expected_amount, amount, user_id,
+        )
+        send_alert(
+            "Payment amount mismatch",
+            f"{label} plan_id={plan_id} expected={expected_amount} got={amount} user_id={user_id} — plan refused",
         )
         return Response(status_code=200)
 

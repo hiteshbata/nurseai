@@ -118,7 +118,11 @@ interface Stats {
 
 interface User {
   user_id: string
+  email: string
+  name: string
+  created_at: string
   role: string
+  plan: string
 }
 
 // ── KPI card ──────────────────────────────────────────────────────────
@@ -179,7 +183,7 @@ export default function AdminDashboard() {
     Promise.allSettled([
       api.get('/admin/stats').then((res) => setStats(res.data)),
       api.get('/admin/analytics').then((res) => setAnalytics(res.data)),
-      api.get('/admin/users').then((res) => setUsers(res.data)),
+      api.get('/admin/users/list?limit=5').then((res) => setUsers(res.data.users)),
     ]).finally(() => setLoading(false))
   }, [])
 
@@ -471,20 +475,26 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Users Table */}
+        {/* Recent Signups */}
         <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-2xl font-bold mb-4">Users</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold">Recent Signups</h2>
+            <a href="/admin/users" className="text-sm font-semibold text-blue-600 hover:underline">View all users</a>
+          </div>
           <table className="w-full">
             <thead>
               <tr className="border-b">
-                <th className="text-left py-2">User ID</th>
+                <th className="text-left py-2">Email</th>
+                <th className="text-left py-2">Plan</th>
                 <th className="text-left py-2">Role</th>
+                <th className="text-left py-2">Signed up</th>
               </tr>
             </thead>
             <tbody>
               {users.map((user) => (
                 <tr key={user.user_id} className="border-b">
-                  <td className="py-2 font-mono text-sm">{user.user_id.slice(0, 8)}...</td>
+                  <td className="py-2 text-sm">{user.email || user.name || user.user_id.slice(0, 8) + '...'}</td>
+                  <td className="py-2 text-sm capitalize">{user.plan}</td>
                   <td className="py-2">
                     <span className={`px-2 py-1 rounded text-xs font-semibold ${
                       user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100'
@@ -492,6 +502,7 @@ export default function AdminDashboard() {
                       {user.role}
                     </span>
                   </td>
+                  <td className="py-2 text-sm">{new Date(user.created_at).toLocaleDateString('en-IN')}</td>
                 </tr>
               ))}
             </tbody>

@@ -140,7 +140,6 @@ async def generate_one_scenario(
             [{"role": "user", "content": prompt}],
             max_tokens=1200,
             json_mode=True,
-            provider="openrouter",
             model=GEMINI_SCORING_PREMIUM_MODEL,
         )
         errors = validate_scenario(result)

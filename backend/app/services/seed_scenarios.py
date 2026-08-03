@@ -1,5 +1,4 @@
 """Seed OET speaking scenarios into Supabase with interlocutor + nurse cards."""
-import json
 from app.core.supabase import get_supabase
 
 SCORING_CRITERIA = {

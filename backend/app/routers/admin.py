@@ -14,6 +14,7 @@ from app.services.founder_metrics import get_founder_metrics
 from app.services.ai_cost_metrics import get_ai_cost_metrics
 from app.core import cost_circuit_breaker
 from app.services.email import send_email, render_expiry_reminder, render_failed_payment_reminder
+from app.services.alerts import send_alert
 from app.services.reminders import rows_due_for_expiry_reminder, rows_due_for_failed_payment_reminder
 from app.routers.profile import _delete_user_owned_rows
 from app.routers.auth import get_current_user, UserInfo
@@ -140,7 +141,9 @@ def admin_list_scenarios(
 ):
     """List all scenarios (including inactive)."""
     supabase = get_supabase()
-    query = supabase.table("scenarios").select("*").order("created_at", desc=True)
+    query = supabase.table("scenarios").select(
+        "id, module, title, setting, difficulty, is_active, created_at"
+    ).order("created_at", desc=True)
     if module:
         query = query.eq("module", module)
     return query.execute().data
@@ -566,7 +569,7 @@ def admin_search_users(
     user_ids = [u["id"] for u in page_users]
 
     profiles = (
-        {p["user_id"]: p for p in supabase.table("user_profiles").select("*").in_("user_id", user_ids).execute().data}
+        {p["user_id"]: p for p in supabase.table("user_profiles").select("user_id, plan, subscription_status, plan_expires_at").in_("user_id", user_ids).execute().data}
         if user_ids else {}
     )
     roles = (
@@ -1266,6 +1269,7 @@ def admin_prune_logs(_=Depends(require_admin_or_cron)):
         deleted = supabase.table("logs").delete().lt("timestamp", cutoff).execute()
     except Exception:
         logger.exception("logs/prune failed")
+        send_alert("Prune cron failed", "logs/prune")
         raise HTTPException(status_code=502, detail="Log prune failed")
     count = len(deleted.data or [])
     logger.info("logs/prune deleted %d rows older than %s", count, cutoff)
@@ -1287,6 +1291,7 @@ def admin_prune_transcripts(_=Depends(require_admin_or_cron)):
         deleted = supabase.table("session_transcripts").delete().lt("created_at", cutoff).execute()
     except Exception:
         logger.exception("transcripts/prune failed")
+        send_alert("Prune cron failed", "transcripts/prune")
         raise HTTPException(status_code=502, detail="Transcript prune failed")
     count = len(deleted.data or [])
     logger.info("transcripts/prune deleted %d rows older than %s", count, cutoff)
@@ -1307,6 +1312,7 @@ def admin_prune_ai_usage_events(_=Depends(require_admin_or_cron)):
         deleted = supabase.table("ai_usage_events").delete().lt("created_at", cutoff).execute()
     except Exception:
         logger.exception("ai-usage-events/prune failed")
+        send_alert("Prune cron failed", "ai-usage-events/prune")
         raise HTTPException(status_code=502, detail="AI usage events prune failed")
     count = len(deleted.data or [])
     logger.info("ai-usage-events/prune deleted %d rows older than %s", count, cutoff)
@@ -1328,6 +1334,7 @@ def admin_prune_realtime_session_metrics(_=Depends(require_admin_or_cron)):
         deleted = supabase.table("realtime_session_metrics").delete().lt("created_at", cutoff).execute()
     except Exception:
         logger.exception("realtime-session-metrics/prune failed")
+        send_alert("Prune cron failed", "realtime-session-metrics/prune")
         raise HTTPException(status_code=502, detail="Realtime session metrics prune failed")
     count = len(deleted.data or [])
     logger.info("realtime-session-metrics/prune deleted %d rows older than %s", count, cutoff)

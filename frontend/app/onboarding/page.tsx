@@ -61,7 +61,7 @@ function resumeStepFor(data: OnboardingStatus): Step {
 }
 
 export default function OnboardingPage() {
-  const { status } = useSupabaseSession()
+  const { session, status } = useSupabaseSession()
   const router = useRouter()
   const [step, setStep] = useState<Step>(1)
   const [checkingStatus, setCheckingStatus] = useState(true)
@@ -74,7 +74,11 @@ export default function OnboardingPage() {
       router.push('/auth/login')
       return
     }
-  }, [status, router])
+    if (status === 'authenticated' && session?.user?.is_anonymous) {
+      router.push('/tools/oet-mock-test-free')
+      return
+    }
+  }, [status, session, router])
 
   // Best-effort: redeem whatever referral code Navbar captured from a
   // ?ref=CODE link into localStorage. Every new signup passes through this
@@ -734,7 +738,7 @@ export default function OnboardingPage() {
               )}
 
               {submitError && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+                <div role="alert" className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
                   <p className="text-sm text-red-700">{submitError}</p>
                 </div>
               )}

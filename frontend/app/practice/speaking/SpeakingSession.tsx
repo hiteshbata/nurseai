@@ -482,6 +482,7 @@ export default function SpeakingSession({
               </p>
               <Progress
                 value={(readingTime / PREP_SECONDS) * 100}
+                label="Preparation time remaining"
                 className="h-2 bg-gray-100 [&>div]:bg-emerald-500"
               />
             </div>

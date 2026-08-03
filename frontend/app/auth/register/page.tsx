@@ -40,10 +40,24 @@ export default function RegisterPage() {
   const [microsoftLoading, setMicrosoftLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string; password?: string; confirmPassword?: string }>({})
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
+    if (fieldErrors[name as keyof typeof fieldErrors]) setFieldErrors((f) => ({ ...f, [name]: undefined }))
+  }
+
+  const validate = () => {
+    const errs: typeof fieldErrors = {}
+    if (!formData.name.trim()) errs.name = 'Enter your full name'
+    if (!formData.email.trim()) errs.email = 'Enter your email'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) errs.email = 'Enter a valid email address'
+    if (!formData.password) errs.password = 'Enter a password'
+    else if (formData.password.length < 8) errs.password = 'Password must be at least 8 characters'
+    if (formData.password !== formData.confirmPassword) errs.confirmPassword = 'Passwords do not match'
+    setFieldErrors(errs)
+    return Object.keys(errs).length === 0
   }
 
   const handleGoogleSignUp = async () => {
@@ -81,10 +95,9 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (formData.password !== formData.confirmPassword) { toast.error('Passwords do not match'); return }
-    if (formData.password.length < 8) { toast.error('Password must be at least 8 characters'); return }
-    setIsLoading(true)
     setError('')
+    if (!validate()) return
+    setIsLoading(true)
     try {
       const data = await signUp(formData.email, formData.password, formData.name)
       trackEvent('signup_completed', { method: 'email' })
@@ -129,7 +142,7 @@ export default function RegisterPage() {
             </div>
 
             {error && (
-              <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
+              <div role="alert" className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
                 {error}
               </div>
             )}
@@ -183,8 +196,19 @@ export default function RegisterPage() {
                   onChange={handleChange}
                   placeholder="Your full name"
                   required
-                  className="h-11 w-full rounded-xl border border-border bg-muted/60 px-3.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10 hover:border-border"
+                  aria-invalid={!!fieldErrors.name}
+                  aria-describedby={fieldErrors.name ? 'name-error' : undefined}
+                  className={`h-11 w-full rounded-xl border bg-muted/60 px-3.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:bg-card hover:border-border ${
+                    fieldErrors.name
+                      ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100'
+                      : 'border-border focus:border-primary/40 focus:ring-2 focus:ring-primary/10'
+                  }`}
                 />
+                {fieldErrors.name && (
+                  <p id="name-error" role="alert" className="text-xs text-red-600">
+                    {fieldErrors.name}
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -200,8 +224,19 @@ export default function RegisterPage() {
                   placeholder="you@example.com"
                   autoComplete="email"
                   required
-                  className="h-11 w-full rounded-xl border border-border bg-muted/60 px-3.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10 hover:border-border"
+                  aria-invalid={!!fieldErrors.email}
+                  aria-describedby={fieldErrors.email ? 'email-error' : undefined}
+                  className={`h-11 w-full rounded-xl border bg-muted/60 px-3.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:bg-card hover:border-border ${
+                    fieldErrors.email
+                      ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100'
+                      : 'border-border focus:border-primary/40 focus:ring-2 focus:ring-primary/10'
+                  }`}
                 />
+                {fieldErrors.email && (
+                  <p id="email-error" role="alert" className="text-xs text-red-600">
+                    {fieldErrors.email}
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -218,7 +253,13 @@ export default function RegisterPage() {
                     placeholder="Create a password"
                     autoComplete="new-password"
                     required
-                    className="h-11 w-full rounded-xl border border-border bg-muted/60 px-3.5 pr-11 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10 hover:border-border"
+                    aria-invalid={!!fieldErrors.password}
+                    aria-describedby={fieldErrors.password ? 'password-error' : 'password-hint'}
+                    className={`h-11 w-full rounded-xl border bg-muted/60 px-3.5 pr-11 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:bg-card hover:border-border ${
+                      fieldErrors.password
+                        ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100'
+                        : 'border-border focus:border-primary/40 focus:ring-2 focus:ring-primary/10'
+                    }`}
                   />
                   <button
                     type="button"
@@ -229,7 +270,13 @@ export default function RegisterPage() {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-                <p className="text-xs text-muted-foreground">Must be at least 8 characters</p>
+                {fieldErrors.password ? (
+                  <p id="password-error" role="alert" className="text-xs text-red-600">
+                    {fieldErrors.password}
+                  </p>
+                ) : (
+                  <p id="password-hint" className="text-xs text-muted-foreground">Must be at least 8 characters</p>
+                )}
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -245,8 +292,19 @@ export default function RegisterPage() {
                   placeholder="Confirm your password"
                   autoComplete="new-password"
                   required
-                  className="h-11 w-full rounded-xl border border-border bg-muted/60 px-3.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10 hover:border-border"
+                  aria-invalid={!!fieldErrors.confirmPassword}
+                  aria-describedby={fieldErrors.confirmPassword ? 'confirmPassword-error' : undefined}
+                  className={`h-11 w-full rounded-xl border bg-muted/60 px-3.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all duration-150 focus:bg-card hover:border-border ${
+                    fieldErrors.confirmPassword
+                      ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100'
+                      : 'border-border focus:border-primary/40 focus:ring-2 focus:ring-primary/10'
+                  }`}
                 />
+                {fieldErrors.confirmPassword && (
+                  <p id="confirmPassword-error" role="alert" className="text-xs text-red-600">
+                    {fieldErrors.confirmPassword}
+                  </p>
+                )}
               </div>
 
               <p className="text-center text-xs leading-relaxed text-muted-foreground">

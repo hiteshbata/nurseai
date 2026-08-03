@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import AdminShell from './AdminShell'
 
 export const metadata: Metadata = {
@@ -7,5 +8,7 @@ export const metadata: Metadata = {
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  // See app/dashboard/layout.tsx for why this call is here.
+  headers()
   return <AdminShell>{children}</AdminShell>
 }

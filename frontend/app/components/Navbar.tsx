@@ -48,6 +48,12 @@ export function Navbar() {
   const [scrolled, setScrolled] = useState(false)
   const [avatarOpen, setAvatarOpen] = useState(false)
   const avatarRef = useRef<HTMLDivElement>(null)
+  const avatarButtonRef = useRef<HTMLButtonElement>(null)
+  const upgradeMenuItemRef = useRef<HTMLAnchorElement>(null)
+  const dashboardMenuItemRef = useRef<HTMLAnchorElement>(null)
+  const settingsMenuItemRef = useRef<HTMLAnchorElement>(null)
+  const referMenuItemRef = useRef<HTMLAnchorElement>(null)
+  const signOutMenuItemRef = useRef<HTMLButtonElement>(null)
   const router = useRouter()
   const pathname = usePathname()
   const isLanding = pathname === '/'
@@ -110,6 +116,42 @@ export function Navbar() {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  const getAvatarMenuItems = () =>
+    [
+      showUpgrade ? upgradeMenuItemRef.current : null,
+      dashboardMenuItemRef.current,
+      settingsMenuItemRef.current,
+      referMenuItemRef.current,
+      signOutMenuItemRef.current,
+    ].filter((el): el is HTMLAnchorElement | HTMLButtonElement => !!el)
+
+  useEffect(() => {
+    if (avatarOpen) getAvatarMenuItems()[0]?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avatarOpen])
+
+  const handleAvatarMenuKeyDown = (e: React.KeyboardEvent) => {
+    const items = getAvatarMenuItems()
+    const currentIndex = items.indexOf(document.activeElement as HTMLAnchorElement | HTMLButtonElement)
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      items[(currentIndex + 1) % items.length]?.focus()
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      items[(currentIndex - 1 + items.length) % items.length]?.focus()
+    } else if (e.key === 'Home') {
+      e.preventDefault()
+      items[0]?.focus()
+    } else if (e.key === 'End') {
+      e.preventDefault()
+      items[items.length - 1]?.focus()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setAvatarOpen(false)
+      avatarButtonRef.current?.focus()
+    }
+  }
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 10)
@@ -197,13 +239,23 @@ export function Navbar() {
               </div>
               <div className="relative" ref={avatarRef}>
               <button
+                ref={avatarButtonRef}
                 onClick={() => setAvatarOpen(!avatarOpen)}
+                aria-haspopup="menu"
+                aria-expanded={avatarOpen}
+                aria-controls="avatar-menu"
                 className="w-9 h-9 rounded-full bg-primary text-primary-foreground text-sm font-semibold flex items-center justify-center hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
               >
                 {getInitials(userName)}
               </button>
               {avatarOpen && (
-                <div className="absolute right-0 top-12 z-50 w-48 bg-card rounded-xl shadow-lg border border-border py-2">
+                <div
+                  id="avatar-menu"
+                  role="menu"
+                  aria-label="User menu"
+                  onKeyDown={handleAvatarMenuKeyDown}
+                  className="absolute right-0 top-12 z-50 w-48 bg-card rounded-xl shadow-lg border border-border py-2"
+                >
                   <div className="px-4 py-2 font-semibold text-sm text-foreground truncate">
                     {userName}
                   </div>
@@ -217,7 +269,9 @@ export function Navbar() {
                       </span>
                       {showUpgrade && (
                         <Link
+                          ref={upgradeMenuItemRef}
                           href="/upgrade"
+                          role="menuitem"
                           onClick={() => setAvatarOpen(false)}
                           className="text-xs font-semibold text-emerald-600 hover:underline whitespace-nowrap"
                         >
@@ -228,7 +282,9 @@ export function Navbar() {
                   )}
                   <div className="border-t border-border my-1" />
                   <Link
+                    ref={dashboardMenuItemRef}
                     href="/dashboard"
+                    role="menuitem"
                     onClick={() => setAvatarOpen(false)}
                     className="flex items-center gap-2 px-4 py-2 text-sm text-foreground/80 hover:bg-muted"
                   >
@@ -236,7 +292,9 @@ export function Navbar() {
                     Dashboard
                   </Link>
                   <Link
+                    ref={settingsMenuItemRef}
                     href="/profile"
+                    role="menuitem"
                     onClick={() => setAvatarOpen(false)}
                     className="flex items-center gap-2 px-4 py-2 text-sm text-foreground/80 hover:bg-muted"
                   >
@@ -244,7 +302,9 @@ export function Navbar() {
                     Settings
                   </Link>
                   <Link
+                    ref={referMenuItemRef}
                     href="/refer"
+                    role="menuitem"
                     onClick={() => setAvatarOpen(false)}
                     className="flex items-center gap-2 px-4 py-2 text-sm text-foreground/80 hover:bg-muted"
                   >
@@ -253,6 +313,8 @@ export function Navbar() {
                   </Link>
                   <div className="border-t border-border my-1" />
                   <button
+                    ref={signOutMenuItemRef}
+                    role="menuitem"
                     onClick={async () => { setAvatarOpen(false); await signOut(); window.location.href = '/' }}
                     className="flex items-center gap-2 px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 w-full text-left"
                   >

@@ -2,7 +2,6 @@
 and Listening both cache this on questions.explanation, keyed by question id,
 generated once ever per question."""
 import json
-from typing import Optional
 
 from app.services.ai_scoring import _call_ai, GEMINI_SCORING_FREE_MODEL
 
@@ -30,7 +29,6 @@ Return ONLY this JSON, no other text:
         [{"role": "user", "content": prompt}],
         max_tokens=300,
         json_mode=True,
-        provider="openrouter",
         model=GEMINI_SCORING_FREE_MODEL,
     )
     if result.get("provider_failure"):
@@ -73,7 +71,6 @@ Return ONLY this JSON, no other text:
         [{"role": "user", "content": prompt}],
         max_tokens=500,
         json_mode=True,
-        provider="openrouter",
         model=GEMINI_SCORING_FREE_MODEL,
     )
     if result.get("provider_failure"):

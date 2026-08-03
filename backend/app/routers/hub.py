@@ -5,14 +5,14 @@ its own, it only summarizes what's already there.
 """
 import logging
 from datetime import date, datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.core.supabase import get_supabase
 from app.core.threading import run_sync
-from app.routers.auth import get_current_user, UserInfo
+from app.routers.auth import get_current_user, get_user_supabase, UserInfo
+from supabase import Client
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +78,10 @@ def build_daily_plan(weakest: List[dict], attempted_modules: set) -> List[dict]:
 # ── ROUTES ─────────────────────────────────────────────────────────────
 
 @router.get("/today")
-async def get_today(current_user: UserInfo = Depends(get_current_user)):
-    supabase = get_supabase()
+async def get_today(
+    current_user: UserInfo = Depends(get_current_user),
+    supabase: Client = Depends(get_user_supabase),
+):
     today = datetime.now(timezone.utc).date()
     cutoff = (datetime.now(timezone.utc) - timedelta(days=STREAK_LOOKBACK_DAYS)).isoformat()
 
@@ -120,8 +122,10 @@ async def get_today(current_user: UserInfo = Depends(get_current_user)):
 
 
 @router.get("/revision-queue")
-async def get_revision_queue(current_user: UserInfo = Depends(get_current_user)):
-    supabase = get_supabase()
+async def get_revision_queue(
+    current_user: UserInfo = Depends(get_current_user),
+    supabase: Client = Depends(get_user_supabase),
+):
     skills = await run_sync(
         supabase.table("user_skill_stats").select("skill_tag, ema_score, attempts")
         .eq("user_id", current_user.id).order("ema_score").limit(REVISION_QUEUE_LIMIT).execute
@@ -134,8 +138,11 @@ class GoalCompleteRequest(BaseModel):
 
 
 @router.post("/goal-complete")
-async def mark_goal_complete(req: GoalCompleteRequest, current_user: UserInfo = Depends(get_current_user)):
-    supabase = get_supabase()
+async def mark_goal_complete(
+    req: GoalCompleteRequest,
+    current_user: UserInfo = Depends(get_current_user),
+    supabase: Client = Depends(get_user_supabase),
+):
     today = datetime.now(timezone.utc).date().isoformat()
     await run_sync(
         supabase.table("daily_goal_completions").upsert({

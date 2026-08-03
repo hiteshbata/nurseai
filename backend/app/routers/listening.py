@@ -33,7 +33,8 @@ from app.core.config import settings
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
-from app.routers.auth import get_current_user, UserInfo
+from app.routers.auth import get_current_user, get_user_supabase, UserInfo
+from supabase import Client
 from app.routers.admin import require_admin
 from app.routers.mock import has_mock_section_access
 from app.services.mcq_grading import grade_exact_match, combine_graded_results, resolve_latest_wrong_answers
@@ -198,6 +199,7 @@ async def submit_test(
     test_id: int,
     request: ListeningTestSubmitRequest,
     current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
 ):
     """Grade a whole test session at once (all Part A/B/C questions), record one
     'listening' submission, report per-part bands so weak parts feed the skill
@@ -272,7 +274,7 @@ async def submit_test(
         )
 
     await run_sync(
-        supabase.table("submissions").insert({
+        user_db.table("submissions").insert({
             "user_id": current_user.id,
             # NOT scenario_id: listening_tests is a different id space than the
             # scenarios table scenario_id is FK'd to (writing test_id there
@@ -343,13 +345,16 @@ MISTAKES_LOOKBACK_SUBMISSIONS = 100
 
 
 @router.get("/mistakes")
-async def list_mistakes(current_user: UserInfo = Depends(get_current_user)):
+async def list_mistakes(
+    current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
+):
     """Every question the user has ever gotten wrong in listening practice, most
     recent attempt per question, newest first. Built entirely from data already on
     submissions.feedback -- mirrors reading.py's /mistakes."""
     supabase = get_supabase()
     subs = await run_sync(
-        supabase.table("submissions").select("feedback, created_at")
+        user_db.table("submissions").select("feedback, created_at")
         .eq("user_id", current_user.id).eq("module", "listening")
         .order("created_at", desc=True).limit(MISTAKES_LOOKBACK_SUBMISSIONS).execute
     )
@@ -1461,7 +1466,6 @@ Return ONLY this JSON, no other text:
         [{"role": "user", "content": prompt}],
         max_tokens=2000,
         json_mode=True,
-        provider="openrouter",
         model=GEMINI_SCORING_FREE_MODEL,
     )
     if result.get("provider_failure"):

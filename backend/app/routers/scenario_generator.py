@@ -1,7 +1,6 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from app.core.supabase import get_supabase
 from app.core.config import settings
 from app.core.error_utils import redact_api_keys
@@ -24,7 +23,6 @@ _extract_rate_limiter = SlidingWindowRateLimiter(30, 600, name="scenario:extract
 async def _call_vision_api(image_base64: str, prompt: str, json_mode: bool = True) -> Dict[str, Any]:
     """Send image + prompt to Gemini via OpenRouter or direct Gemini API."""
     openrouter_key = settings.OPENROUTER_API_KEY
-    gemini_key = settings.GEMINI_API_KEY
 
     # Try OpenRouter first (supports multimodal)
     if openrouter_key:
@@ -260,6 +258,14 @@ IMPORTANT RULES:
 Return the same JSON structure as the input but with completely new original content."""
 
 
+
+# payload is the free-form extracted-scenario JSON from extract-from-image/pdf
+# above (shape varies), so it isn't worth a strict Pydantic model -- bound
+# its serialized size instead of any one field, so it can't be dumped raw
+# into the prompt unbounded.
+MAX_GENERATE_PAYLOAD_CHARS = 20_000
+
+
 @router.post("/generate-original")
 async def generate_original(payload: Dict[str, Any], _admin=Depends(require_admin)):
     """Generate an original scenario inspired by the extracted one."""
@@ -267,10 +273,14 @@ async def generate_original(payload: Dict[str, Any], _admin=Depends(require_admi
     difficulty = payload.get("difficulty", "intermediate")
     prompt = GENERATE_PROMPT_TEMPLATE.format(specialty=specialty, difficulty=difficulty)
 
+    payload_json = json.dumps(payload, indent=2)
+    if len(payload_json) > MAX_GENERATE_PAYLOAD_CHARS:
+        raise HTTPException(status_code=400, detail="Input scenario is too large.")
+
     try:
         result = await _call_vision_api(
             image_base64="",
-            prompt=f"{prompt}\n\nInput scenario:\n{json.dumps(payload, indent=2)}",
+            prompt=f"{prompt}\n\nInput scenario:\n{payload_json}",
             json_mode=True,
         )
         return result

@@ -1,9 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import Script from 'next/script'
 import { Loader2 } from 'lucide-react'
 import api from '@/lib/api'
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
 import {
   REGULATORS,
   MODULE_LABELS,
@@ -48,8 +51,20 @@ export function StudyPlanGenerator() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [plan, setPlan] = useState<PlanResult | null>(null)
+  const [captchaToken, setCaptchaToken] = useState('')
 
-  const allFilled = MODULES.every((m) => inputs[m] !== '')
+  // Cloudflare Turnstile implicit rendering: the widget script scans the DOM
+  // (via MutationObserver) for any .cf-turnstile element and renders it
+  // itself, so this just needs the named callbacks to exist on window before
+  // the user solves the challenge -- no manual .render() / ref timing to get
+  // wrong.
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY) return
+    ;(window as any).__onTurnstileToken = (token: string) => setCaptchaToken(token)
+    ;(window as any).__onTurnstileExpired = () => setCaptchaToken('')
+  }, [])
+
+  const allFilled = MODULES.every((m) => inputs[m] !== '') && (!TURNSTILE_SITE_KEY || captchaToken !== '')
   const target = REGULATORS.find((r) => r.id === targetId) ?? REGULATORS[0]
 
   async function handleSubmit(e: React.FormEvent) {
@@ -79,16 +94,21 @@ export function StudyPlanGenerator() {
         target_regulator_name: target.name,
         weeks_until_exam: weeksUntilExam,
         hours_per_week: hoursPerWeek ? Number(hoursPerWeek) : null,
+        captcha_token: captchaToken || undefined,
       })
       setPlan(res.data)
     } catch (err: any) {
       setError(
         err?.response?.status === 429
           ? 'Too many requests — please try again in a while.'
-          : "Couldn't generate your plan right now — please try again."
+          : err?.response?.status === 400
+            ? 'Captcha check failed — please try again.'
+            : "Couldn't generate your plan right now — please try again."
       )
     } finally {
       setLoading(false)
+      setCaptchaToken('')
+      ;(window as any).turnstile?.reset()
     }
   }
 
@@ -199,6 +219,19 @@ export function StudyPlanGenerator() {
             />
           </div>
         </div>
+
+        {TURNSTILE_SITE_KEY && (
+          <>
+            <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" strategy="afterInteractive" />
+            <div
+              className="cf-turnstile mt-4"
+              data-sitekey={TURNSTILE_SITE_KEY}
+              data-callback="__onTurnstileToken"
+              data-expired-callback="__onTurnstileExpired"
+              data-error-callback="__onTurnstileExpired"
+            />
+          </>
+        )}
 
         <button
           type="submit"

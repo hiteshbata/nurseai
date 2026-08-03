@@ -17,7 +17,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt ruff
+      # Scoped to pyflakes (F): unused imports/vars, undefined names, redefinitions.
+      # Ruff's fuller default rulesets (UP/B/BLE/TRY/S/...) are opinionated
+      # style/architecture rules the codebase doesn't follow yet -- turning
+      # those on is a separate cleanup, not part of standing CI up.
+      - run: ruff check app/ --select F
       - run: python -m pytest tests/ -v
         env:
           SUPABASE_URL: http://localhost:54321

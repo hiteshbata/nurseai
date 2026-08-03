@@ -4,7 +4,7 @@ grade this way, so the logic lives here once instead of being copied per
 module. Pure and testable; the AI call for open-ended items (Reading's
 short-answer, Listening's gap-fill) stays in each module's own router since
 its prompt is module-specific."""
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 def grade_exact_match(questions_by_id: Dict[int, dict], answers: List[dict]) -> Dict[str, Any]:

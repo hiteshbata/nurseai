@@ -16,6 +16,10 @@ let cachedTokenExpiry: number | null = null
 const REFRESH_BUFFER_MS = 60000
 
 api.interceptors.request.use(async (config) => {
+  // One ID per call so a Sentry error and the matching backend log line
+  // (tagged via RequestIDMiddleware) can be pulled up side by side.
+  config.headers['x-request-id'] = crypto.randomUUID()
+
   if (typeof window !== 'undefined') {
     if (cachedToken && cachedTokenExpiry && Date.now() < cachedTokenExpiry - REFRESH_BUFFER_MS) {
       config.headers.Authorization = `Bearer ${cachedToken}`
@@ -80,6 +84,7 @@ api.interceptors.response.use(
         api_method: error.config?.method?.toUpperCase(),
         api_url: error.config?.url,
         status_code: error.response?.status?.toString() || '0',
+        request_id: error.config?.headers?.['x-request-id'] as string | undefined,
       },
       extra: {
         request_shape: describePayload(error.config?.data),

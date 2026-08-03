@@ -2,7 +2,8 @@ import json
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.supabase import get_supabase
-from app.routers.auth import get_current_user, UserInfo
+from app.routers.auth import get_current_user, get_user_supabase, UserInfo
+from supabase import Client
 from app.services.plan_gating import get_plan_from_profile, get_history_limit
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
@@ -33,6 +34,7 @@ def get_submissions(
     module: Optional[str] = Query(None),
     scenario_id: Optional[int] = Query(None),
     current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
 ):
     """List the current user's own submissions, optionally filtered by
     module and scenario_id. Used by the speaking/writing practice pages
@@ -47,7 +49,9 @@ def get_submissions(
     profile = profile_data.data[0] if profile_data.data else {}
     plan = get_plan_from_profile(profile)
 
-    query = supabase.table("submissions").select(
+    # RLS-scoped: "Users can read own submissions" already restricts this to
+    # current_user's own rows even without the .eq() below (defense in depth).
+    query = user_db.table("submissions").select(
         "id, scenario_id, module, score, created_at"
     ).eq("user_id", current_user.id)
     if module:
@@ -62,6 +66,7 @@ def get_submissions(
 def get_submission(
     submission_id: int,
     current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
 ):
     """One of the current user's own submissions, with its full feedback --
     powers the dashboard's Recent Sessions "View" link.
@@ -71,11 +76,12 @@ def get_submission(
 
     The .eq("user_id") filter is the authorization boundary: a submission
     belonging to someone else returns the same 404 as one that doesn't exist,
-    so this endpoint can't be used to probe for valid submission ids.
+    so this endpoint can't be used to probe for valid submission ids. RLS
+    ("Users can read own submissions") backs this up at the DB level too.
     """
     supabase = get_supabase()
 
-    data = supabase.table("submissions").select(
+    data = user_db.table("submissions").select(
         "id, scenario_id, module, score, feedback, created_at"
     ).eq("id", submission_id).eq("user_id", current_user.id).execute()
 

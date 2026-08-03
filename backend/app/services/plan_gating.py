@@ -29,12 +29,18 @@ def parse_timestamp(value) -> Optional[datetime]:
 
 def is_subscription_active(profile: dict, now: Optional[datetime] = None) -> bool:
     """True if a paid plan is still within its paid period or grace window.
-    A profile with no plan_expires_at recorded (legacy row, migration not
+    A free-plan profile with no plan_expires_at (legacy row, migration not
     yet backfilled) is treated as active — there's nothing to expire it
-    against, and the backfill migration is expected to have run first."""
+    against, and the backfill migration is expected to have run first.
+    A PAID plan with no plan_expires_at is treated as expired instead: that
+    shape only occurs if process_payment committed the plan change but the
+    grant_subscription_period call that sets the expiry failed right after
+    (see grant_subscription_period's docstring in payments.py) — failing
+    closed here turns that into a visible/support-fixable gap rather than
+    permanent free access to a paid plan."""
     expires_at = parse_timestamp(profile.get("plan_expires_at"))
     if expires_at is None:
-        return True
+        return profile.get("plan", "free") == "free"
     now = now or datetime.now(timezone.utc)
     cutoff = expires_at + timedelta(days=GRACE_PERIOD_DAYS)
     return now <= cutoff

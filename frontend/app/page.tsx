@@ -73,7 +73,11 @@ export default function Home() {
   const [onboardingChecked, setOnboardingChecked] = useState(false)
 
   useEffect(() => {
-    if (status === 'authenticated' && !onboardingChecked) {
+    if (status === 'authenticated' && session?.user?.is_anonymous) {
+      router.push('/tools/oet-mock-test-free')
+      return
+    }
+    if (status === 'authenticated' && !session?.user?.is_anonymous && !onboardingChecked) {
       api.get('/onboarding/status').then((res) => {
         const complete = res.data?.onboarding_completed === true
         router.push(complete ? '/dashboard' : '/onboarding')
@@ -83,7 +87,7 @@ export default function Home() {
         setOnboardingChecked(true)
       })
     }
-  }, [status, onboardingChecked, router])
+  }, [status, session, onboardingChecked, router])
 
   if (status === 'authenticated') {
     return null

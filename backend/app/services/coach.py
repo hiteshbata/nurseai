@@ -175,7 +175,6 @@ Be concrete -- reference the actual weak criteria and scenario names above. Do N
             [{"role": "user", "content": prompt}],
             max_tokens=500,
             json_mode=True,
-            provider="openrouter",
             model=GEMINI_SCORING_PREMIUM_MODEL,
         )
     except Exception as e:

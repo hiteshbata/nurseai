@@ -158,7 +158,7 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="motion-safe:animate-[message-in_0.25s_ease-out_both] rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
+              <div role="alert" className="motion-safe:animate-[message-in_0.25s_ease-out_both] rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
                 {error}
               </div>
             )}

@@ -376,7 +376,7 @@ export default function ScenarioGeneratorPage() {
             </div>
 
             {error && (
-              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>
+              <div role="alert" className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>
             )}
 
             <button
@@ -593,7 +593,7 @@ export default function ScenarioGeneratorPage() {
             </section>
 
             {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>
+              <div role="alert" className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>
             )}
 
             {/* Action Buttons */}

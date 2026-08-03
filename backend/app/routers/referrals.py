@@ -2,16 +2,21 @@ import logging
 import secrets
 import string
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.supabase import get_supabase
+from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/referrals", tags=["referrals"])
+
+# Blunts scripted guessing against the 6-char code space -- generous enough
+# that no legitimate user ever hits it (one redeem per account, ever).
+_redeem_rate_limiter = SlidingWindowRateLimiter(10, 3600, name="referrals:redeem")
 
 _CODE_ALPHABET = string.ascii_uppercase + string.digits
 _MAX_CODE_ATTEMPTS = 5
@@ -78,6 +83,8 @@ class RedeemReferralRequest(BaseModel):
 
 @router.post("/redeem")
 def redeem_referral(payload: RedeemReferralRequest, current_user: UserInfo = Depends(get_current_user)):
+    if _redeem_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many attempts -- please try again in a while.")
     supabase = get_supabase()
     code = payload.code.strip().upper()
     if not code:

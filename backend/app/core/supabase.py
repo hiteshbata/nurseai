@@ -65,3 +65,16 @@ def get_supabase() -> Client:
 
 def get_auth_client() -> Client:
     return _auth_client
+
+def get_user_scoped_client(access_token: str) -> Client:
+    """A fresh anon-key client whose PostgREST requests carry the caller's own
+    JWT, so RLS evaluates auth.uid() as that user instead of bypassing it
+    (service_role has BYPASSRLS). Only safe for tables with an authenticated
+    RLS policy scoped to auth.uid() = user_id -- see
+    backend/migrations/2026-08-02_authenticated_user_rls.sql for which ones.
+    A new client per call (not a shared singleton) since the token is
+    request-specific and clients aren't meant to swap identity mid-flight.
+    """
+    client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
+    client.postgrest.auth(access_token)
+    return client

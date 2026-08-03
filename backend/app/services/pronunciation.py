@@ -2,10 +2,15 @@ import logging
 import os
 import subprocess
 import tempfile
-import asyncio
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from typing import Dict, Any, List
 from app.core.config import settings
 from app.core.threading import run_sync
+
+# The Azure Speech SDK's recognize_once() is a blocking native call with no
+# built-in timeout -- a stalled/unresponsive Azure connection would otherwise
+# hang the worker thread run_sync already dispatched this onto indefinitely.
+PRONUNCIATION_RECOGNIZE_TIMEOUT_SECONDS = 30
 
 # Azure Speech SDK
 # Install: pip install azure-cognitiveservices-speech
@@ -183,8 +188,24 @@ def _assess_pronunciation_azure_sync(
             )
             pronunciation_config.apply_to(recognizer)
 
-            # Run recognition
-            result = recognizer.recognize_once()
+            # Run recognition, bounded -- see PRONUNCIATION_RECOGNIZE_TIMEOUT_SECONDS.
+            # shutdown(wait=False) on timeout: recognize_once() can't be
+            # cancelled mid-call, so we abandon the thread instead of
+            # blocking the caller on it too.
+            pool = ThreadPoolExecutor(max_workers=1)
+            try:
+                result = pool.submit(recognizer.recognize_once).result(timeout=PRONUNCIATION_RECOGNIZE_TIMEOUT_SECONDS)
+            except FutureTimeoutError:
+                logger.error("[PRONUNCIATION_FAILURE] recognize_once timed out after %ss", PRONUNCIATION_RECOGNIZE_TIMEOUT_SECONDS)
+                pool.shutdown(wait=False)
+                return {
+                    "error": PRONUNCIATION_UNAVAILABLE_MESSAGE,
+                    "available": False,
+                    "overall_score": 0,
+                    "words": [],
+                    "problem_words": [],
+                }
+            pool.shutdown(wait=False)
         finally:
             # Dispose the recognizer/audio_config first so the native SDK
             # releases its file handle before we unlink -- otherwise deleting

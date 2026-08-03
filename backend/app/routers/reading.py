@@ -18,13 +18,14 @@ from typing import List, Optional, Dict, Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
-from app.routers.auth import get_current_user, UserInfo
+from app.routers.auth import get_current_user, get_user_supabase, UserInfo
+from supabase import Client
 from app.routers.admin import require_admin
 from app.routers.mock import has_mock_section_access
 from app.services.ai_scoring import _try_parse_json, _call_ai, GEMINI_SCORING_FREE_MODEL
@@ -162,8 +163,11 @@ class ReadingNotesRequest(BaseModel):
 
 
 @router.get("/passages/{passage_id}/notes")
-async def get_notes(passage_id: int, current_user: UserInfo = Depends(get_current_user)):
-    supabase = get_supabase()
+async def get_notes(
+    passage_id: int,
+    current_user: UserInfo = Depends(get_current_user),
+    supabase: Client = Depends(get_user_supabase),
+):
     data = await run_sync(
         supabase.table("reading_notes").select("highlights, note")
         .eq("user_id", current_user.id).eq("passage_id", passage_id).execute
@@ -179,12 +183,12 @@ async def save_notes(
     passage_id: int,
     req: ReadingNotesRequest,
     current_user: UserInfo = Depends(get_current_user),
+    supabase: Client = Depends(get_user_supabase),
 ):
     for h in req.highlights:
         if h.start < 0 or h.end <= h.start:
             raise HTTPException(status_code=400, detail="Invalid highlight range")
 
-    supabase = get_supabase()
     await run_sync(
         supabase.table("reading_notes").upsert({
             "user_id": current_user.id,
@@ -231,6 +235,7 @@ def _skill_observation_bands(results: List[dict], skill_by_qid: Dict[int, str]) 
 async def submit_reading(
     request: ReadingSubmitRequest,
     current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
 ):
     """Auto-grade a reading attempt and record it as a 'reading' submission so it
     feeds the dashboard's reading band. MCQ questions (Part B/C, and Part A's
@@ -294,7 +299,7 @@ async def submit_reading(
         })
 
     await run_sync(
-        supabase.table("submissions").insert({
+        user_db.table("submissions").insert({
             "user_id": current_user.id,
             # NOT scenario_id: passages live in reading_passages, a different id
             # space than the scenarios table scenario_id is FK'd to (writing
@@ -407,6 +412,7 @@ async def submit_reading_test(
     test_id: int,
     request: ReadingTestSubmitRequest,
     current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
 ):
     """Grade a whole test session at once (all Part A/B/C questions), record one
     'reading' submission, and report per-part bands so weak parts feed the skill graph."""
@@ -485,7 +491,7 @@ async def submit_reading_test(
         })
 
     await run_sync(
-        supabase.table("submissions").insert({
+        user_db.table("submissions").insert({
             "user_id": current_user.id,
             # NOT scenario_id: reading_tests is a different id space than the
             # scenarios table scenario_id is FK'd to. test_id lives in feedback.
@@ -577,7 +583,6 @@ Return ONLY this JSON, no other text:
         [{"role": "user", "content": prompt}],
         max_tokens=150,
         json_mode=True,
-        provider="openrouter",
         model=GEMINI_SCORING_FREE_MODEL,
     )
     if result.get("provider_failure"):
@@ -589,6 +594,7 @@ Return ONLY this JSON, no other text:
 async def get_definition(
     term: str,
     current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
 ):
     """Cache-through word lookup for the passage double-click dictionary.
     Cached forever by normalized term text -- shared across every passage,
@@ -605,7 +611,7 @@ async def get_definition(
         supabase.table("medical_terms").select("definition").eq("term", term_key).execute
     )
     if cached.data:
-        await _add_vocab_card(current_user.id, term_key, cached.data[0]["definition"])
+        await _add_vocab_card(user_db, current_user.id, term_key, cached.data[0]["definition"])
         return {"term": term_key, "definition": cached.data[0]["definition"]}
 
     definition = await _define_term(term_key)
@@ -617,18 +623,18 @@ async def get_definition(
             {"term": term_key, "definition": definition}, on_conflict="term"
         ).execute
     )
-    await _add_vocab_card(current_user.id, term_key, definition)
+    await _add_vocab_card(user_db, current_user.id, term_key, definition)
     return {"term": term_key, "definition": definition}
 
 
-async def _add_vocab_card(user_id: str, term: str, definition: str) -> None:
+async def _add_vocab_card(user_db, user_id: str, term: str, definition: str) -> None:
     """Looking a word up is itself the signal it's unfamiliar -- auto-add it
     to the student's SRS deck. ignore_duplicates means looking up an already-
     known word again is a harmless no-op, not a progress reset. Best-effort:
     a deck-add failure must never break the dictionary lookup itself."""
     try:
         await run_sync(
-            get_supabase().table("vocab_cards").upsert(
+            user_db.table("vocab_cards").upsert(
                 {"user_id": user_id, "term": term, "definition": definition, "source_module": "dictionary"},
                 on_conflict="user_id,term", ignore_duplicates=True,
             ).execute
@@ -643,13 +649,16 @@ MISTAKES_LOOKBACK_SUBMISSIONS = 100
 
 
 @router.get("/mistakes")
-async def list_mistakes(current_user: UserInfo = Depends(get_current_user)):
+async def list_mistakes(
+    current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
+):
     """Every question the user has ever gotten wrong in reading practice, most
     recent attempt per question, newest first. Built entirely from data
     already stored on submissions.feedback -- no new table needed."""
     supabase = get_supabase()
     subs = await run_sync(
-        supabase.table("submissions").select("feedback, created_at")
+        user_db.table("submissions").select("feedback, created_at")
         .eq("user_id", current_user.id).eq("module", "reading")
         .order("created_at", desc=True).limit(MISTAKES_LOOKBACK_SUBMISSIONS).execute
     )
@@ -701,12 +710,14 @@ WEAKNESS_BAND_CEILING = 5.0
 
 
 @router.get("/weakness")
-async def reading_weakness(current_user: UserInfo = Depends(get_current_user)):
+async def reading_weakness(
+    current_user: UserInfo = Depends(get_current_user),
+    supabase: Client = Depends(get_user_supabase),
+):
     """The student's weak reading skills (inference, detail, scanning, ...),
     weakest first, straight off the shared skill-graph EMA that every reading
     submission already feeds. Read-only, no AI. Returns [] until there's enough
     signal (each skill needs a couple of attempts)."""
-    supabase = get_supabase()
     rows = await run_sync(
         supabase.table("user_skill_stats").select("skill_tag, attempts, ema_score")
         .eq("user_id", current_user.id).like("skill_tag", "reading:skill:%").execute
@@ -1039,9 +1050,9 @@ def _rebuild_part_a_body(sections: List[Dict[str, Any]], label: str, new_content
 
 
 class RegenerateTextRequest(BaseModel):
-    body: str
+    body: str = Field(max_length=50_000)
     label: str
-    instruction: str
+    instruction: str = Field(max_length=1000)
 
 
 @router.post("/admin/regenerate-text")
@@ -1082,7 +1093,6 @@ Return ONLY this JSON, no other text:
         [{"role": "user", "content": prompt}],
         max_tokens=1500,
         json_mode=True,
-        provider="openrouter",
         model=GEMINI_SCORING_FREE_MODEL,
     )
     new_text = (result.get("text") or "").strip()

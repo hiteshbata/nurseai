@@ -57,6 +57,7 @@ export default function PlanUsageBanner() {
       <div className="mt-2.5 flex items-center gap-3 max-w-[220px]">
         <Progress
           value={Math.min(pct, 100)}
+          label="Sessions used this period"
           className={`h-1.5 ${isAtLimit ? '[&>div]:bg-amber-500' : '[&>div]:bg-[#10B981]'}`}
         />
       </div>

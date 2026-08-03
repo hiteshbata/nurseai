@@ -64,3 +64,6 @@ network-login.txt
 # Ad-hoc landing screenshots / diff dumps kept locally, not repo content
 diffstat.txt
 /landing-*.jpeg
+/*.png
+backend/dev-server.log
+.impeccable/

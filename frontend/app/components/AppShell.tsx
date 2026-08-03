@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import api from '@/lib/api'
 
 const WRITING_PLANS = ['pro', 'elite']
@@ -206,6 +207,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [avatarOpen, setAvatarOpen] = useState(false)
   const avatarRef = useRef<HTMLDivElement>(null)
+  const drawerPanelRef = useRef<HTMLDivElement>(null)
+  // Two buttons open the drawer (top-bar menu + bottom-tab "More"); whichever
+  // was pressed last is where focus returns on close.
+  const drawerTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   const isAnonymous = !!session?.user?.is_anonymous
 
@@ -246,6 +251,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener('keydown', onKey)
   }, [])
 
+  // Focus trap for the mobile slide-over -- see AdminShell.tsx's mobile nav
+  // effect, same pattern: focus the first control on open, wrap Tab at the
+  // panel edges, hand focus back to whichever button opened it on close.
+  useEffect(() => {
+    if (!drawerOpen) return
+
+    const panel = drawerPanelRef.current
+    const focusable = panel?.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+    focusable?.[0]?.focus()
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !focusable || focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      drawerTriggerRef.current?.focus()
+    }
+  }, [drawerOpen])
+
   // Route change closes the drawer; without this a mobile tap leaves the
   // slide-over covering the page it just navigated to.
   useEffect(() => {
@@ -279,7 +316,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main id="main-content" className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
-          {children}
+          <ErrorBoundary>{children}</ErrorBoundary>
         </main>
       </div>
     )
@@ -321,6 +358,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             aria-hidden="true"
           />
           <div
+            ref={drawerPanelRef}
             role="dialog"
             aria-modal="true"
             aria-label="Navigation"
@@ -369,7 +407,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Top bar: page identity + account only. No nav links, no sales CTA. */}
         <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/95 px-4 backdrop-blur sm:px-6 lg:px-8">
           <button
-            onClick={() => setDrawerOpen(true)}
+            onClick={(e) => {
+              drawerTriggerRef.current = e.currentTarget
+              setDrawerOpen(true)
+            }}
             aria-label="Open menu"
             className="-ml-2 rounded-lg p-2 text-foreground/80 hover:bg-muted lg:hidden"
           >
@@ -491,7 +532,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           id="main-content"
           className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8"
         >
-          {children}
+          <ErrorBoundary>{children}</ErrorBoundary>
         </main>
       </div>
 
@@ -521,7 +562,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )
         })}
         <button
-          onClick={() => setDrawerOpen(true)}
+          onClick={(e) => {
+            drawerTriggerRef.current = e.currentTarget
+            setDrawerOpen(true)
+          }}
           aria-label="More navigation"
           className="flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold text-muted-foreground"
         >

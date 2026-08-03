@@ -15,9 +15,9 @@ from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core import cost_circuit_breaker
 from app.core.error_utils import redact_api_keys, classify_http_error
-from app.routers.auth import get_current_user, UserInfo
+from app.routers.auth import get_current_user, get_user_supabase, UserInfo
+from supabase import Client
 from app.routers.admin import require_admin
-from app.core.feature_flags import require_feature, close_if_disabled
 from app.core.feature_flags import require_feature, close_if_disabled
 from app.services.speech_to_text import speech_to_text
 from app.services.ai_scoring import get_patient_response, score_speaking, _call_ai
@@ -35,7 +35,7 @@ from app.services.plan_gating import (
 from app.services import tts_service
 from app.services.cost_tracking import increment_session_cost, log_ai_usage
 from app.services.realtime.pricing import estimate_tts_cost
-from app.routers.sessions import check_and_increment_session, validate_session, is_first_ever_session
+from app.routers.sessions import check_and_increment_session, validate_session, is_first_ever_session, claim_session_for_scoring
 import websockets.exceptions as ws_exc
 
 logger = logging.getLogger(__name__)
@@ -221,19 +221,19 @@ async def stt_deepgram_stream(websocket: WebSocket):
         return
 
     deepgram_url = (
-        f"wss://api.deepgram.com/v1/listen"
+        "wss://api.deepgram.com/v1/listen"
         # nova-3 is English-only and defaults to a US-accent acoustic model;
         # nova-2 has a dedicated en-IN locale, which is what our nursing
         # students actually speak -- switching both together, since en-IN
         # isn't a supported language option under nova-3.
-        f"?model=nova-2"
-        f"&language=en-IN"
-        f"&interim_results=true"
-        f"&endpointing=1500"
-        f"&utterance_end_ms=1500"
-        f"&smart_format=true"
-        f"&encoding=opus"
-        f"&container=webm"
+        "?model=nova-2"
+        "&language=en-IN"
+        "&interim_results=true"
+        "&endpointing=1500"
+        "&utterance_end_ms=1500"
+        "&smart_format=true"
+        "&encoding=opus"
+        "&container=webm"
     )
 
     safe_url = re.sub(r'(Token\s+)[A-Za-z0-9_\-]{20,}', r'\1***REDACTED***', deepgram_url)
@@ -428,7 +428,26 @@ async def stt_deepgram_stream(websocket: WebSocket):
                 except Exception as e:
                     logger.warning("Deepgram keepalive error: %s", str(e)[:200])
 
-            await asyncio.gather(forward_audio(), forward_transcripts(), keepalive())
+            async def enforce_max_duration():
+                try:
+                    await asyncio.wait_for(_done.wait(), timeout=settings.STT_STREAM_MAX_SECONDS)
+                    return
+                except asyncio.TimeoutError:
+                    pass
+                if _done.is_set():
+                    return
+                logger.info("[STT_STREAM_TIMEOUT] user_id=%s", user.id)
+                try:
+                    await websocket.send_json({"error": "Session time limit reached — please reconnect.", "is_final": True})
+                except (RuntimeError, ws_exc.ConnectionClosed):
+                    pass
+                _done.set()
+                try:
+                    await dg_ws.close()
+                except Exception:
+                    pass
+
+            await asyncio.gather(forward_audio(), forward_transcripts(), keepalive(), enforce_max_duration())
         finally:
             try:
                 await dg_ws.close()
@@ -583,7 +602,7 @@ def list_scenarios(current_user: UserInfo = Depends(get_current_user)):
     return data.data
 
 
-def _recommend_scenarios(current_user: UserInfo, limit: int) -> list:
+def _recommend_scenarios(current_user: UserInfo, user_db: Client, limit: int) -> list:
     """Shared ranking used by both /scenarios/recommend (single) and
     /scenarios/recommendations (row): unattempted scenarios first (shuffled,
     so repeat visits don't always see the same one), then the user's
@@ -598,7 +617,7 @@ def _recommend_scenarios(current_user: UserInfo, limit: int) -> list:
     if not all_scenarios.data:
         raise HTTPException(status_code=404, detail="No scenarios available")
 
-    attempted_ids = supabase.table("submissions").select(
+    attempted_ids = user_db.table("submissions").select(
         "scenario_id"
     ).eq("user_id", current_user.id).eq("module", "speaking").execute()
     attempted_set = {s["scenario_id"] for s in attempted_ids.data if s.get("scenario_id")}
@@ -606,7 +625,7 @@ def _recommend_scenarios(current_user: UserInfo, limit: int) -> list:
     unattempted = [s for s in all_scenarios.data if s["id"] not in attempted_set]
     random.shuffle(unattempted)
 
-    feedback_data = supabase.table("submissions").select(
+    feedback_data = user_db.table("submissions").select(
         "scenario_id, score"
     ).eq("user_id", current_user.id).eq("module", "speaking").execute()
     avg_scores = {}
@@ -664,15 +683,22 @@ def _recommend_scenarios(current_user: UserInfo, limit: int) -> list:
 
 
 @router.get("/scenarios/recommend")
-def recommend_scenario(current_user: UserInfo = Depends(get_current_user)):
+def recommend_scenario(
+    current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
+):
     """Recommend a single scenario \u2014 used by the dashboard's recommended-case card."""
-    return _recommend_scenarios(current_user, limit=1)[0]
+    return _recommend_scenarios(current_user, user_db, limit=1)[0]
 
 
 @router.get("/scenarios/recommendations")
-def recommend_scenarios(limit: int = 3, current_user: UserInfo = Depends(get_current_user)):
+def recommend_scenarios(
+    limit: int = 3,
+    current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
+):
     """Recommend up to `limit` scenarios \u2014 used by the picker's recommended row."""
-    return _recommend_scenarios(current_user, limit=limit)
+    return _recommend_scenarios(current_user, user_db, limit=limit)
 
 
 @router.get("/scenarios/{scenario_id}")
@@ -758,6 +784,7 @@ async def chat_with_patient(
 async def score_speaking_session(
     request: SpeakingSubmitRequest,
     current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
 ):
     """
     Score a completed speaking session.
@@ -821,6 +848,13 @@ async def score_speaking_session(
             detail="Scoring is temporarily unavailable. Please try again in a few minutes.",
         )
 
+    # Claimed here, not before the AI call above -- a provider_failure retry
+    # above must still be allowed to re-score the same session_id (see the
+    # comment there), it's only a *successful* score that should never be
+    # persisted twice for one session.
+    if not await run_sync(claim_session_for_scoring, current_user.id, request.session_id):
+        raise HTTPException(status_code=409, detail="This session has already been scored.")
+
     # Save submission
     transcript = "\n".join([
         f"{'Nurse' if m.role == 'nurse' else 'Patient'}: {m.content}"
@@ -828,7 +862,7 @@ async def score_speaking_session(
     ])
 
     await run_sync(
-        supabase.table("submissions").insert({
+        user_db.table("submissions").insert({
             "user_id": current_user.id,
             "scenario_id": request.scenario_id,
             "module": "speaking",
@@ -858,7 +892,7 @@ async def score_speaking_session(
 @router.post("/pronunciation", dependencies=[Depends(require_feature("speaking_practice"))])
 async def assess_pronunciation(
     audio: UploadFile = File(...),
-    nurse_transcript: str = Form(...),
+    nurse_transcript: str = Form(..., max_length=5000),
     current_user: UserInfo = Depends(get_current_user)
 ):
     """
@@ -926,18 +960,22 @@ async def assess_pronunciation(
         }
 
 
+class GenerateScenarioRequest(BaseModel):
+    specialty: str = Field(default="general", max_length=200)
+    difficulty: str = Field(default="intermediate", max_length=50)
+    setting: str = Field(default="", max_length=1000)
+
+
 @router.post("/scenarios/generate")
 async def generate_scenario(
-    payload: dict,
+    payload: GenerateScenarioRequest,
     _admin: UserInfo = Depends(require_admin),
 ):
     """Admin-only: generate a new OET scenario (includes examiner-only interlocutor card)."""
-    from app.services.ai_scoring import _call_ai
-    import json
-    
-    specialty = payload.get("specialty", "general")
-    difficulty = payload.get("difficulty", "intermediate")
-    setting = payload.get("setting", "")
+
+    specialty = payload.specialty
+    difficulty = payload.difficulty
+    setting = payload.setting
     
     prompt = f"""You are an OET exam content creator. Generate a realistic OET Speaking roleplay card for a nursing student.
 
@@ -981,7 +1019,6 @@ Return ONLY this JSON, no other text:
         [{"role": "user", "content": prompt}],
         max_tokens=1500,
         json_mode=True,
-        provider="openrouter",
         model="google/gemini-3.5-flash",
     )
     

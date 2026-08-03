@@ -2,7 +2,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from app.core.supabase import get_supabase
 from app.routers.auth import get_current_user, UserInfo
 

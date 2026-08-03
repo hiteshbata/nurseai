@@ -1,3 +1,4 @@
+import { memo } from "react"
 import { DashboardHeader } from "./oet/dashboard-header"
 import { FirstRunHero } from "./oet/FirstRunHero"
 import { HeroCards } from "./oet/hero-cards"
@@ -40,7 +41,7 @@ function UpgradeBannerSkeleton() {
   return <SkeletonBlock className="h-20 w-full" />
 }
 
-export function OetDashboard(props: OetDashboardProps) {
+function OetDashboardImpl(props: OetDashboardProps) {
   return (
     // AppShell owns <main>, the page width, and the horizontal padding, so the
     // sidebar edge and the card edge line up on every app route.
@@ -127,3 +128,5 @@ export function OetDashboard(props: OetDashboardProps) {
     </div>
   )
 }
+
+export const OetDashboard = memo(OetDashboardImpl)

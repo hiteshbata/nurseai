@@ -50,6 +50,7 @@ export function UpgradeBanner({ sessionsUsed, sessionsLimit, sessionsRemaining, 
               <div className="flex-1 max-w-[200px]">
                 <Progress
                   value={Math.min(pct, 100)}
+                  label="Sessions used this period"
                   className="h-2 bg-white/30 [&>div]:bg-white"
                 />
               </div>

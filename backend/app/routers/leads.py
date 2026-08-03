@@ -1,9 +1,11 @@
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
 from app.core.supabase import get_supabase
+from app.core.captcha import verify_captcha
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import _client_ip
 
@@ -23,15 +25,19 @@ class InstituteLeadCreate(BaseModel):
     phone: str | None = Field(default=None, max_length=40)
     student_count: int | None = Field(default=None, ge=1, le=100_000)
     message: str | None = Field(default=None, max_length=2000)
+    captcha_token: Optional[str] = None
 
 
 @router.post("/institute", status_code=201)
-def create_institute_lead(lead: InstituteLeadCreate, request: Request):
-    if _institute_lead_rate_limiter.is_rate_limited(_client_ip(request)):
+async def create_institute_lead(lead: InstituteLeadCreate, request: Request):
+    client_ip = _client_ip(request)
+    if _institute_lead_rate_limiter.is_rate_limited(client_ip):
         raise HTTPException(status_code=429, detail="Too many submissions — please try again later.")
+    if not await verify_captcha(lead.captcha_token, client_ip):
+        raise HTTPException(status_code=400, detail="Captcha verification failed.")
 
     try:
-        get_supabase().table("institute_leads").insert(lead.model_dump()).execute()
+        get_supabase().table("institute_leads").insert(lead.model_dump(exclude={"captcha_token"})).execute()
     except Exception:
         logger.exception("Failed to store institute lead")
         raise HTTPException(status_code=500, detail="Could not submit your request — please try again.")

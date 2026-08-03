@@ -2,12 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
+from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo
 from app.services.ai_scoring import compare_attempts
 from app.services.plan_gating import get_plan_from_profile, get_history_limit
 import json
 
 router = APIRouter(prefix="/compare", tags=["progress"])
+
+_compare_rate_limiter = SlidingWindowRateLimiter(20, 600, name="compare:attempts")
 
 
 class CompareRequest(BaseModel):
@@ -26,6 +29,8 @@ async def compare_attempts_endpoint(
     history is (get_history_limit) -- Free/Basic can only compare within
     their most recent N attempts of this scenario, Pro/Elite (limit 999)
     can compare any two of their own attempts."""
+    if _compare_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many requests -- please try again in a while.")
     supabase = get_supabase()
 
     profile_data = await run_sync(

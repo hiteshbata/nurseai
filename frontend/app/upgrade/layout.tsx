@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 
 export const metadata: Metadata = {
   title: 'Upgrade Your Plan',
@@ -6,5 +7,7 @@ export const metadata: Metadata = {
 }
 
 export default function UpgradeLayout({ children }: { children: React.ReactNode }) {
+  // See app/dashboard/layout.tsx for why this call is here.
+  headers()
   return <>{children}</>
 }

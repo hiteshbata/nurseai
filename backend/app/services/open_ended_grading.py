@@ -2,7 +2,7 @@
 Part A short-answer and Listening's Part A gap-fill both grade this way: one
 batched AI call per submission, tolerant of wording/spelling variants."""
 import json
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from app.services.ai_scoring import _call_ai, GEMINI_SCORING_FREE_MODEL
 
@@ -37,7 +37,6 @@ Return ONLY this JSON, no other text:
         [{"role": "user", "content": prompt}],
         max_tokens=1500,
         json_mode=True,
-        provider="openrouter",
         model=GEMINI_SCORING_FREE_MODEL,
         user_id=user_id,
     )

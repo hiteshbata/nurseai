@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # router (app/routers/speaking_realtime.py), not by either provider.
     REALTIME_SESSION_MAX_SECONDS: int = 300
     REALTIME_SESSION_WARNING_SECONDS: int = 270
+    # Deepgram STT proxy (app/routers/speaking.py stt_deepgram_stream) has no
+    # natural end signal like the realtime voice pipeline does -- cap wall-
+    # clock connection time so a client can't hold it open indefinitely.
+    STT_STREAM_MAX_SECONDS: int = 600
 
     # Hard cap on how long a text-chat session_id (check_and_increment_session)
     # stays valid, enforced in app/routers/sessions.py validate_session. Without
@@ -107,5 +111,14 @@ class Settings(BaseSettings):
     # a 503 once tripped, so a bug or an attack can't run up unbounded provider
     # cost. Adjustable at runtime via PUT /admin/spend-cap (owner-only).
     MAX_DAILY_AI_SPEND_USD: float = 50.0
+    # Cloudflare Turnstile secret for the public /tools/study-plan endpoint
+    # (see app/routers/tools.py) -- unset -> captcha check is skipped, same
+    # no-op-when-unset pattern as CRON_SECRET/RESEND_API_KEY above.
+    TURNSTILE_SECRET_KEY: str = ""
+    # Slack Incoming Webhook URL for same-day-worthy failures (payment
+    # amount mismatch, realtime provider connect failure, prune-cron
+    # failure -- see app/services/alerts.py). Unset -> alerts no-op and
+    # just log, same pattern as RESEND_API_KEY/TURNSTILE_SECRET_KEY above.
+    SLACK_ALERT_WEBHOOK_URL: str = ""
 
 settings = Settings()

@@ -2,7 +2,7 @@
 
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, useCallback, useMemo, Suspense } from 'react'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { OetDashboard } from '@/components/oet-dashboard'
@@ -134,7 +134,7 @@ export default function DashboardPage() {
       .finally(() => setHistoryReady(true))
   }
 
-  const setExamDate = async (dateStr: string) => {
+  const setExamDate = useCallback(async (dateStr: string) => {
     setSavingExamDate(true)
     try {
       const res = await api.put('/profile/practice-plan', { exam_date: dateStr })
@@ -147,7 +147,7 @@ export default function DashboardPage() {
     } finally {
       setSavingExamDate(false)
     }
-  }
+  }, [])
 
   // Fall back to the email's local part (e.g. "Test" from test@gmail.com)
   // rather than the raw address -- a full email in a page-1 greeting reads
@@ -201,7 +201,7 @@ export default function DashboardPage() {
         ? 'Focus on Speaking — your weakest module'
         : 'Keep practising Writing to maintain score'
 
-  const mappedSubmissions =
+  const mappedSubmissions = useMemo(() =>
     stats?.recent_submissions?.map(s => ({
       id: String(s.id),
       date: new Date(s.created_at)
@@ -211,20 +211,23 @@ export default function DashboardPage() {
         ? 'Speaking' : 'Writing',
       score: s.score,
       band: scoreToGrade(s.score)
-    })) || []
+    })) || [],
+    [stats?.recent_submissions])
 
-  const recentSubmissionDates = (stats?.recent_submissions || [])
-    .map(s => s.created_at.slice(0, 10))
+  const recentSubmissionDates = useMemo(() =>
+    (stats?.recent_submissions || [])
+      .map(s => s.created_at.slice(0, 10)),
+    [stats?.recent_submissions])
 
   const streak = stats?.current_streak || 0
 
-  const criteriaScores = {
+  const criteriaScores = useMemo(() => ({
     fluency: criteriaAverages?.fluency ?? null,
     grammar: criteriaAverages?.grammar ?? null,
     pronunciation: criteriaAverages?.intelligibility ?? null,
     empathy: criteriaAverages?.empathy ?? null,
     intelligibility: criteriaAverages?.intelligibility ?? null,
-  }
+  }), [criteriaAverages])
 
   return (
     <Suspense fallback={

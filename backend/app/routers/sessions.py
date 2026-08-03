@@ -1,8 +1,9 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from app.core.config import settings
-from app.routers.auth import get_current_user, UserInfo
+from app.routers.auth import get_current_user, get_user_supabase, UserInfo
 from app.core.supabase import get_supabase
+from supabase import Client
 from app.core.plans import PLAN_LIMITS
 from app.services.plan_gating import get_plan_from_profile, parse_timestamp
 from datetime import datetime, timezone
@@ -77,8 +78,14 @@ def get_session_usage(current_user: UserInfo = Depends(get_current_user)):
 @router.post("/check-and-increment")
 def check_and_increment_session(
     current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
 ):
     supabase = get_supabase()
+    # user_profiles writes below (sessions_used_this_month, bonus_sessions)
+    # stay on the service_role client deliberately: those are entitlement
+    # columns authenticated has no write grant on (see
+    # backend/migrations/2026-08-02_authenticated_user_rls.sql Part 1) --
+    # only the session_usage insert further down uses user_db.
 
     # The compare-and-swap update below only ever matches an existing row;
     # a user with no user_profiles row yet (e.g. registered but never
@@ -158,7 +165,7 @@ def check_and_increment_session(
             detail="Could not record session usage due to a conflicting request — please try again.",
         )
 
-    session_row = supabase.table("session_usage").insert({
+    session_row = user_db.table("session_usage").insert({
         "user_id": current_user.id,
         "session_type": "speaking",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -201,6 +208,20 @@ def validate_session(user_id: str, session_id: int) -> bool:
         return True
     age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds()
     return age_seconds <= settings.CHAT_SESSION_MAX_SECONDS
+
+
+def claim_session_for_scoring(user_id: str, session_id: int) -> bool:
+    """Atomically marks a session_usage row as scored (see
+    public.claim_session_for_scoring, migrations/20260802030000). Returns
+    False if the session was already claimed -- e.g. a retried or replayed
+    /speaking/score call reusing a still-valid session_id -- so the caller
+    can reject the second attempt instead of writing a duplicate submission."""
+    supabase = get_supabase()
+    result = supabase.rpc(
+        "claim_session_for_scoring",
+        {"p_session_id": session_id, "p_user_id": user_id},
+    ).execute()
+    return bool(result.data)
 
 
 def is_first_ever_session(user_id: str, session_type: str = "speaking") -> bool:

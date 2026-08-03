@@ -1,16 +1,28 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
+import Script from 'next/script'
 import { CheckCircle2 } from "lucide-react"
 import api, { getPlans, FALLBACK_PLANS, type Plan } from "@/lib/api"
 import { useInView } from "@/app/hooks/useInView"
 
 const fallbackElite = FALLBACK_PLANS.find((p) => p.id === 'elite')!
 
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
+
 type FormStatus = 'idle' | 'submitting' | 'done' | 'error'
 
 function InstituteLeadForm() {
   const [status, setStatus] = useState<FormStatus>('idle')
+  const [captchaToken, setCaptchaToken] = useState('')
+
+  // Same Cloudflare Turnstile implicit-render pattern as
+  // tools/ai-study-plan-generator/StudyPlanGenerator.tsx.
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY) return
+    ;(window as any).__onInstituteTurnstileToken = (token: string) => setCaptchaToken(token)
+    ;(window as any).__onInstituteTurnstileExpired = () => setCaptchaToken('')
+  }, [])
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -24,17 +36,21 @@ function InstituteLeadForm() {
         email: data.get('email'),
         phone: data.get('phone') || undefined,
         message: data.get('message') || undefined,
+        captcha_token: captchaToken || undefined,
       })
       setStatus('done')
       form.reset()
     } catch {
       setStatus('error')
+    } finally {
+      setCaptchaToken('')
+      ;(window as any).turnstile?.reset()
     }
   }
 
   if (status === 'done') {
     return (
-      <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-5 text-center">
+      <div role="status" className="rounded-xl bg-emerald-50 border border-emerald-200 p-5 text-center">
         <p className="text-sm font-semibold text-[#0F2356]">Thanks — we'll be in touch shortly.</p>
       </div>
     )
@@ -45,17 +61,34 @@ function InstituteLeadForm() {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
-      <input name="institute_name" required placeholder="Institute name" className={inputClass} />
-      <input name="contact_name" required placeholder="Your name" className={inputClass} />
-      <input name="email" type="email" required placeholder="Email address" className={inputClass} />
-      <input name="phone" placeholder="Phone (optional)" className={inputClass} />
-      <textarea name="message" placeholder="Number of students, timeline, questions... (optional)" rows={2} className={inputClass} />
+      <label htmlFor="institute_name" className="sr-only">Institute name</label>
+      <input id="institute_name" name="institute_name" required placeholder="Institute name" className={inputClass} />
+      <label htmlFor="contact_name" className="sr-only">Your name</label>
+      <input id="contact_name" name="contact_name" required placeholder="Your name" className={inputClass} />
+      <label htmlFor="email" className="sr-only">Email address</label>
+      <input id="email" name="email" type="email" required placeholder="Email address" className={inputClass} />
+      <label htmlFor="phone" className="sr-only">Phone (optional)</label>
+      <input id="phone" name="phone" placeholder="Phone (optional)" className={inputClass} />
+      <label htmlFor="message" className="sr-only">Number of students, timeline, questions (optional)</label>
+      <textarea id="message" name="message" placeholder="Number of students, timeline, questions... (optional)" rows={2} className={inputClass} />
       {status === 'error' && (
-        <p className="text-xs text-red-600">Something went wrong — please try again, or email support@speakoet.com.</p>
+        <p role="alert" className="text-xs text-red-600">Something went wrong — please try again, or email support@speakoet.com.</p>
+      )}
+      {TURNSTILE_SITE_KEY && (
+        <>
+          <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" strategy="afterInteractive" />
+          <div
+            className="cf-turnstile"
+            data-sitekey={TURNSTILE_SITE_KEY}
+            data-callback="__onInstituteTurnstileToken"
+            data-expired-callback="__onInstituteTurnstileExpired"
+            data-error-callback="__onInstituteTurnstileExpired"
+          />
+        </>
       )}
       <button
         type="submit"
-        disabled={status === 'submitting'}
+        disabled={status === 'submitting' || (!!TURNSTILE_SITE_KEY && !captchaToken)}
         className="w-full text-center bg-[#047857] text-white font-semibold px-6 py-3 rounded-lg hover:bg-[#036546] transition-colors disabled:opacity-60"
       >
         {status === 'submitting' ? 'Sending…' : 'Get Elite Pricing'}

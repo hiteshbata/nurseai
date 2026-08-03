@@ -1,6 +1,7 @@
 """Public, unauthenticated marketing tools (no login required) -- the
 counterpart to the free client-side OET score calculator. This one calls the
 AI, so unlike the calculator it needs IP rate-limiting to bound cost/abuse."""
+import asyncio
 import logging
 from typing import Dict, Optional, Tuple
 
@@ -8,10 +9,13 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.routers.auth import _client_ip
+from app.core.captcha import verify_captcha
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.services.ai_scoring import _call_ai, GEMINI_SCORING_FREE_MODEL
 
 logger = logging.getLogger(__name__)
+
+_AI_CALL_TIMEOUT_SECONDS = 15
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
@@ -42,6 +46,7 @@ class StudyPlanRequest(BaseModel):
     target_regulator_name: str = Field(min_length=1, max_length=120)
     weeks_until_exam: Optional[int] = Field(default=None, ge=0, le=104)
     hours_per_week: Optional[int] = Field(default=None, ge=1, le=100)
+    captcha_token: Optional[str] = None
 
 
 def _weakest_module(scores: Dict[str, int], target: Dict[str, int]) -> Optional[Tuple[str, int]]:
@@ -83,8 +88,11 @@ def _fallback_plan(weakest: Optional[Tuple[str, int]], num_weeks: int) -> Dict:
 
 @router.post("/study-plan")
 async def generate_study_plan(body: StudyPlanRequest, request: Request):
-    if _study_plan_rate_limiter.is_rate_limited(_client_ip(request)):
+    client_ip = _client_ip(request)
+    if _study_plan_rate_limiter.is_rate_limited(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests -- please try again in a while.")
+    if not await verify_captcha(body.captcha_token, client_ip):
+        raise HTTPException(status_code=400, detail="Captcha verification failed.")
 
     scores = body.scores.as_dict()
     target = body.target_requirements.as_dict()
@@ -127,12 +135,14 @@ Write a specific, motivating {num_weeks}-week plan prioritizing {weak_label} fir
 Be concrete -- reference the actual sub-test names and point gaps above. Do NOT use generic filler like "keep practicing" or "you're doing great"."""
 
     try:
-        result = await _call_ai(
-            [{"role": "user", "content": prompt}],
-            max_tokens=900,
-            json_mode=True,
-            provider="openrouter",
-            model=GEMINI_SCORING_FREE_MODEL,
+        result = await asyncio.wait_for(
+            _call_ai(
+                [{"role": "user", "content": prompt}],
+                max_tokens=900,
+                json_mode=True,
+                model=GEMINI_SCORING_FREE_MODEL,
+            ),
+            timeout=_AI_CALL_TIMEOUT_SECONDS,
         )
         weeks = result.get("weeks")
         if not isinstance(weeks, list) or not weeks:

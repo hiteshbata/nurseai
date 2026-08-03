@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useSupabaseSession } from '@/lib/supabase'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 // Matches backend/app/routers/admin.py's ROLE_RANK -- any staff tier
 // (support and up) gets past the front door; per-page/per-action floors
@@ -268,7 +269,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         </div>
       </nav>
 
-      <div className="flex-1 min-w-0">{children}</div>
+      <div className="flex-1 min-w-0">
+        <ErrorBoundary>{children}</ErrorBoundary>
+      </div>
     </div>
   )
 }

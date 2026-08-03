@@ -26,6 +26,10 @@ COACH_SUMMARY_RATE_LIMIT_MAX_CALLS = 10
 COACH_SUMMARY_RATE_LIMIT_WINDOW_SECONDS = 600
 _coach_summary_rate_limiter = SlidingWindowRateLimiter(COACH_SUMMARY_RATE_LIMIT_MAX_CALLS, COACH_SUMMARY_RATE_LIMIT_WINDOW_SECONDS, name="progress:coach_summary")
 
+STUDY_PLAN_RATE_LIMIT_MAX_CALLS = 10
+STUDY_PLAN_RATE_LIMIT_WINDOW_SECONDS = 600
+_study_plan_rate_limiter = SlidingWindowRateLimiter(STUDY_PLAN_RATE_LIMIT_MAX_CALLS, STUDY_PLAN_RATE_LIMIT_WINDOW_SECONDS, name="progress:study_plan")
+
 @router.get("/stats")
 def get_user_stats(
     current_user: UserInfo = Depends(get_current_user),
@@ -174,7 +178,6 @@ Be specific — cite actual criteria from the data (empathy, fluency, grammar, e
     result = await _call_ai(
         [{"role": "user", "content": prompt}],
         max_tokens=300,
-        provider="openrouter",
         model="google/gemini-2.5-flash",
     )
 
@@ -192,6 +195,8 @@ async def get_study_plan(current_user: UserInfo = Depends(get_current_user)):
     """Elite-only: a personalized weekly study plan built from rule-based
     weak-criteria detection across the user's speaking history, plus an
     AI-generated narrative on top. See app.services.coach for the logic."""
+    if _study_plan_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many requests -- please try again in a while.")
     supabase = get_supabase()
 
     profile_data = await run_sync(

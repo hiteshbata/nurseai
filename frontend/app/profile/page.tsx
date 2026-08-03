@@ -27,6 +27,15 @@ interface UserProfile {
   days_per_week: number | null
 }
 
+interface Receipt {
+  payment_id: string
+  plan_name: string
+  amount: number
+  currency: string
+  status: string
+  created_at: string | null
+}
+
 const PLAN_LABELS: Record<string, string> = {
   free: 'Free Plan',
   basic: 'Basic Plan',
@@ -52,6 +61,8 @@ export default function ProfilePage() {
   const router = useRouter()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [sessionUsage, setSessionUsage] = useState<SessionUsage | null>(null)
+  const [receipts, setReceipts] = useState<Receipt[]>([])
+  const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -80,18 +91,37 @@ export default function ProfilePage() {
 
   const fetchProfile = async () => {
     try {
-      const [usageRes, profileRes] = await Promise.all([
+      const [usageRes, profileRes, receiptsRes] = await Promise.all([
         api.get('/sessions/usage'),
         api.get('/onboarding/status'),
+        api.get('/payments/receipts').catch(() => ({ data: [] })),
       ])
       setSessionUsage(usageRes.data)
       if (profileRes.data?.user_id) {
         setProfile(profileRes.data)
       }
+      setReceipts(receiptsRes.data || [])
     } catch (err) {
       console.error('Failed to load profile', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const downloadReceipt = async (paymentId: string) => {
+    setDownloadingReceiptId(paymentId)
+    try {
+      const res = await api.get(`/payments/receipts/${paymentId}/pdf`, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `receipt-${paymentId}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      toast.error('Failed to download receipt')
+    } finally {
+      setDownloadingReceiptId(null)
     }
   }
 
@@ -365,6 +395,28 @@ export default function ProfilePage() {
               </>
             )}
           </div>
+
+          {receipts.length > 0 && (
+            <div className="mt-5 pt-5 border-t border-gray-50">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Payment history</h3>
+              <ul className="space-y-2">
+                {receipts.map((r) => (
+                  <li key={r.payment_id} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-gray-600">
+                      {formatDisplayDate(r.created_at)} — {r.plan_name} — {r.currency} {(r.amount / 100).toFixed(2)}
+                    </span>
+                    <button
+                      onClick={() => downloadReceipt(r.payment_id)}
+                      disabled={downloadingReceiptId === r.payment_id}
+                      className="font-semibold text-[#0F2356] hover:text-[#0F2356]/70 transition-colors disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {downloadingReceiptId === r.payment_id ? 'Downloading…' : 'Download receipt'}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <div id="practice-plan" className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 scroll-mt-24">

@@ -70,8 +70,16 @@ def test_inactive_past_grace_period():
 
 
 def test_no_expiry_recorded_is_treated_as_active():
-    # Legacy row / not yet backfilled — nothing to enforce against.
+    # Legacy free row / not yet backfilled — nothing to enforce against.
     assert is_subscription_active({}, now=NOW) is True
+
+
+def test_paid_plan_with_no_expiry_recorded_is_treated_as_expired():
+    # Only shape possible if process_payment committed a plan change but
+    # grant_subscription_period failed right after (partial-failure gap) --
+    # fail closed instead of granting permanent free access to a paid plan.
+    profile = {"plan": "elite"}
+    assert is_subscription_active(profile, now=NOW) is False
 
 
 # ── get_plan_from_profile (the actual enforcement point) ─────────────
@@ -319,6 +327,57 @@ def test_grant_subscription_period_raises_if_rpc_returns_no_row(monkeypatch):
 
     with pytest.raises(RuntimeError):
         payments_mod.grant_subscription_period("ghost-user", "pro", previous_plan="free")
+
+
+class _FakeWritableTable(_FakeReadOnlyTable):
+    def __init__(self, rows, updates):
+        super().__init__(rows)
+        self.updates = updates
+        self._pending = None
+
+    def update(self, values):
+        self._pending = values
+        return self
+
+    def execute(self):
+        if self._pending is not None:
+            self.updates.append((self._filter_user_id, self._pending))
+            self._pending = None
+            return _FakeResult(None)
+        return super().execute()
+
+
+class _FakeRpcSupabaseThatFailsGrant(_FakeRpcSupabase):
+    """rpc("grant_subscription_period", ...) raises; table() supports update()
+    so the revert path in grant_subscription_period has somewhere to write."""
+    def __init__(self):
+        super().__init__()
+        self.table_updates = []
+
+    def rpc(self, name, params):
+        if name == "grant_subscription_period":
+            raise RuntimeError("simulated network failure")
+        return super().rpc(name, params)
+
+    def table(self, name):
+        return _FakeWritableTable(self.table_rows, self.table_updates)
+
+
+def test_grant_subscription_period_reverts_plan_on_rpc_failure(monkeypatch):
+    # If process_payment already committed user_profiles.plan but the
+    # separate grant_subscription_period call then fails, the caller must
+    # not be left permanently upgraded with no expiry ever set -- verify
+    # the revert-to-previous-plan happens and the failure still propagates.
+    import app.routers.payments as payments_mod
+    import pytest
+
+    fake = _FakeRpcSupabaseThatFailsGrant()
+    monkeypatch.setattr(payments_mod, "get_supabase", lambda: fake)
+
+    with pytest.raises(RuntimeError):
+        payments_mod.grant_subscription_period("user-1", "elite", previous_plan="basic")
+
+    assert fake.table_updates == [("user-1", {"plan": "basic"})]
 
 
 def test_previous_plan_is_captured_before_process_payment_call_in_verify_payment():

@@ -156,12 +156,27 @@ export async function signOut() {
   const client = getClient()
   if (client) {
     loggingOut = true
+    // Captured before signOut() clears local storage -- the interceptor in
+    // api.ts can no longer find a token to attach once the session is gone,
+    // so it's passed explicitly to /auth/logout below.
+    const { data: { session } } = await client.auth.getSession()
+    const accessToken = session?.access_token
     try {
       await client.auth.signOut()
     } catch (e) {
       console.error('[supabase] signOut error (non-fatal):', e)
     } finally {
       loggingOut = false
+    }
+    if (accessToken) {
+      try {
+        // Dynamic import: api.ts imports `supabase` from this file, so a
+        // static import here would be circular.
+        const { default: api } = await import('@/lib/api')
+        await api.post('/auth/logout', {}, { headers: { Authorization: `Bearer ${accessToken}` } })
+      } catch (e) {
+        console.error('[supabase] server-side logout revoke failed (non-fatal):', e)
+      }
     }
   }
 }

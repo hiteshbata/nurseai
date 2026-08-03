@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.config import settings
-from app.routers.auth import get_current_user, UserInfo
+from app.routers.auth import get_current_user, get_user_supabase, UserInfo
+from supabase import Client
 from app.routers.admin import require_admin
 from app.core.feature_flags import require_feature
 from app.services.ai_scoring import score_writing, _try_parse_json
@@ -14,6 +15,7 @@ from app.services.skill_graph import record_skill_observations
 from app.core.redis_client import get_redis
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import secrets
@@ -41,10 +43,14 @@ MAX_PDF_BYTES = 10 * 1024 * 1024
 
 WRITING_PLAN_GATE_ENABLED = True
 
+# A typed OET letter runs a few hundred words -- 20k chars is generous
+# headroom while still bounding worst-case prompt-token cost.
+MAX_WRITING_CONTENT_CHARS = 20_000
+
 
 class WritingSubmitRequest(BaseModel):
     scenario_id: int
-    content: str
+    content: str = Field(max_length=MAX_WRITING_CONTENT_CHARS)
 
 
 class WritingOcrRequest(BaseModel):
@@ -86,7 +92,7 @@ async def _require_writing_scenario(supabase, user_id: str, scenario_id: int) ->
     return scenario_data.data[0]
 
 
-async def _score_and_save(supabase, user_id: str, scenario_id: int, content: str, nurse_card: dict, scenario_title: str, case_notes: str = "") -> dict:
+async def _score_and_save(supabase, user_db, user_id: str, scenario_id: int, content: str, nurse_card: dict, scenario_title: str, case_notes: str = "") -> dict:
     """Score writing content and persist the submission. Used by /submit (typed, or
     text confirmed after photo OCR)."""
     feedback = await score_writing(
@@ -104,7 +110,7 @@ async def _score_and_save(supabase, user_id: str, scenario_id: int, content: str
         )
 
     await run_sync(
-        supabase.table("submissions").insert({
+        user_db.table("submissions").insert({
             "user_id": user_id,
             "scenario_id": scenario_id,
             "module": "writing",
@@ -146,20 +152,48 @@ def get_scenario(scenario_id: int, current_user: UserInfo = Depends(get_current_
     return data.data[0]
 
 
+# A double-click or client retry resubmitting the exact same letter for the
+# same scenario within this window is almost certainly a duplicate, not a
+# genuine second attempt -- blocks it from scoring (and skill-graph-recording)
+# twice. Redis-backed with a per-process fallback, same shape as
+# auth.py's _role_recently_upserted.
+SUBMIT_DEDUP_WINDOW_SECONDS = 60
+_recent_submit_keys: dict[str, float] = {}
+
+
+def _is_duplicate_submit(user_id: str, scenario_id: int, content: str) -> bool:
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    key = f"writing_submit_dedup:{user_id}:{scenario_id}:{digest}"
+    client = get_redis()
+    if client is not None:
+        return not client.set(key, "1", nx=True, ex=SUBMIT_DEDUP_WINDOW_SECONDS)
+    now = time.time()
+    expired_keys = [k for k, ts in _recent_submit_keys.items() if now - ts > SUBMIT_DEDUP_WINDOW_SECONDS]
+    for k in expired_keys:
+        del _recent_submit_keys[k]
+    if key in _recent_submit_keys:
+        return True
+    _recent_submit_keys[key] = now
+    return False
+
+
 @router.post("/submit")
 async def submit_writing(
     request: WritingSubmitRequest,
     current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
 ):
     """Submit a typed writing response for scoring."""
     if _submit_rate_limiter.is_rate_limited(current_user.id):
         raise HTTPException(status_code=429, detail="Too many submissions — please slow down.")
+    if _is_duplicate_submit(current_user.id, request.scenario_id, request.content):
+        raise HTTPException(status_code=409, detail="This submission is already being scored — please wait.")
 
     supabase = get_supabase()
     scenario = await _require_writing_scenario(supabase, current_user.id, request.scenario_id)
 
     feedback = await _score_and_save(
-        supabase, current_user.id, request.scenario_id,
+        supabase, user_db, current_user.id, request.scenario_id,
         request.content, scenario.get("nurse_card", {}), scenario.get("title", ""),
         case_notes=scenario.get("setting", ""),
     )

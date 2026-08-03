@@ -2,13 +2,15 @@
 import time
 from datetime import datetime, timezone
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from gotrue.errors import AuthApiError
 from app.core.config import settings
+from app.core.captcha import verify_captcha
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.redis_client import get_redis
-from app.core.supabase import get_supabase, get_auth_client
+from app.core.supabase import get_supabase, get_auth_client, get_user_scoped_client
+from supabase import Client
 from app.schemas.user import UserCreate, UserLogin
 from app.services.plan_gating import get_plan_from_profile, get_effective_subscription_status
 from pydantic import BaseModel
@@ -155,10 +157,28 @@ def get_current_user(
         logger.warning("JWT verification failed: %s", e)
         raise HTTPException(status_code=401, detail="Authentication failed")
 
+
+def get_user_supabase(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    _current_user: UserInfo = Depends(get_current_user),
+) -> Client:
+    """RLS-scoped client for the caller's own rows. Depends on get_current_user
+    first so an invalid/expired token 401s before any client is built --
+    FastAPI caches that dependency's result, so the token is verified once per
+    request even when a route also takes `current_user` directly. Only use
+    this against tables with an authenticated RLS policy (see
+    backend/migrations/2026-08-02_authenticated_user_rls.sql); every other
+    table has no authenticated-role policy at all and every query will come
+    back empty."""
+    return get_user_scoped_client(credentials.credentials)
+
 @router.post("/register")
-def register(user: UserCreate, request: Request):
-    if _register_rate_limiter.is_rate_limited(_client_ip(request)):
+async def register(user: UserCreate, request: Request):
+    client_ip = _client_ip(request)
+    if _register_rate_limiter.is_rate_limited(client_ip):
         raise HTTPException(status_code=429, detail="Too many registration attempts — please try again later.")
+    if not await verify_captcha(user.captcha_token, client_ip):
+        raise HTTPException(status_code=400, detail="Captcha verification failed.")
     auth_client = get_auth_client()
     try:
         resp = auth_client.auth.sign_up({
@@ -215,6 +235,24 @@ def login(user: UserLogin, request: Request):
     except Exception as e:
         logger.warning("Login failed for %s: %s", user.email, e)
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+@router.post("/logout")
+def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Revokes the refresh token server-side (scope=global -- all sessions
+    for this user, not just the caller's) so a stolen refresh token can't
+    outlive client-side signOut(). Best-effort: local sign-out already
+    happened on the client either way, so a revoke failure here shouldn't
+    surface as an error to the user.
+    """
+    supabase = get_supabase()
+    try:
+        supabase.auth.admin.sign_out(credentials.credentials, scope="global")
+    except Exception as e:
+        logger.warning("Server-side logout revoke failed for %s: %s", current_user.id, e)
+    return {"ok": True}
 
 @router.get("/me")
 def get_current_user_info(
