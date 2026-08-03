@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from fastapi import FastAPI
@@ -5,9 +6,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.supabase import get_supabase
 from app.core.redis_client import get_redis
+from app.core import circuit_breaker
+from app.core.request_id import RequestIDMiddleware, RequestIDLogFilter
 from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads, reading, listening, hub, vocab, mock, referrals, tools
 from app.services.oet_questions import oet_service
 from app.services.seed_scenarios import seed_scenarios
+
+_log_handler = logging.StreamHandler()
+_log_handler.addFilter(RequestIDLogFilter())
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(request_id)s] %(name)s: %(message)s",
+    handlers=[_log_handler],
+)
 
 if settings.SENTRY_DSN:
     import sentry_sdk
@@ -99,6 +110,7 @@ class SecurityHeadersMiddleware:
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestIDMiddleware)
 
 app.include_router(auth.router)
 app.include_router(questions.router)
@@ -156,6 +168,11 @@ def get_announcement():
     }
 
 
+@app.get("/sentry-debug")
+async def trigger_error():
+    return 1 / 0
+
+
 @app.get("/health")
 async def health_check():
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -189,6 +206,7 @@ async def health_check():
         "database": database_status,
         "ai_api": ai_api_status,
         "redis": redis_status,
+        "ai_providers": circuit_breaker.snapshot(),
     }
 
 if __name__ == "__main__":
