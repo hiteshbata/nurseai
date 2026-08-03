@@ -116,12 +116,47 @@ class FakeQuery:
         return FakeResult([])
 
 
+_RPC_ARG_TO_COLUMN = {
+    "p_realtime_delta": "realtime_cost_usd",
+    "p_azure_delta": "azure_cost_usd",
+    "p_scoring_delta": "scoring_cost_usd",
+    "p_tts_delta": "tts_cost_usd",
+}
+
+
+class FakeRpc:
+    def __init__(self, fn_name, params, state):
+        self.fn_name = fn_name
+        self.params = params
+        self.state = state
+
+    def execute(self):
+        if self.fn_name == "increment_session_cost":
+            # Mirrors 20260802020000_atomic_session_cost_increment.sql: sum
+            # each delta onto session_usage and record the resulting update,
+            # same shape as the old direct .update() call this replaced.
+            update = {
+                col: self.state["session_usage_row"].get(col, 0) + self.params.get(arg, 0)
+                for arg, col in _RPC_ARG_TO_COLUMN.items()
+            }
+            provider = self.params.get("p_provider")
+            if provider is not None:
+                update["provider"] = provider
+            self.state["session_usage_row"].update(update)
+            self.state["session_usage_updates"].append(update)
+            return FakeResult([update])
+        return FakeResult([])
+
+
 class FakeSupabase:
     def __init__(self, state):
         self.state = state
 
     def table(self, name):
         return FakeQuery(name, self.state)
+
+    def rpc(self, fn_name, params):
+        return FakeRpc(fn_name, params, self.state)
 
 
 class FakeWebSocket:
@@ -243,6 +278,12 @@ def _run_stream(
 
     monkeypatch.setattr(srt, "check_and_increment_session", fake_check_and_increment_session)
     monkeypatch.setattr(srt, "validate_session", lambda user_id, session_id: validate_ok)
+    # In-process SlidingWindowRateLimiter is a module-level singleton keyed by
+    # user_id (see app.core.rate_limit) -- every test here uses the same
+    # default user_id, so without this the 6th+ test in the file trips the
+    # real 5-calls/60s limit and gets rate_limited instead of exercising its
+    # actual code path.
+    monkeypatch.setattr(srt._realtime_stream_rate_limiter, "is_rate_limited", lambda key: False)
 
     async def fake_run_sync(fn, *args, **kwargs):
         return fn(*args, **kwargs)
@@ -267,6 +308,14 @@ def _run_stream(
 
 def _types(ws):
     return [m["type"] for m in ws.sent_json]
+
+
+@pytest.fixture(autouse=True)
+def _reset_realtime_stream_rate_limiter():
+    # srt._realtime_stream_rate_limiter is a module-level singleton keyed by
+    # user id; FakeUser defaults to the same id across tests, so without a
+    # reset, calls accumulate across tests and later ones get rate-limited.
+    srt._realtime_stream_rate_limiter._call_log.clear()
 
 
 # ── auth / config / quota / scenario error paths ─────────────────────
