@@ -317,7 +317,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen bg-background">
         <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/95 px-4 backdrop-blur sm:px-6 lg:px-8">
           <Link href="/" className="inline-flex rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
-            <SpeakOETLogo height={26} variant="full" theme="dark" priority />
+            <SpeakOETLogo height={32} variant="full" theme="dark" priority />
           </Link>
           <h1 className="truncate text-base font-bold text-foreground">{title}</h1>
         </header>
@@ -336,7 +336,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           onClick={onNavigate}
           className="inline-flex rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
         >
-          <SpeakOETLogo height={26} variant="full" theme="dark" priority />
+          <SpeakOETLogo height={32} variant="full" theme="dark" priority />
         </Link>
       </div>
       <div className="mt-6 flex-1 overflow-y-auto">
