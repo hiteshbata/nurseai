@@ -6,8 +6,17 @@ import { getPlans, FALLBACK_PLANS } from "@/lib/api"
 
 const fallbackFreeSessions = FALLBACK_PLANS.find((p) => p.id === 'free')!.sessions_limit
 
+// Real pass requirement is Grade B in all four sub-tests for nurses in every
+// country below -- the regulator name is what actually varies, not the grade.
+const COUNTRIES = [
+  { code: "uk", label: "UK", regulator: "NMC (UK)" },
+  { code: "au", label: "Australia", regulator: "NMBA (Australia)" },
+  { code: "nz", label: "New Zealand", regulator: "Nursing Council (NZ)" },
+] as const
+
 export default function HeroSection() {
   const [freeSessions, setFreeSessions] = useState(fallbackFreeSessions)
+  const [country, setCountry] = useState<(typeof COUNTRIES)[number]["code"]>("uk")
   // Drives the score card's one authored entrance: the progress bar fills to
   // its real value and the stat pills settle in on load, instead of sitting
   // static -- the single motion moment on the page, not a scroll-fade
@@ -97,24 +106,61 @@ export default function HeroSection() {
             />
             <div className="bg-[#0F2356] rounded-2xl shadow-premium-lg p-7 text-white">
               {/* Top */}
-              <div className="flex items-start justify-between mb-2">
-                <span className="text-white/60 text-xs font-medium uppercase tracking-widest">Your OET Band · Illustrative</span>
+              <div className="flex items-start justify-between mb-3">
+                <span className="inline-flex items-center gap-1.5 bg-amber-400/20 text-amber-300 text-xs font-semibold uppercase tracking-widest px-2.5 py-1 rounded-full">
+                  Your Path to Band B
+                </span>
                 <TrendingUp className="w-5 h-5 text-[#10B981]" />
               </div>
 
-              <div className="font-display text-7xl font-semibold mb-6">B</div>
+              <p className="text-white/50 text-[11px] font-medium uppercase tracking-wide mb-1">
+                Current OET Band
+              </p>
+              <div className="font-display text-7xl font-semibold mb-4">B</div>
+
+              {/* Destination selector — changes the regulator/requirement below, not the band */}
+              <p className="text-white/50 text-[11px] font-medium uppercase tracking-wide mb-1.5">Practising For</p>
+              <div className="flex gap-1.5 mb-3" role="group" aria-label="Destination country">
+                {COUNTRIES.map((c) => (
+                  <button
+                    key={c.code}
+                    type="button"
+                    onClick={() => setCountry(c.code)}
+                    aria-pressed={country === c.code}
+                    className={`flex-1 text-xs font-medium px-2 py-1.5 rounded-lg transition-colors ${
+                      country === c.code
+                        ? "bg-[#10B981] text-white"
+                        : "bg-white/10 text-white/60 hover:bg-white/20"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Requirement — real, changes with destination */}
+              <p className="text-white/50 text-[11px] font-medium uppercase tracking-wide mb-1.5">Requirement</p>
+              <div className="flex items-center gap-2 mb-4">
+                <Check className="w-4 h-4 text-[#10B981] shrink-0" strokeWidth={3} aria-hidden="true" />
+                <span className="text-sm font-semibold">
+                  {COUNTRIES.find((c) => c.code === country)!.regulator}: Band B in all four skills
+                </span>
+              </div>
 
               {/* Progress */}
               <div className="mb-5">
-                <div className="flex items-center justify-between text-xs text-white/60 mb-2">
-                  <span>Start C</span>
-                  <span className="text-[#10B981] font-semibold text-sm">Now B</span>
-                  <span>Target A</span>
+                <p className="text-white/50 text-[11px] font-medium uppercase tracking-wide mb-1.5">
+                  Learning Progress
+                </p>
+                <div className="flex items-center gap-1.5 text-xs mb-2">
+                  <span className="text-white/60">Start C</span>
+                  <span className="text-white/30">→</span>
+                  <span className="text-[#10B981] font-semibold">Current B</span>
                 </div>
                 <div className="w-full bg-white/20 rounded-full h-2.5">
                   <div
                     className="h-2.5 rounded-full bg-[#10B981] transition-[width] duration-[1100ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
-                    style={{ width: revealed ? "70%" : "0%" }}
+                    style={{ width: revealed ? "100%" : "0%" }}
                   />
                 </div>
               </div>
@@ -140,9 +186,6 @@ export default function HeroSection() {
                   </div>
                 ))}
               </div>
-
-              {/* Last session */}
-              <p className="text-white/50 text-xs text-center">Last session: 2 hours ago</p>
             </div>
           </div>
         </div>

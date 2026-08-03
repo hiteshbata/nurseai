@@ -54,7 +54,8 @@ const nextConfig = {
       // runtime, and without it every client component fails to hydrate (buttons
       // across the app become dead clicks). Production bundles never eval, so prod
       // stays without it.
-      `script-src 'self' 'unsafe-inline' ${process.env.NODE_ENV !== 'production' ? "'unsafe-eval' " : ''}https://checkout.razorpay.com https://www.googletagmanager.com https://www.clarity.ms https://challenges.cloudflare.com https://data.speakoet.com https://us-assets.i.posthog.com https://static.cloudflareinsights.com https://connect.facebook.net`,
+      // blob: needed for PostHog's session-recording worker, loaded as a blob: script.
+      `script-src 'self' 'unsafe-inline' blob: ${process.env.NODE_ENV !== 'production' ? "'unsafe-eval' " : ''}https://checkout.razorpay.com https://www.googletagmanager.com https://www.clarity.ms https://challenges.cloudflare.com https://data.speakoet.com https://us-assets.i.posthog.com https://static.cloudflareinsights.com https://connect.facebook.net`,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://cdn.sanity.io https://*.clarity.ms https://*.supabase.co https://www.facebook.com",
       // <audio> for the Listening module: clips are served from the public

@@ -94,7 +94,8 @@ export async function middleware(request: NextRequest) {
     "frame-ancestors 'none'",
     "object-src 'none'",
     "base-uri 'self'",
-    `script-src 'self' 'nonce-${nonce}' ${process.env.NODE_ENV !== 'production' ? "'unsafe-eval' " : ''}https://checkout.razorpay.com https://www.googletagmanager.com https://www.clarity.ms https://connect.facebook.net`,
+    // blob: needed for PostHog's session-recording worker, loaded as a blob: script.
+    `script-src 'self' 'nonce-${nonce}' blob: ${process.env.NODE_ENV !== 'production' ? "'unsafe-eval' " : ''}https://checkout.razorpay.com https://www.googletagmanager.com https://www.clarity.ms https://connect.facebook.net`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://cdn.sanity.io https://*.clarity.ms https://*.supabase.co https://www.facebook.com",
     "media-src 'self' blob: https://*.supabase.co",
