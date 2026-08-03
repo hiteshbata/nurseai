@@ -21,11 +21,16 @@ import {
   MoreHorizontal,
 } from 'lucide-react'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
-import { ThemeToggle } from '@/components/ThemeToggle'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import api from '@/lib/api'
 
 const WRITING_PLANS = ['pro', 'elite']
+// Reading/Listening: free gets one lifetime trial attempt (not plan-gated),
+// basic+ unlimited -- no plan is fully locked out, so no chip.
+// Mock Test: free gets one lifetime trial attempt too, elite unlimited, but
+// basic/pro are genuinely locked out (no trial, no unlimited access) --
+// a deny-list since free is an exception grant, not the top of an allow-list.
+const MOCK_TEST_LOCKED_PLANS = ['basic', 'pro']
 
 const PLAN_LABELS: Record<string, string> = {
   free: 'Free',
@@ -47,6 +52,9 @@ interface NavItem {
   icon: typeof LayoutDashboard
   /** Renders a "Pro" chip when the current plan can't reach this module. */
   gatedPlans?: string[]
+  /** Renders a "Pro" chip when the current plan IS in this list (deny-list,
+   * for modules where a lower plan is locked out but free gets a trial). */
+  lockedPlans?: string[]
 }
 
 // Grouped so seven destinations scan as three decisions, not seven. The old
@@ -71,7 +79,7 @@ const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
   },
   {
     heading: 'Assess',
-    items: [{ href: '/practice/mock', label: 'Mock Test', icon: ClipboardCheck }],
+    items: [{ href: '/practice/mock', label: 'Mock Test', icon: ClipboardCheck, lockedPlans: MOCK_TEST_LOCKED_PLANS }],
   },
 ]
 
@@ -148,7 +156,8 @@ function NavLinks({
             const Icon = item.icon
             const active = isActive(pathname, item.href)
             const showChip =
-              item.gatedPlans && usage && !item.gatedPlans.includes(usage.plan)
+              (item.gatedPlans && usage && !item.gatedPlans.includes(usage.plan)) ||
+              (item.lockedPlans && usage && item.lockedPlans.includes(usage.plan))
             return (
               <Link
                 key={item.href}
@@ -311,9 +320,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <SpeakOETLogo height={26} variant="full" theme="dark" priority />
           </Link>
           <h1 className="truncate text-base font-bold text-foreground">{title}</h1>
-          <div className="ml-auto flex items-center gap-3">
-            <ThemeToggle />
-          </div>
         </header>
         <main id="main-content" className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
           <ErrorBoundary>{children}</ErrorBoundary>
@@ -420,7 +426,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <h1 className="truncate text-base font-bold text-foreground">{title}</h1>
 
           <div className="ml-auto flex items-center gap-3">
-            <ThemeToggle className="hidden lg:inline-flex" />
             {status === 'loading' ? (
               <div className="h-9 w-9" />
             ) : status === 'unauthenticated' ? (
@@ -485,10 +490,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       <HelpCircle className="h-4 w-4" aria-hidden="true" />
                       Help &amp; Support
                     </Link>
-                    <div className="flex items-center justify-between px-4 py-1.5 lg:hidden">
-                      <span className="text-sm text-foreground/80">Appearance</span>
-                      <ThemeToggle />
-                    </div>
                     {/* The app shell has no footer, so this row is the only
                         in-app route to the legal pages. Keep it reachable. */}
                     <div className="my-1 border-t border-border" />

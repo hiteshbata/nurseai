@@ -6,7 +6,6 @@ import { useRouter, usePathname } from 'next/navigation'
 import { supabase, signOut, useSupabaseSession } from '@/lib/supabase'
 import { LayoutDashboard, Settings, LogOut, Gift } from 'lucide-react'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
-import { ThemeToggle } from '@/components/ThemeToggle'
 import api from '@/lib/api'
 
 const publicNavLinks = [
@@ -27,6 +26,17 @@ const appNavLinks = [
 ]
 
 const WRITING_PLANS = ['pro', 'elite']
+// Reading/Listening: free gets one lifetime trial attempt, basic+ unlimited
+// -- no plan fully locked out, so no chip. Mock Test: free gets a trial too,
+// elite unlimited, but basic/pro are genuinely locked -- deny-list.
+const MOCK_TEST_LOCKED_PLANS = ['basic', 'pro']
+
+const GATED_PLANS: Record<string, string[]> = {
+  '/practice/writing': WRITING_PLANS,
+}
+const LOCKED_PLANS: Record<string, string[]> = {
+  '/practice/mock': MOCK_TEST_LOCKED_PLANS,
+}
 
 const PLAN_LABELS: Record<string, string> = {
   free: 'Free',
@@ -221,9 +231,11 @@ export function Navbar() {
                 }`}
               >
                 {link.label}
-                {link.href === '/practice/writing' && usage && !WRITING_PLANS.includes(usage.plan) && (
-                  <span className="rounded-full bg-blue-50 dark:bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:text-blue-400">Pro</span>
-                )}
+                {usage &&
+                  ((GATED_PLANS[link.href] && !GATED_PLANS[link.href].includes(usage.plan)) ||
+                    (LOCKED_PLANS[link.href] && LOCKED_PLANS[link.href].includes(usage.plan))) && (
+                    <span className="rounded-full bg-blue-50 dark:bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:text-blue-400">Pro</span>
+                  )}
               </Link>
             )
           )}
@@ -353,8 +365,6 @@ export function Navbar() {
             </div>
           )}
 
-          <ThemeToggle className="hidden sm:inline-flex" />
-
           {/* Hamburger */}
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
@@ -417,9 +427,11 @@ export function Navbar() {
                 }`}
               >
                 {link.label}
-                {link.href === '/practice/writing' && usage && !WRITING_PLANS.includes(usage.plan) && (
-                  <span className="rounded-full bg-blue-50 dark:bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:text-blue-400">Pro</span>
-                )}
+                {usage &&
+                  ((GATED_PLANS[link.href] && !GATED_PLANS[link.href].includes(usage.plan)) ||
+                    (LOCKED_PLANS[link.href] && LOCKED_PLANS[link.href].includes(usage.plan))) && (
+                    <span className="rounded-full bg-blue-50 dark:bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:text-blue-400">Pro</span>
+                  )}
               </Link>
             )
           )}
@@ -433,10 +445,6 @@ export function Navbar() {
               </Link>
             </>
           )}
-          <div className="flex items-center justify-between border-t border-border mt-2 pt-3">
-            <span className="text-sm text-muted-foreground">Appearance</span>
-            <ThemeToggle />
-          </div>
         </div>
       </div>
     </nav>
