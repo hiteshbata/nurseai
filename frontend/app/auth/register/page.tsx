@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase, signUp, signOut } from '@/lib/supabase'
 import { trackEvent } from '@/lib/analytics'
+import { trackMetaEvent } from '@/lib/meta-pixel'
 import toast from 'react-hot-toast'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { AuthLeftPanel } from '@/components/auth/auth-left-panel'
@@ -101,6 +102,7 @@ export default function RegisterPage() {
     try {
       const data = await signUp(formData.email, formData.password, formData.name)
       trackEvent('signup_completed', { method: 'email' })
+      trackMetaEvent('CompleteRegistration', { registration_method: 'email' }, { email: formData.email })
       if (data.session) {
         toast.success('Registration successful! Redirecting to setup...')
         setTimeout(() => router.push('/onboarding'), 2000)

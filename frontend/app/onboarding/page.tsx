@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase, useSupabaseSession } from '@/lib/supabase'
 import api from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
+import { trackMetaEvent } from '@/lib/meta-pixel'
 import { Mic } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -272,6 +273,11 @@ export default function OnboardingPage() {
         destination_country: effectiveCountry,
         target_band: targetBand,
         skipped_diagnostic: skippedDiagnostic,
+      })
+      trackMetaEvent('Lead', {
+        content_name: 'onboarding_completed',
+        destination_country: effectiveCountry,
+        target_band: targetBand,
       })
       router.push('/dashboard')
     } catch (e) {

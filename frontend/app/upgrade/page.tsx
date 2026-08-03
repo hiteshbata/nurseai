@@ -7,6 +7,7 @@ import { CheckCircle2, Zap, Sparkles, Shield } from 'lucide-react'
 import { RazorpayCheckout } from '@/components/RazorpayCheckout'
 import { getPlans, type Plan } from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
+import { trackMetaEvent } from '@/lib/meta-pixel'
 
 const ANNUAL_MULTIPLIER = 10 // 2 months free vs. paying monthly
 
@@ -42,6 +43,7 @@ export default function UpgradePage() {
   useEffect(() => {
     getPlans().then(setPlans).catch(() => setPlans([]))
     trackEvent('upgrade_page_viewed')
+    trackMetaEvent('ViewContent', { content_name: 'upgrade_page' })
   }, [])
 
   if (status === 'loading' || !plans) {

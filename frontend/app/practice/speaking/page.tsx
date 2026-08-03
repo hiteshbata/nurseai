@@ -6,6 +6,7 @@ import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import api, { isUpgradeRequiredError } from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
+import { trackMetaEvent } from '@/lib/meta-pixel'
 import { getMockId } from '@/lib/mock'
 import { UpgradeRequired } from '@/components/UpgradeRequired'
 import SelectPhase from './SelectPhase'
@@ -339,6 +340,14 @@ export default function SpeakingPage() {
         plan: resultFeedback.plan,
         is_premium_trial: resultFeedback.is_premium_trial,
       })
+      trackMetaEvent('SpeakingSessionCompleted', {
+        scenario_id: selectedScenario?.id,
+        overall_band: resultFeedback.overall_band,
+        plan: resultFeedback.plan,
+      })
+      if (resultFeedback.is_premium_trial) {
+        trackMetaEvent('StartTrial', { source: 'speaking_session' })
+      }
     }
   }, [selectedScenario, mockId, mockRoleplay, finishMockRoleplay])
 

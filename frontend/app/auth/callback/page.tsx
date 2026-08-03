@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import api from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
+import { trackMetaEvent } from '@/lib/meta-pixel'
 import Link from 'next/link'
 
 // A brand-new OAuth signup creates the auth.users row and signs the user in
@@ -32,6 +33,9 @@ export default function AuthCallbackPage() {
       if (!session || cancelled) return
       if (isNewSignup(session.user)) {
         trackEvent('signup_completed', { method: 'google' })
+        trackMetaEvent('CompleteRegistration', { registration_method: 'oauth' }, { email: session.user.email })
+      } else {
+        trackMetaEvent('UserLoggedIn', { method: 'oauth' }, { email: session.user.email })
       }
       try {
         const statusRes = await api.get('/onboarding/status')

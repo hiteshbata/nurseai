@@ -3,9 +3,27 @@
 import { useState, useCallback } from 'react'
 import api from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
+import { trackMetaEvent } from '@/lib/meta-pixel'
 import toast from 'react-hot-toast'
 
 const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || ''
+
+// Shared commerce fields for Meta's InitiateCheckout/Purchase/Subscribe --
+// content_type + contents let Meta's ad delivery optimize for subscriber
+// value, not just conversion count.
+function metaCommerceData(planId: string, planLabel: string, amountPaise: number, transactionId?: string) {
+  const value = amountPaise / 100
+  return {
+    content_ids: [planId],
+    content_name: planLabel,
+    content_type: 'product',
+    contents: [{ id: planId, quantity: 1, item_price: value }],
+    plan: planLabel,
+    value,
+    currency: 'INR',
+    ...(transactionId ? { transaction_id: transactionId } : {}),
+  }
+}
 
 interface RazorpayCheckoutProps {
   amountPaise: number
@@ -79,6 +97,7 @@ export function RazorpayCheckout({
 
     setIsLoading(true)
     trackEvent('upgrade_cta_clicked', { plan_id: planId, amount_paise: amountPaise, mode })
+    trackMetaEvent('InitiateCheckout', metaCommerceData(planId, planLabel, amountPaise))
 
     try {
       const loaded = await loadRazorpayScript();
@@ -128,6 +147,9 @@ export function RazorpayCheckout({
                     amount_paise: amountPaise,
                     auto_renew: true,
                   })
+                  const purchaseData = metaCommerceData(planId, planLabel, amountPaise, response.razorpay_payment_id)
+                  trackMetaEvent('Purchase', purchaseData)
+                  trackMetaEvent('Subscribe', purchaseData)
                   onSuccess?.()
                   return
                 }
@@ -187,6 +209,7 @@ export function RazorpayCheckout({
                 if (verifyRes.data.success) {
                   toast.success('Payment successful!')
                   trackEvent('payment_verified_client', { plan_id: planId, amount_paise: amountPaise })
+                  trackMetaEvent('Purchase', metaCommerceData(planId, planLabel, amountPaise, response.razorpay_payment_id))
                   onSuccess?.()
                   return
                 }

@@ -5,6 +5,7 @@ import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import api, { isUpgradeRequiredError } from '@/lib/api'
+import { trackMetaEvent } from '@/lib/meta-pixel'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -134,6 +135,7 @@ export default function ReadingPracticePage() {
       setResult(null)
       setReadStartedAt(Date.now())
       setPhase('read')
+      trackMetaEvent('ReadingPracticeStarted', { passage_id: id })
       try {
         const notesRes = await api.get(`/reading/passages/${id}/notes`)
         setHighlights(notesRes.data.highlights || [])

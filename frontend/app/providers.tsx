@@ -1,15 +1,18 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { usePathname } from 'next/navigation'
 import { ThemeProvider } from 'next-themes'
 import { Toaster } from 'react-hot-toast'
 import { useSupabaseSession } from '@/lib/supabase'
 import { initAnalytics, identifyUser } from '@/lib/analytics'
 import { initGA } from '@/lib/ga'
 import { initClarity } from '@/lib/clarity'
+import { initMetaPixel, trackMetaEvent, setMetaUserData } from '@/lib/meta-pixel'
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const { session, status } = useSupabaseSession()
+  const pathname = usePathname()
 
   useEffect(() => {
     // Sentry's beforeSend no-ops every event in development anyway, and its
@@ -25,6 +28,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       initAnalytics()
       initGA()
       initClarity()
+      initMetaPixel()
     }
 
     const hasIdleCallback = typeof window !== 'undefined' && 'requestIdleCallback' in window
@@ -41,8 +45,22 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (status === 'authenticated' && session?.user) {
       identifyUser(session.user.id, { email: session.user.email })
+      if (session.user.email) setMetaUserData({ email: session.user.email })
     }
   }, [status, session])
+
+  // PageView on first mount and every client-side route change -- Meta's
+  // pixel doesn't hook the App Router's history API on its own like GA's
+  // gtag/PostHog's autocapture do. The ref guards against React StrictMode's
+  // dev-only double-invoke of this effect (same pathname, no real navigation
+  // happened) firing the same PageView twice; a real route change always
+  // changes pathname, so it's never suppressed.
+  const lastPageViewPathnameRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (lastPageViewPathnameRef.current === pathname) return
+    lastPageViewPathnameRef.current = pathname
+    trackMetaEvent('PageView')
+  }, [pathname])
 
   return (
     // ponytail: dark mode disabled pending full redesign (audit found only

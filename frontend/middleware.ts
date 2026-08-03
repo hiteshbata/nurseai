@@ -94,12 +94,12 @@ export async function middleware(request: NextRequest) {
     "frame-ancestors 'none'",
     "object-src 'none'",
     "base-uri 'self'",
-    `script-src 'self' 'nonce-${nonce}' ${process.env.NODE_ENV !== 'production' ? "'unsafe-eval' " : ''}https://checkout.razorpay.com https://www.googletagmanager.com https://www.clarity.ms`,
+    `script-src 'self' 'nonce-${nonce}' ${process.env.NODE_ENV !== 'production' ? "'unsafe-eval' " : ''}https://checkout.razorpay.com https://www.googletagmanager.com https://www.clarity.ms https://connect.facebook.net`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://cdn.sanity.io https://*.clarity.ms https://*.supabase.co",
+    "img-src 'self' data: blob: https://cdn.sanity.io https://*.clarity.ms https://*.supabase.co https://www.facebook.com",
     "media-src 'self' blob: https://*.supabase.co",
     "font-src 'self' data:",
-    `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? `http://localhost:8000 ws://localhost:8000 ${process.env.LAN_API_ORIGIN || ''} ` : ''}https://api.speakoet.com wss://api.speakoet.com https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://www.google-analytics.com https://www.clarity.ms https://*.clarity.ms https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io`,
+    `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? `http://localhost:8000 ws://localhost:8000 ${process.env.LAN_API_ORIGIN || ''} ` : ''}https://api.speakoet.com wss://api.speakoet.com https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://www.google-analytics.com https://www.clarity.ms https://*.clarity.ms https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://connect.facebook.net https://www.facebook.com`,
     "frame-src https://checkout.razorpay.com https://api.razorpay.com",
   ].join('; ')
 

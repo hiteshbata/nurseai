@@ -9,6 +9,7 @@ import VoiceOrb from '@/components/VoiceOrb'
 import PlanUsageBanner from '@/components/PlanUsageBanner'
 import api, { isUpgradeRequiredError } from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
+import { trackMetaEvent } from '@/lib/meta-pixel'
 import { useMicrophone } from '@/app/hooks/useMicrophone'
 import { useSpeakingSession } from '@/app/hooks/useSpeakingSession'
 import { useRealtimeSpeakingSession } from '@/app/hooks/useRealtimeSpeakingSession'
@@ -222,6 +223,11 @@ export default function SpeakingSession({
     }
     setPhase('conversation')
     trackEvent('speaking_session_started', {
+      scenario_id: selectedScenario?.id,
+      scenario_title: selectedScenario?.title,
+      difficulty: selectedScenario?.difficulty,
+    })
+    trackMetaEvent('SpeakingSessionStarted', {
       scenario_id: selectedScenario?.id,
       scenario_title: selectedScenario?.title,
       difficulty: selectedScenario?.difficulty,
