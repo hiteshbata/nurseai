@@ -168,11 +168,6 @@ def get_announcement():
     }
 
 
-@app.get("/sentry-debug")
-async def trigger_error():
-    return 1 / 0
-
-
 @app.get("/health")
 async def health_check():
     timestamp = datetime.now(timezone.utc).isoformat()
