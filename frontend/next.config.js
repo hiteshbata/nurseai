@@ -75,7 +75,11 @@ const nextConfig = {
       {
         source: `/((?!${protectedPathPattern}).*)`,
         missing: [{ type: 'host', value: 'admin.speakoet.com' }],
-        headers: [...baseSecurityHeaders, { key: 'Content-Security-Policy', value: publicCsp }],
+        headers: [
+          ...baseSecurityHeaders,
+          { key: 'Content-Security-Policy', value: publicCsp },
+          { key: 'Cache-Control', value: 'public, max-age=300, stale-while-revalidate=600' },
+        ],
       },
       // Protected app paths (and all of admin.speakoet.com, which serves
       // /admin/* at its subdomain root) skip the CSP header here -- middleware.ts
@@ -83,12 +87,16 @@ const nextConfig = {
       {
         source: `/(${protectedPathPattern})/:rest*`,
         missing: [{ type: 'host', value: 'admin.speakoet.com' }],
-        headers: baseSecurityHeaders,
+        headers: [...baseSecurityHeaders, { key: 'Cache-Control', value: 'private, max-age=0' }],
       },
       {
         source: '/:path*',
         has: [{ type: 'host', value: 'admin.speakoet.com' }],
-        headers: baseSecurityHeaders,
+        headers: [...baseSecurityHeaders, { key: 'Cache-Control', value: 'private, max-age=0' }],
+      },
+      {
+        source: '/_next/static/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
       },
     ]
   },

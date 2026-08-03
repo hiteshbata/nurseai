@@ -92,6 +92,15 @@ _SECURITY_HEADERS = [
     (b"strict-transport-security", b"max-age=63072000; includeSubDomains; preload"),
 ]
 
+# Every route here is a per-user authenticated JSON API (progress, scoring,
+# sessions, etc.) except these three, so default to uncacheable and
+# allowlist the public ones rather than the other way round.
+_PUBLIC_CACHE_PATHS = {
+    "/": "public, max-age=300, stale-while-revalidate=600",
+    "/announcement": "public, max-age=300, stale-while-revalidate=600",
+}
+_DEFAULT_CACHE_CONTROL = b"private, max-age=0, no-store"
+
 
 class SecurityHeadersMiddleware:
     def __init__(self, app):
@@ -101,9 +110,11 @@ class SecurityHeadersMiddleware:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
 
+        cache_control = _PUBLIC_CACHE_PATHS.get(scope["path"], _DEFAULT_CACHE_CONTROL.decode()).encode()
+
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
-                message["headers"] = list(message.get("headers", [])) + _SECURITY_HEADERS
+                message["headers"] = list(message.get("headers", [])) + _SECURITY_HEADERS + [(b"cache-control", cache_control)]
             await send(message)
 
         await self.app(scope, receive, send_wrapper)

@@ -232,9 +232,12 @@ def login(user: UserLogin, request: Request):
                 "name": metadata.get("name", resp.user.email),
             },
         )
-    except Exception as e:
-        logger.warning("Login failed for %s: %s", user.email, e)
+    except AuthApiError as e:
+        logger.warning("Login failed for %s: %s", user.email, e.message)
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    except Exception as e:
+        logger.warning("Login unavailable for %s: %s", user.email, e)
+        raise HTTPException(status_code=503, detail="Login temporarily unavailable")
 
 @router.post("/logout")
 def logout(

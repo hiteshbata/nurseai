@@ -25,8 +25,17 @@ socket.getaddrinfo = _ipv4_first_getaddrinfo
 # "Server disconnected" (seen on sessions/usage, onboarding/status,
 # progress/stats, progress/history). Force http2=False at the session
 # factory so a fresh HTTP/1.1 connection is used instead.
+from httpx import Limits
 from postgrest._sync.client import SyncPostgrestClient
 from postgrest.utils import SyncClient as _SyncClient
+
+# Explicit instead of httpx's default Limits(max_connections=100,
+# max_keepalive_connections=20) -- unbounded-looking pool per client, times
+# 3 module-level clients, times N gunicorn workers, was more sockets than
+# this Render dyno's plan needs. keepalive_expiry stays below Supabase's
+# server-side idle-close so a pooled connection is never handed back stale.
+_POOL_LIMITS = Limits(max_connections=20, max_keepalive_connections=10, keepalive_expiry=5.0)
+
 
 def _create_session_no_http2(self, base_url, headers, timeout, verify=True):
     return _SyncClient(
@@ -36,6 +45,7 @@ def _create_session_no_http2(self, base_url, headers, timeout, verify=True):
         verify=verify,
         follow_redirects=True,
         http2=False,
+        limits=_POOL_LIMITS,
     )
 
 SyncPostgrestClient.create_session = _create_session_no_http2

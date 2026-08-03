@@ -104,16 +104,29 @@ VOICE_MAPPERS = {
 }
 
 
+_VOICE_PROVIDER_CACHE_TTL_SECONDS = 60
+_voice_provider_cache: tuple[float, str] | None = None
+
+
 def _get_voice_provider() -> str:
     """DB setting (admin panel) overrides the env default so switching
-    providers doesn't require a redeploy."""
+    providers doesn't require a redeploy. Cached briefly since this runs
+    on every WebSocket connect."""
+    global _voice_provider_cache
+    now = time.monotonic()
+    if _voice_provider_cache and now - _voice_provider_cache[0] < _VOICE_PROVIDER_CACHE_TTL_SECONDS:
+        return _voice_provider_cache[1]
+
+    provider = settings.VOICE_PROVIDER
     try:
         data = get_supabase().table("settings").select("value").eq("key", "voice_provider").execute()
         if data.data and data.data[0]["value"]:
-            return data.data[0]["value"]
+            provider = data.data[0]["value"]
     except Exception:
         pass
-    return settings.VOICE_PROVIDER
+
+    _voice_provider_cache = (now, provider)
+    return provider
 
 
 def _provider_credentials(provider: str, plan: str) -> tuple[str, str]:
