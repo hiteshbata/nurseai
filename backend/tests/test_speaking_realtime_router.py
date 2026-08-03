@@ -310,14 +310,6 @@ def _types(ws):
     return [m["type"] for m in ws.sent_json]
 
 
-@pytest.fixture(autouse=True)
-def _reset_realtime_stream_rate_limiter():
-    # srt._realtime_stream_rate_limiter is a module-level singleton keyed by
-    # user id; FakeUser defaults to the same id across tests, so without a
-    # reset, calls accumulate across tests and later ones get rate-limited.
-    srt._realtime_stream_rate_limiter._call_log.clear()
-
-
 # ── auth / config / quota / scenario error paths ─────────────────────
 
 def test_missing_token_is_unauthorized(monkeypatch):
