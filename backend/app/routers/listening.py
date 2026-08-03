@@ -46,7 +46,7 @@ from app.services.listening_audio import (
     TtsError, DEFAULT_TTS_MODEL, OPENAI_VOICES,
 )
 from app.services.ai_scoring import _try_parse_json, _call_ai, GEMINI_SCORING_FREE_MODEL
-from app.services.plan_gating import has_listening_access, get_plan_from_profile
+from app.services.plan_gating import has_listening_access, has_free_module_attempt, get_plan_from_profile
 
 logger = logging.getLogger(__name__)
 
@@ -93,14 +93,21 @@ def _require_listening_plan(supabase, current_user: UserInfo, test_id: Optional[
     """Plan-gate listening access (Basic/Pro/Elite) -- shared by test view and
     submit. The list endpoint (titles only, no content) stays open as a teaser.
 
-    An anonymous free-trial user (see /tools/oet-mock-test-free) has no plan
-    but is let through when `test_id` is the exact Listening test their own
-    active mock is currently on -- see has_mock_section_access in mock.py."""
+    Free plan gets one lifetime standalone attempt (see has_free_module_attempt)
+    on top of that -- a taste of the module before the paywall.
+
+    An anonymous or free-plan free-trial user (see /tools/oet-mock-test-free)
+    is also let through when `test_id` is the exact Listening test their own
+    active mock is currently on -- see has_mock_section_access in mock.py.
+    Separate from the standalone free attempt above, so spending one never
+    eats the other."""
     profile = supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute()
     plan = get_plan_from_profile(profile.data[0] if profile.data else {})
     if has_listening_access(plan):
         return plan
-    if current_user.is_anonymous and test_id is not None and has_mock_section_access(supabase, current_user.id, "listening", test_id):
+    if plan == "free" and has_free_module_attempt(supabase, current_user.id, "listening"):
+        return plan
+    if (current_user.is_anonymous or plan == "free") and test_id is not None and has_mock_section_access(supabase, current_user.id, "listening", test_id):
         return plan
     raise HTTPException(
         status_code=403,

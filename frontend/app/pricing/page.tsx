@@ -58,6 +58,9 @@ const PLAN_MARKETING: Record<string, PlanMarketing> = {
     subtitle: 'Experience AI-powered OET preparation before you upgrade.',
     highlights: [
       '3 AI speaking sessions / month',
+      '1 free Reading test',
+      '1 free Listening test',
+      '1 free full Mock Test (Writing feedback locked)',
       'Full 9-criteria AI scoring',
       'Realistic patient simulation',
       'Standard British voice',
@@ -131,8 +134,8 @@ const FEATURE_SECTIONS: FeatureSection[] = [
     icon: Mic,
     rows: [
       { label: 'Premium AI speaking sessions / month', free: '3', basic: '20', pro: '40', elite: '80' },
-      { label: 'Reading practice', free: false, basic: true, pro: true, elite: true },
-      { label: 'Listening practice', free: false, basic: true, pro: true, elite: true },
+      { label: 'Reading practice', free: '1 free test', basic: true, pro: true, elite: true },
+      { label: 'Listening practice', free: '1 free test', basic: true, pro: true, elite: true },
       { label: 'AI Writing Evaluation (typed or handwritten)', free: false, basic: false, pro: true, elite: true },
     ],
   },
@@ -150,7 +153,7 @@ const FEATURE_SECTIONS: FeatureSection[] = [
     title: 'Exam Readiness',
     icon: Trophy,
     rows: [
-      { label: 'Full OET Exam Simulation (all 4 parts)', free: false, basic: false, pro: false, elite: true },
+      { label: 'Full OET Exam Simulation (all 4 parts)', free: '1 free attempt', basic: false, pro: false, elite: true },
       { label: 'Pronunciation Analysis', free: false, basic: false, pro: false, elite: true },
       { label: 'AI Study Plan', free: false, basic: false, pro: false, elite: true },
     ],

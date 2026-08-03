@@ -34,7 +34,7 @@ from app.services.open_ended_grading import grade_open_ended_answers
 from app.services.explanations import generate_reading_explanation_with_evidence
 from app.services.skill_graph import record_skill_observations
 from app.services.reading_skills import classify_reading_skill, SKILL_LABELS
-from app.services.plan_gating import has_reading_access, get_plan_from_profile
+from app.services.plan_gating import has_reading_access, has_free_module_attempt, get_plan_from_profile
 
 logger = logging.getLogger(__name__)
 
@@ -96,16 +96,22 @@ def _require_reading_plan(supabase, current_user: UserInfo, test_id: Optional[in
     view and both submit endpoints. List endpoints (titles only, no content)
     stay open as a teaser.
 
-    An anonymous free-trial user (see /tools/oet-mock-test-free) has no plan
-    but is let through when `test_id` is the exact Reading test their own
+    Free plan gets one lifetime standalone attempt (see has_free_module_attempt)
+    on top of that -- a taste of the module before the paywall.
+
+    An anonymous or free-plan free-trial user (see /tools/oet-mock-test-free)
+    is also let through when `test_id` is the exact Reading test their own
     active mock is currently on -- see has_mock_section_access in mock.py.
-    Callers that don't pass test_id (the passage-level endpoints) never
-    grant this bypass."""
+    This is separate from the standalone free attempt above, so spending one
+    never eats the other. Callers that don't pass test_id (the passage-level
+    endpoints) never grant this bypass."""
     profile = supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute()
     plan = get_plan_from_profile(profile.data[0] if profile.data else {})
     if has_reading_access(plan):
         return plan
-    if current_user.is_anonymous and test_id is not None and has_mock_section_access(supabase, current_user.id, "reading", test_id):
+    if plan == "free" and has_free_module_attempt(supabase, current_user.id, "reading"):
+        return plan
+    if (current_user.is_anonymous or plan == "free") and test_id is not None and has_mock_section_access(supabase, current_user.id, "reading", test_id):
         return plan
     raise HTTPException(
         status_code=403,

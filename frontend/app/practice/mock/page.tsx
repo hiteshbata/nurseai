@@ -30,6 +30,7 @@ interface SectionResult {
 interface WritingResult {
   grade?: string
   overall_score?: number
+  locked?: boolean // free-tier mock: AI scoring was skipped, see /writing/submit
 }
 
 interface SpeakingResult {
@@ -279,8 +280,8 @@ function PickerScreen({
           <div className="px-7 py-7 sm:px-9">
             {upgradeRequired ? (
               <UpgradeRequired
-                title="Full Mock Test is a Pro/Elite feature"
-                message="Upgrade your plan to unlock the full timed OET mock test."
+                title="You've used your free Mock Test"
+                message="Free plan includes one full Mock Test. Upgrade to Elite for unlimited mock tests."
               />
             ) : packs.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-6">
@@ -417,7 +418,9 @@ function ReportView({
     )
   }
 
-  const cards: { label: string; value: string; sub: string }[] = [
+  const writingLocked = !!results?.writing?.locked
+
+  const cards: { label: string; value: string; sub: string; locked?: boolean }[] = [
     {
       label: 'Listening',
       value: results?.listening?.band != null ? `${results.listening.band}/6` : '—',
@@ -430,8 +433,9 @@ function ReportView({
     },
     {
       label: 'Writing',
-      value: results?.writing?.grade ? `Grade ${results.writing.grade}` : '—',
-      sub: results?.writing?.overall_score != null ? `${results.writing.overall_score}/500` : '',
+      value: writingLocked ? 'Locked' : results?.writing?.grade ? `Grade ${results.writing.grade}` : '—',
+      sub: writingLocked ? 'Upgrade to see feedback' : results?.writing?.overall_score != null ? `${results.writing.overall_score}/500` : '',
+      locked: writingLocked,
     },
     {
       label: 'Speaking',
@@ -453,10 +457,18 @@ function ReportView({
           <div className="px-7 py-7 sm:px-9">
             <div className="grid grid-cols-2 gap-4">
               {cards.map((c) => (
-                <div key={c.label} className="rounded-xl bg-gray-50 px-4 py-5 text-center">
+                <div key={c.label} className={`rounded-xl px-4 py-5 text-center ${c.locked ? 'bg-amber-50' : 'bg-gray-50'}`}>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{c.label}</p>
-                  <p className="mt-1.5 text-xl font-bold text-[#0F2356]">{c.value}</p>
-                  {c.sub && <p className="mt-1 text-[11px] text-muted-foreground">{c.sub}</p>}
+                  <p className={`mt-1.5 text-xl font-bold ${c.locked ? 'text-amber-600' : 'text-[#0F2356]'}`}>{c.value}</p>
+                  {c.sub && (
+                    c.locked ? (
+                      <Link href="/upgrade" className="mt-1 inline-block text-[11px] font-semibold text-amber-700 underline">
+                        {c.sub}
+                      </Link>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-muted-foreground">{c.sub}</p>
+                    )
+                  )}
                 </div>
               ))}
             </div>

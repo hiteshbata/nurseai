@@ -330,11 +330,18 @@ export default function WritingPracticePage() {
 
       if (mockId) {
         // Score stays hidden in a mock — report the section, back to the controller.
-        const fb = response.data.feedback
-        await finishMockSection(mockId, 'writing', {
-          grade: fb?.estimated_oet_grade ?? null,
-          overall_score: fb?.overall_score ?? null,
-        })
+        // Free-tier mock: backend skipped AI scoring entirely (see /writing/submit's
+        // locked branch) -- record that instead of a grade so the report screen
+        // shows an upgrade prompt rather than a blank dash.
+        if (response.data.locked) {
+          await finishMockSection(mockId, 'writing', { locked: true })
+        } else {
+          const fb = response.data.feedback
+          await finishMockSection(mockId, 'writing', {
+            grade: fb?.estimated_oet_grade ?? null,
+            overall_score: fb?.overall_score ?? null,
+          })
+        }
         router.replace('/practice/mock')
         return
       }

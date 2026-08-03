@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.routers.auth import get_current_user, get_user_supabase, UserInfo
 from supabase import Client
 from app.routers.admin import require_admin
+from app.routers.mock import has_mock_section_access
 from app.core.feature_flags import require_feature
 from app.services.ai_scoring import score_writing, _try_parse_json
 from app.services.plan_gating import has_writing_access, get_plan_from_profile
@@ -61,35 +62,44 @@ class WritingOcrRequest(BaseModel):
 MAX_OCR_PAGES = 3
 
 
-async def _require_writing_plan(supabase, user_id: str) -> str:
-    """Plan-gate writing access (Pro/Elite). Shared by scenario submit and OCR."""
+async def _require_writing_plan(supabase, user_id: str, scenario_id: Optional[int] = None) -> str:
+    """Plan-gate writing access (Pro/Elite). Shared by scenario submit and OCR.
+
+    An anonymous or free-plan free-trial mock student is also let through when
+    `scenario_id` is the exact Writing scenario their own active mock is
+    currently on -- see has_mock_section_access in mock.py. That path never
+    scores the letter (see submit_writing's mock branch); it only lets the
+    student write the answer and save it. Callers that don't pass
+    scenario_id (OCR, phone handoff) never grant this bypass."""
     if not WRITING_PLAN_GATE_ENABLED:
         return ""  # gate temporarily off (see WRITING_PLAN_GATE_ENABLED)
     profile = await run_sync(
         supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", user_id).execute
     )
     plan = get_plan_from_profile(profile.data[0] if profile.data else {})
-    if not has_writing_access(plan):
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "error": "Writing practice requires Pro or Elite plan",
-                "upgrade_required": True,
-                "current_plan": plan,
-            },
-        )
-    return plan
+    if has_writing_access(plan):
+        return plan
+    if scenario_id is not None and has_mock_section_access(supabase, user_id, "writing", scenario_id):
+        return plan
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": "Writing practice requires Pro or Elite plan",
+            "upgrade_required": True,
+            "current_plan": plan,
+        },
+    )
 
 
-async def _require_writing_scenario(supabase, user_id: str, scenario_id: int) -> dict:
+async def _require_writing_scenario(supabase, user_id: str, scenario_id: int) -> tuple[dict, str]:
     """Plan-gate writing access and fetch the scenario. Shared by the submit path."""
-    await _require_writing_plan(supabase, user_id)
+    plan = await _require_writing_plan(supabase, user_id, scenario_id)
     scenario_data = await run_sync(
         supabase.table("scenarios").select("id, title, setting, nurse_card").eq("id", scenario_id).execute
     )
     if not scenario_data.data:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    return scenario_data.data[0]
+    return scenario_data.data[0], plan
 
 
 async def _score_and_save(supabase, user_db, user_id: str, scenario_id: int, content: str, nurse_card: dict, scenario_title: str, case_notes: str = "") -> dict:
@@ -190,7 +200,29 @@ async def submit_writing(
         raise HTTPException(status_code=409, detail="This submission is already being scored — please wait.")
 
     supabase = get_supabase()
-    scenario = await _require_writing_scenario(supabase, current_user.id, request.scenario_id)
+    scenario, plan = await _require_writing_scenario(supabase, current_user.id, request.scenario_id)
+
+    # Free-tier mock test: Writing is reachable (see _require_writing_plan's mock
+    # bypass) but not scored -- that's the paywall. Save the letter as-is, skip
+    # the AI scoring call entirely (it's the expensive OCR/AI step this tier is
+    # meant to avoid), and tell the student to upgrade to see feedback.
+    if plan == "free" and has_mock_section_access(supabase, current_user.id, "writing", request.scenario_id):
+        await run_sync(
+            user_db.table("submissions").insert({
+                "user_id": current_user.id,
+                "scenario_id": request.scenario_id,
+                "module": "writing",
+                "answer": request.content,
+                "score": 0,
+                "feedback": json.dumps({"locked": True, "upgrade_required": True}),
+            }).execute
+        )
+        return {
+            "success": True,
+            "locked": True,
+            "upgrade_required": True,
+            "message": "Upgrade to Pro or Elite to see your Writing score and feedback.",
+        }
 
     feedback = await _score_and_save(
         supabase, user_db, current_user.id, request.scenario_id,

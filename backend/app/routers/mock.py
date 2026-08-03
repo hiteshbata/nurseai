@@ -26,6 +26,7 @@ from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo, _client_ip
 from app.routers.admin import require_admin
 from app.services.plan_gating import has_mock_test_access, get_plan_from_profile
+from app.routers.sessions import _usage_payload, get_month_start_utc
 
 router = APIRouter(prefix="/mock", tags=["mock"])
 
@@ -260,10 +261,11 @@ async def start_mock(req: StartMockRequest, request: Request, current_user: User
         supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute
     )
     plan = get_plan_from_profile(profile.data[0] if profile.data else {})
-    # Anonymous (see /tools/oet-mock-test-free) skips the Elite-only gate here --
-    # eligibility for a free trial is enforced below instead (one lifetime
-    # attempt + an IP rate limit), not by plan.
-    if not has_mock_test_access(plan) and not current_user.is_anonymous:
+    # Anonymous (see /tools/oet-mock-test-free) and free-plan students both skip
+    # the Elite-only gate here -- eligibility for a free trial is enforced below
+    # instead (one lifetime attempt, an IP rate limit for anonymous), not by plan.
+    # Basic/Pro get neither: Mock Test stays an Elite-or-free-trial feature.
+    if not has_mock_test_access(plan) and not current_user.is_anonymous and plan != "free":
         raise HTTPException(
             status_code=403,
             detail={
@@ -285,9 +287,9 @@ async def start_mock(req: StartMockRequest, request: Request, current_user: User
         session = await _ensure_section_started(supabase, existing.data[0])
         return _client_payload(session)
 
-    if current_user.is_anonymous:
-        # One lifetime free attempt per anonymous account, regardless of its
-        # status -- a completed or awaiting-speaking mock still counts as used.
+    if current_user.is_anonymous or plan == "free":
+        # One lifetime free attempt per anonymous or free-plan account, regardless
+        # of its status -- a completed or awaiting-speaking mock still counts as used.
         prior = await run_sync(
             supabase.table("mock_test_sessions").select("id").eq("user_id", current_user.id).limit(1).execute
         )
@@ -295,12 +297,12 @@ async def start_mock(req: StartMockRequest, request: Request, current_user: User
             raise HTTPException(
                 status_code=403,
                 detail={
-                    "error": "You've already used your free mock test. Create a free account for unlimited mock tests.",
+                    "error": "You've already used your free mock test. Upgrade to Elite for unlimited mock tests.",
                     "upgrade_required": True,
                     "current_plan": plan,
                 },
             )
-        if _free_mock_start_limiter.is_rate_limited(_client_ip(request)):
+        if current_user.is_anonymous and _free_mock_start_limiter.is_rate_limited(_client_ip(request)):
             raise HTTPException(status_code=429, detail="Too many free mock test attempts from this network — please try again later.")
 
     pack = await run_sync(
@@ -516,6 +518,32 @@ async def speaking_next(
     if not nxt:
         raise HTTPException(status_code=409, detail="Both role plays are already recorded.")
     roleplay, scenario_id = nxt
+
+    # Each role play is a normal speaking session under the hood (see
+    # speaking_realtime.py) and draws from the same monthly speaking quota as
+    # standalone practice. A free-plan student needs 2 sessions left for role
+    # play 1, or 1 left for role play 2 -- checked here, before either role
+    # play starts, so the upgrade prompt lands at the natural "Speaking is
+    # next" screen instead of mid-conversation.
+    profile = await run_sync(
+        supabase.table("user_profiles").select(
+            "plan, plan_expires_at, sessions_used_this_month, sessions_reset_date, auto_renew_enabled, bonus_sessions"
+        ).eq("user_id", current_user.id).execute
+    )
+    plan = get_plan_from_profile(profile.data[0] if profile.data else {})
+    if plan == "free":
+        usage = _usage_payload(profile.data[0] if profile.data else {}, get_month_start_utc())
+        needed = 2 if roleplay == 1 else 1
+        if usage["sessions_remaining"] < needed:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": f"Mock Test Speaking needs {needed} more speaking session(s) than you have left this month.",
+                    "upgrade_required": True,
+                    "current_plan": plan,
+                },
+            )
+
     return {"roleplay": roleplay, "scenario_id": scenario_id}
 
 

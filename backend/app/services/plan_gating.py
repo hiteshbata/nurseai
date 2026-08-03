@@ -111,6 +111,16 @@ def has_listening_access(plan: str) -> bool:
     return plan in LISTENING_PLANS
 
 
+def has_free_module_attempt(supabase, user_id: str, module: str) -> bool:
+    """True if a free-plan student hasn't yet spent their one lifetime free
+    standalone attempt at `module` ("reading" or "listening") -- i.e. no
+    `submissions` row for it yet. Mock test content is granted separately via
+    has_mock_section_access in mock.py, so a spent mock attempt never eats
+    this, and vice versa."""
+    res = supabase.table("submissions").select("id", count="exact").eq("user_id", user_id).eq("module", module).execute()
+    return (res.count or 0) == 0
+
+
 def has_pronunciation_access(plan: str) -> bool:
     return plan in PRONUNCIATION_PLANS
 

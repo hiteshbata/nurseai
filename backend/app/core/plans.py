@@ -7,6 +7,9 @@ PLANS = [
         "description": "Try SpeakOET's AI examiner, free",
         "features": [
             "3 speaking sessions / month",
+            "1 free Reading test",
+            "1 free Listening test",
+            "1 free full Mock Test (Writing feedback locked)",
             "Full 9-criteria AI scoring",
             "AI patient conversation",
             "Standard British voice",
