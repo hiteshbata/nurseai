@@ -11,16 +11,17 @@ interface WeakSkill {
   attempts: number
 }
 
-/** "Your weak spots" — the reading skills the student misses most, ranked
- * weakest-first from the shared skill graph. Renders nothing until there's
- * enough signal (the API only returns skills with a couple of attempts), so
- * it's safe to drop in unconditionally. */
-export default function WeakSpots() {
+/** "Your weak spots" — the weakest skills/criteria for one module, ranked
+ * weakest-first from the shared skill graph (`endpoint` is that module's
+ * GET /<module>/weakness). Renders nothing until there's enough signal (the
+ * API only returns skills with a couple of attempts), so it's safe to drop
+ * in unconditionally. */
+export function WeakSpots({ endpoint }: { endpoint: string }) {
   const [skills, setSkills] = useState<WeakSkill[]>([])
 
   useEffect(() => {
-    api.get('/reading/weakness').then((res) => setSkills(res.data || [])).catch(() => {})
-  }, [])
+    api.get(endpoint).then((res) => setSkills(res.data || [])).catch(() => {})
+  }, [endpoint])
 
   if (skills.length === 0) return null
 

@@ -22,7 +22,7 @@ from app.core.feature_flags import require_feature, close_if_disabled
 from app.services.speech_to_text import speech_to_text
 from app.services.ai_scoring import get_patient_response, score_speaking, _call_ai
 from app.services.pronunciation import get_pronunciation_feedback
-from app.services.skill_graph import record_skill_observations
+from app.services.skill_graph import record_skill_observations, get_weakness
 from app.services.plan_gating import (
     get_scoring_model,
     get_plan_from_profile,
@@ -699,6 +699,16 @@ def recommend_scenarios(
 ):
     """Recommend up to `limit` scenarios \u2014 used by the picker's recommended row."""
     return _recommend_scenarios(current_user, user_db, limit=limit)
+
+
+@router.get("/weakness")
+async def speaking_weakness(
+    current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
+):
+    """The student's weakest speaking criteria (empathy, fluency, grammar, ...),
+    weakest first. See skill_graph.get_weakness."""
+    return await get_weakness(user_db, current_user.id, "speaking:")
 
 
 @router.get("/scenarios/{scenario_id}")

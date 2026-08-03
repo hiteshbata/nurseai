@@ -6,14 +6,21 @@ observations (e.g. "reading:B", "speaking:fluency", "listening:accent:UK")
 and calls record_skill_observations after grading -- this is the shared spine
 the Study Hub, revision queue, and (later) predicted grade all read from."""
 import logging
-from typing import Dict
+from typing import Callable, Dict, List, Optional
 
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
+from supabase import Client
 
 logger = logging.getLogger(__name__)
 
 EMA_ALPHA = 0.3  # weight on the newest observation; higher = more reactive to recent attempts
+
+# Ignore a skill until the student has attempted it a couple of times, so one
+# unlucky question doesn't brand a whole skill as a weakness.
+WEAKNESS_MIN_ATTEMPTS = 2
+# Bands at/above this read as "solid" -- only surface genuine weak spots.
+WEAKNESS_BAND_CEILING = 5.0
 
 
 def update_ema(old_ema: float, attempts: int, new_score: float, alpha: float = EMA_ALPHA) -> float:
@@ -57,3 +64,32 @@ async def record_skill_observations(user_id: str, tag_scores: Dict[str, float]) 
         await run_sync(_record_sync, user_id, tag_scores)
     except Exception as e:
         logger.warning("[SKILL_GRAPH_RECORD_FAILED] user_id=%s error=%s", user_id, str(e)[:300])
+
+
+async def get_weakness(
+    user_db: Client,
+    user_id: str,
+    tag_prefix: str,
+    label_fn: Optional[Callable[[str], str]] = None,
+) -> List[Dict]:
+    """The student's weakest skills under `tag_prefix` (e.g. "reading:skill:",
+    "speaking:", "writing:", "listening:"), weakest first, off the shared EMA
+    every module's grading already feeds. Read-only, no AI. Returns [] until
+    there's enough signal. One implementation shared by every module's
+    /weakness endpoint instead of four near-identical copies."""
+    rows = await run_sync(
+        user_db.table("user_skill_stats").select("skill_tag, attempts, ema_score")
+        .eq("user_id", user_id).like("skill_tag", f"{tag_prefix}%").execute
+    )
+    out = []
+    for r in rows.data:
+        if r["attempts"] < WEAKNESS_MIN_ATTEMPTS:
+            continue
+        band = float(r["ema_score"])
+        if band >= WEAKNESS_BAND_CEILING:
+            continue
+        skill = r["skill_tag"][len(tag_prefix):]
+        label = label_fn(skill) if label_fn else skill.replace("_", " ").replace(":", " ").title()
+        out.append({"skill": skill, "label": label, "band": round(band, 1), "attempts": r["attempts"]})
+    out.sort(key=lambda x: x["band"])
+    return out

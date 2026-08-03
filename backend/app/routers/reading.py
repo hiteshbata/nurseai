@@ -32,7 +32,7 @@ from app.services.ai_scoring import _try_parse_json, _call_ai, GEMINI_SCORING_FR
 from app.services.mcq_grading import grade_exact_match, combine_graded_results, resolve_latest_wrong_answers
 from app.services.open_ended_grading import grade_open_ended_answers
 from app.services.explanations import generate_reading_explanation_with_evidence
-from app.services.skill_graph import record_skill_observations
+from app.services.skill_graph import record_skill_observations, get_weakness
 from app.services.reading_skills import classify_reading_skill, SKILL_LABELS
 from app.services.plan_gating import has_reading_access, has_free_module_attempt, get_plan_from_profile
 
@@ -389,7 +389,7 @@ def list_reading_tests(current_user: UserInfo = Depends(get_current_user)):
     """Active tests that have at least one active passage. This is the student's
     'full mock reading test' list."""
     supabase = get_supabase()
-    tests = supabase.table("reading_tests").select("id, title").eq("is_active", True).order("created_at", desc=True).execute().data
+    tests = supabase.table("reading_tests").select("id, title").eq("is_active", True).order("id", desc=False).execute().data
     if not tests:
         return []
     test_ids = [t["id"] for t in tests]
@@ -398,6 +398,29 @@ def list_reading_tests(current_user: UserInfo = Depends(get_current_user)):
     for p in passages:
         counts[p["test_id"]] = counts.get(p["test_id"], 0) + 1
     return [{"id": t["id"], "title": t["title"], "passage_count": counts.get(t["id"], 0)} for t in tests if counts.get(t["id"], 0) > 0]
+
+
+@router.get("/tests/completed-ids")
+async def list_completed_test_ids(
+    current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
+):
+    """Distinct test_ids the student has already submitted, for the "Completed"
+    badge on the test list. test_id lives in submissions.feedback (see
+    submit_reading_test), not a column -- same reasoning as /mistakes."""
+    subs = await run_sync(
+        user_db.table("submissions").select("feedback")
+        .eq("user_id", current_user.id).eq("module", "reading").execute
+    )
+    test_ids = set()
+    for s in subs.data:
+        try:
+            fb = json.loads(s["feedback"]) if isinstance(s["feedback"], str) else (s["feedback"] or {})
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if fb.get("test_id") is not None:
+            test_ids.add(fb["test_id"])
+    return sorted(test_ids)
 
 
 @router.get("/tests/{test_id}")
@@ -708,42 +731,14 @@ async def list_mistakes(
 
 # ── WEAKNESS SUMMARY (per-skill, from the shared skill graph) ─────────
 
-# Ignore a skill until the student has attempted it a couple of times, so one
-# unlucky question doesn't brand a whole skill as a weakness.
-WEAKNESS_MIN_ATTEMPTS = 2
-# Bands at/above this read as "solid" -- only surface genuine weak spots.
-WEAKNESS_BAND_CEILING = 5.0
-
-
 @router.get("/weakness")
 async def reading_weakness(
     current_user: UserInfo = Depends(get_current_user),
-    supabase: Client = Depends(get_user_supabase),
+    user_db: Client = Depends(get_user_supabase),
 ):
     """The student's weak reading skills (inference, detail, scanning, ...),
-    weakest first, straight off the shared skill-graph EMA that every reading
-    submission already feeds. Read-only, no AI. Returns [] until there's enough
-    signal (each skill needs a couple of attempts)."""
-    rows = await run_sync(
-        supabase.table("user_skill_stats").select("skill_tag, attempts, ema_score")
-        .eq("user_id", current_user.id).like("skill_tag", "reading:skill:%").execute
-    )
-    out = []
-    for r in rows.data:
-        if r["attempts"] < WEAKNESS_MIN_ATTEMPTS:
-            continue
-        band = float(r["ema_score"])
-        if band >= WEAKNESS_BAND_CEILING:
-            continue
-        skill = r["skill_tag"].split(":")[-1]
-        out.append({
-            "skill": skill,
-            "label": SKILL_LABELS.get(skill, skill),
-            "band": round(band, 1),
-            "attempts": r["attempts"],
-        })
-    out.sort(key=lambda x: x["band"])  # weakest first
-    return out
+    weakest first. See skill_graph.get_weakness."""
+    return await get_weakness(user_db, current_user.id, "reading:skill:", lambda s: SKILL_LABELS.get(s, s))
 
 
 # ── ADMIN: PDF EXTRACTION + SAVE ─────────────────────────────────────

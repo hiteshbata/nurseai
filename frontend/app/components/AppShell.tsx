@@ -71,10 +71,10 @@ const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
   {
     heading: 'Practice',
     items: [
-      { href: '/practice/speaking', label: 'Speaking', icon: Mic },
-      { href: '/practice/writing', label: 'Writing', icon: PenLine, gatedPlans: WRITING_PLANS },
-      { href: '/practice/reading', label: 'Reading', icon: BookOpen },
       { href: '/practice/listening', label: 'Listening', icon: Headphones },
+      { href: '/practice/reading', label: 'Reading', icon: BookOpen },
+      { href: '/practice/writing', label: 'Writing', icon: PenLine, gatedPlans: WRITING_PLANS },
+      { href: '/practice/speaking', label: 'Speaking', icon: Mic },
     ],
   },
   {

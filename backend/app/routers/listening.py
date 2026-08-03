@@ -40,7 +40,7 @@ from app.routers.mock import has_mock_section_access
 from app.services.mcq_grading import grade_exact_match, combine_graded_results, resolve_latest_wrong_answers
 from app.services.open_ended_grading import grade_open_ended_answers
 from app.services.explanations import generate_mcq_explanation
-from app.services.skill_graph import record_skill_observations
+from app.services.skill_graph import record_skill_observations, get_weakness
 from app.services.listening_audio import (
     generate_two_speaker_audio, cut_segment, deepgram_transcribe, timestamped_lines,
     TtsError, DEFAULT_TTS_MODEL, OPENAI_VOICES,
@@ -172,7 +172,7 @@ def list_tests(current_user: UserInfo = Depends(get_current_user)):
     """Active tests that have at least one active section -- the student's
     'full mock listening test' list."""
     supabase = get_supabase()
-    tests = supabase.table("listening_tests").select("id, title").eq("is_active", True).order("created_at", desc=True).execute().data
+    tests = supabase.table("listening_tests").select("id, title").eq("is_active", True).order("id", desc=False).execute().data
     if not tests:
         return []
     test_ids = [t["id"] for t in tests]
@@ -181,6 +181,29 @@ def list_tests(current_user: UserInfo = Depends(get_current_user)):
     for s in sections:
         counts[s["test_id"]] = counts.get(s["test_id"], 0) + 1
     return [{"id": t["id"], "title": t["title"], "section_count": counts.get(t["id"], 0)} for t in tests if counts.get(t["id"], 0) > 0]
+
+
+@router.get("/tests/completed-ids")
+async def list_completed_test_ids(
+    current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
+):
+    """Distinct test_ids the student has already submitted, for the "Completed"
+    badge on the test list. test_id lives in submissions.feedback (see
+    submit_listening_test), not a column -- mirrors reading.py's endpoint."""
+    subs = await run_sync(
+        user_db.table("submissions").select("feedback")
+        .eq("user_id", current_user.id).eq("module", "listening").execute
+    )
+    test_ids = set()
+    for s in subs.data:
+        try:
+            fb = json.loads(s["feedback"]) if isinstance(s["feedback"], str) else (s["feedback"] or {})
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if fb.get("test_id") is not None:
+            test_ids.add(fb["test_id"])
+    return sorted(test_ids)
 
 
 @router.get("/tests/{test_id}")
@@ -400,6 +423,22 @@ async def list_mistakes(
         "section_title": sections_by_id.get(q.get("section_id")),
         "explanation": q.get("explanation"),
     } for q in qdata.data]
+
+
+LISTENING_PART_LABELS = {"A": "Part A", "B": "Part B", "C": "Part C"}
+
+
+@router.get("/weakness")
+async def listening_weakness(
+    current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
+):
+    """The student's weakest listening parts. Unlike other modules' weak-spot
+    lists, parts have a fixed exam sequence (A -> B -> C) so -- unlike
+    skill_graph.get_weakness's default weakest-first order -- these sort back
+    into that sequence rather than by band."""
+    rows = await get_weakness(user_db, current_user.id, "listening:", lambda s: LISTENING_PART_LABELS.get(s, s))
+    return sorted(rows, key=lambda r: r["skill"])
 
 
 # ── ADMIN: questions validation (shared by save + update) ────────────

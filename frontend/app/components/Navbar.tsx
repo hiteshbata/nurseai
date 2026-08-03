@@ -18,10 +18,10 @@ const publicNavLinks = [
 const appNavLinks = [
   { href: '/hub', label: 'Study Hub' },
   { href: '/dashboard', label: 'Dashboard' },
-  { href: '/practice/speaking', label: 'Speaking' },
-  { href: '/practice/writing', label: 'Writing' },
-  { href: '/practice/reading', label: 'Reading' },
   { href: '/practice/listening', label: 'Listening' },
+  { href: '/practice/reading', label: 'Reading' },
+  { href: '/practice/writing', label: 'Writing' },
+  { href: '/practice/speaking', label: 'Speaking' },
   { href: '/practice/mock', label: 'Mock Test' },
 ]
 

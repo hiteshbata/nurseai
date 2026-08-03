@@ -1,10 +1,13 @@
 'use client'
 
 import { memo, useMemo } from 'react'
-import { CheckCircle2, Search, X, Star } from 'lucide-react'
+import { Search, X, Star } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Scenario, RecommendedScenario, sanitizeText, normalizeDifficulty } from './shared'
+import { DifficultyBadge, DIFFICULTY_LABEL } from '@/components/ui/DifficultyBadge'
+import { CompletedBadge } from '@/components/ui/CompletedBadge'
+import { WeakSpots } from '@/components/practice/WeakSpots'
 
 interface SelectPhaseProps {
   scenarios: Scenario[]
@@ -71,6 +74,8 @@ function SelectPhase({
         <h1 className="text-3xl font-bold text-[#0F2356]">Speaking Practice</h1>
         <p className="text-gray-500 mt-1">Choose a scenario to begin your OET roleplay</p>
 
+        <WeakSpots endpoint="/speaking/weakness" />
+
         {pendingResume && (
           <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
             <div>
@@ -107,19 +112,13 @@ function SelectPhase({
                 first, then weakest-scored) above the full browsable grid, so
                 users aren't left to scan 100+ cards to find where to start. */}
             {recommendedScenarios.length > 0 && (
-              <div className="mb-6">
+              <div className="mt-8 mb-6">
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 mb-3 flex items-center gap-1.5">
                   <Star className="w-3.5 h-3.5" aria-hidden="true" /> Recommended for you
                 </p>
                 <div className="grid gap-3 sm:grid-cols-3">
                   {recommendedScenarios.map((r) => {
                     const full = scenarios.find((s) => s.id === r.scenario_id)
-                    const diffLabel =
-                      r.difficulty === 'beginner' || r.difficulty === 'easy'
-                        ? 'Beginner'
-                        : r.difficulty === 'advanced' || r.difficulty === 'hard'
-                        ? 'Advanced'
-                        : 'Intermediate'
                     return (
                       <button
                         key={r.scenario_id}
@@ -128,7 +127,7 @@ function SelectPhase({
                         className="text-left rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-teal-50 p-4 transition-all hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
                       >
                         <span className="inline-block rounded-full bg-white/70 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                          {diffLabel}
+                          {DIFFICULTY_LABEL[normalizeDifficulty(r.difficulty)]}
                         </span>
                         <h4 className="mt-2 font-bold text-[#0F2356] line-clamp-1">{r.title}</h4>
                         <p className="mt-1 text-xs text-gray-500 line-clamp-2">{r.reason}</p>
@@ -221,32 +220,15 @@ function SelectPhase({
                   const card = s.nurse_card || {}
                   const tasks = card.tasks || []
                   const isCompleted = completedScenarioIds.has(s.id)
-                  const difficultyBadge =
-                    s.difficulty === 'easy' || s.difficulty === 'beginner'
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : s.difficulty === 'hard' || s.difficulty === 'advanced'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-amber-100 text-amber-700'
-                  const difficultyLabel =
-                    s.difficulty === 'beginner' || s.difficulty === 'easy' ? 'Beginner'
-                      : s.difficulty === 'advanced' || s.difficulty === 'hard' ? 'Advanced'
-                      : 'Intermediate'
                   return (
                     <div
                       key={s.id}
                       onClick={() => onSelectScenario(s)}
                       className="relative bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col gap-4 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] active:shadow-sm transition-all duration-200 cursor-pointer"
                     >
-                      {isCompleted && (
-                        <span className="absolute top-4 right-4 flex items-center gap-1 rounded-full bg-emerald-500 text-white text-[10px] font-semibold px-2.5 py-1">
-                          <CheckCircle2 className="size-3" />
-                          Completed
-                        </span>
-                      )}
+                      {isCompleted && <CompletedBadge />}
                       <div className="flex items-center gap-2 flex-wrap pr-24">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold w-fit ${difficultyBadge}`}>
-                          {difficultyLabel}
-                        </span>
+                        <DifficultyBadge difficulty={s.difficulty} />
                         {s.specialty && (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-600">
                             {s.specialty}

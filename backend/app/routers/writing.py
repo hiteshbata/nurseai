@@ -12,7 +12,7 @@ from app.routers.mock import has_mock_section_access
 from app.core.feature_flags import require_feature
 from app.services.ai_scoring import score_writing, _try_parse_json
 from app.services.plan_gating import has_writing_access, get_plan_from_profile
-from app.services.skill_graph import record_skill_observations
+from app.services.skill_graph import record_skill_observations, get_weakness
 from app.core.redis_client import get_redis
 import asyncio
 import base64
@@ -148,6 +148,16 @@ def list_scenarios(current_user: UserInfo = Depends(get_current_user)):
         "id, title, setting, difficulty, nurse_card"
     ).eq("module", "writing").eq("is_active", True).execute()
     return data.data
+
+
+@router.get("/weakness")
+async def writing_weakness(
+    current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
+):
+    """The student's weakest writing criteria (organization, language, ...),
+    weakest first. See skill_graph.get_weakness."""
+    return await get_weakness(user_db, current_user.id, "writing:")
 
 
 @router.get("/scenarios/{scenario_id}")

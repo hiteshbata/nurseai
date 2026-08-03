@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
@@ -10,6 +10,12 @@ import { trackEvent } from '@/lib/analytics'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
+import { Search, X } from 'lucide-react'
+import { DifficultyBadge, normalizeDifficulty } from '@/components/ui/DifficultyBadge'
+import { CompletedBadge } from '@/components/ui/CompletedBadge'
+import { WeakSpots } from '@/components/practice/WeakSpots'
 import { UpgradeRequired } from '@/components/UpgradeRequired'
 import { getMockId, finishMockSection } from '@/lib/mock'
 import { WRITING_CRITERIA } from '@/components/SessionFeedback'
@@ -77,6 +83,10 @@ export default function WritingPracticePage() {
   const router = useRouter()
   const [phase, setPhase] = useState<Phase>('select')
   const [scenarios, setScenarios] = useState<Scenario[]>([])
+  const [completedScenarioIds, setCompletedScenarioIds] = useState<Set<number>>(new Set())
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterDifficulty, setFilterDifficulty] = useState<'all' | 'beginner' | 'intermediate' | 'advanced'>('all')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'completed' | 'not_tried'>('all')
   const [selectedScenario, setSelectedScenario] = useState<Scenario | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [upgradeRequired, setUpgradeRequired] = useState(false)
@@ -148,7 +158,22 @@ export default function WritingPracticePage() {
     } finally {
       setIsLoading(false)
     }
+    api.get('/submissions', { params: { module: 'writing' } })
+      .then((res) => setCompletedScenarioIds(new Set((res.data || []).map((sub: { scenario_id: number }) => sub.scenario_id))))
+      .catch(() => {})
   }
+
+  const filteredScenarios = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return scenarios.filter((s) => {
+      if (filterDifficulty !== 'all' && normalizeDifficulty(s.difficulty) !== filterDifficulty) return false
+      const isCompleted = completedScenarioIds.has(s.id)
+      if (filterStatus === 'completed' && !isCompleted) return false
+      if (filterStatus === 'not_tried' && isCompleted) return false
+      if (query && !s.title.toLowerCase().includes(query) && !s.setting.toLowerCase().includes(query)) return false
+      return true
+    })
+  }, [scenarios, filterDifficulty, filterStatus, searchQuery, completedScenarioIds])
 
   // Mock: load the one scenario the mock froze in and drop straight into the timed
   // writing sitting — no scenario picker.
@@ -384,6 +409,8 @@ export default function WritingPracticePage() {
           <h1 className="text-3xl font-bold text-[#0F2356]">Writing Practice</h1>
           <p className="text-gray-500 mt-1">Choose a scenario to write an OET-style letter</p>
 
+          <WeakSpots endpoint="/writing/weakness" />
+
           {upgradeRequired ? (
             <UpgradeRequired
               className="mt-8"
@@ -396,35 +423,80 @@ export default function WritingPracticePage() {
               <p className="text-muted-foreground">Ask an admin to create writing scenarios</p>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 gap-6 mt-8">
-              {scenarios.map((s) => {
-                const tasks = s.nurse_card?.tasks || []
-                const difficultyBadge =
-                  s.difficulty === 'easy' || s.difficulty === 'beginner'
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : s.difficulty === 'hard' || s.difficulty === 'advanced'
-                    ? 'bg-red-100 text-red-700'
-                    : 'bg-amber-100 text-amber-700'
-                return (
-                  <Card
-                    key={s.id}
-                    className="p-6 flex flex-col gap-4 hover:shadow-md transition-all"
-                  >
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold w-fit ${difficultyBadge}`}>
-                      {s.difficulty}
-                    </span>
-                    <h3 className="text-xl font-bold text-primary">{s.title}</h3>
-                    <p className="text-gray-600 text-sm line-clamp-3 leading-relaxed">{s.setting}</p>
-                    {tasks.length > 0 && (
-                      <p className="text-sm text-gray-500">{tasks.length} writing tasks</p>
-                    )}
-                    <Button onClick={() => handleSelectScenario(s)} className="w-full">
-                      Start Writing →
-                    </Button>
-                  </Card>
-                )
-              })}
-            </div>
+            <>
+              <div className="flex flex-col sm:flex-row gap-3 mt-8">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search scenarios by title or setting..."
+                    aria-label="Search scenarios"
+                    className="pl-10 pr-9"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      aria-label="Clear search"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <Select
+                  value={filterDifficulty}
+                  onChange={(e) => setFilterDifficulty(e.target.value as typeof filterDifficulty)}
+                  aria-label="Filter by difficulty"
+                  className="sm:w-48"
+                >
+                  <option value="all">All difficulties</option>
+                  <option value="beginner">Beginner</option>
+                  <option value="intermediate">Intermediate</option>
+                  <option value="advanced">Advanced</option>
+                </Select>
+                <Select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
+                  aria-label="Filter by completion status"
+                  className="sm:w-48"
+                >
+                  <option value="all">All scenarios</option>
+                  <option value="completed">Completed</option>
+                  <option value="not_tried">Not yet tried</option>
+                </Select>
+              </div>
+
+              {filteredScenarios.length === 0 ? (
+                <div className="text-center py-16 bg-white rounded-lg shadow mt-4">
+                  <p className="text-lg font-semibold text-gray-500 mb-1">No scenarios match your filters</p>
+                  <p className="text-muted-foreground text-sm">Try a different search term or clear a filter</p>
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-6 mt-4">
+                  {filteredScenarios.map((s) => {
+                    const tasks = s.nurse_card?.tasks || []
+                    return (
+                      <Card
+                        key={s.id}
+                        className="relative p-6 flex flex-col gap-4 hover:shadow-md transition-all"
+                      >
+                        {completedScenarioIds.has(s.id) && <CompletedBadge />}
+                        <DifficultyBadge difficulty={s.difficulty} />
+                        <h3 className="text-xl font-bold text-primary">{s.title}</h3>
+                        <p className="text-gray-600 text-sm line-clamp-3 leading-relaxed">{s.setting}</p>
+                        {tasks.length > 0 && (
+                          <p className="text-sm text-gray-500">{tasks.length} writing tasks</p>
+                        )}
+                        <Button onClick={() => handleSelectScenario(s)} className="w-full">
+                          Start Writing →
+                        </Button>
+                      </Card>
+                    )
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

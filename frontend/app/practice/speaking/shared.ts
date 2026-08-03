@@ -90,11 +90,7 @@ export function scoreColor(score: number) {
   return 'text-red-500'
 }
 
-export function normalizeDifficulty(difficulty: string): 'beginner' | 'intermediate' | 'advanced' {
-  if (difficulty === 'easy' || difficulty === 'beginner') return 'beginner'
-  if (difficulty === 'hard' || difficulty === 'advanced') return 'advanced'
-  return 'intermediate'
-}
+export { normalizeDifficulty } from '@/components/ui/DifficultyBadge'
 
 export function scoreToGrade(score: number): string {
   if (score >= 4.5) return 'A'

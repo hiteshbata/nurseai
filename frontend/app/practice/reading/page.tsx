@@ -9,9 +9,10 @@ import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { UpgradeRequired } from '@/components/UpgradeRequired'
+import { FullTestCard } from '@/components/practice/FullTestCard'
 import DictionaryLookup from '@/components/DictionaryLookup'
 import AnswerExplanation from '@/components/reading/AnswerExplanation'
-import WeakSpots from '@/components/reading/WeakSpots'
+import { WeakSpots } from '@/components/practice/WeakSpots'
 import { stripLeadingQuestionNumber, partASubgroup, PART_A_SUBGROUP_LABEL } from '@/lib/utils'
 
 interface PassageSummary {
@@ -56,12 +57,6 @@ interface Highlight {
 
 type Phase = 'select' | 'read' | 'result'
 
-function difficultyBadge(d: string) {
-  if (d === 'easy' || d === 'beginner') return 'bg-emerald-100 text-emerald-700'
-  if (d === 'hard' || d === 'advanced') return 'bg-red-100 text-red-700'
-  return 'bg-amber-100 text-amber-700'
-}
-
 /** Character offset of a Range boundary relative to `root`, walking all text
  * nodes underneath it. Works even once highlights split the text into
  * multiple <mark>/<span> nodes, unlike raw Range.startOffset. */
@@ -98,8 +93,8 @@ export default function ReadingPracticePage() {
   const { status } = useSupabaseSession()
   const router = useRouter()
   const [phase, setPhase] = useState<Phase>('select')
-  const [passages, setPassages] = useState<PassageSummary[]>([])
   const [tests, setTests] = useState<Array<{ id: number; title: string; passage_count: number }>>([])
+  const [completedTestIds, setCompletedTestIds] = useState<Set<number>>(new Set())
   const [passage, setPassage] = useState<PassageDetail | null>(null)
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [result, setResult] = useState<SubmitResult | null>(null)
@@ -118,15 +113,14 @@ export default function ReadingPracticePage() {
       return
     }
     if (status === 'authenticated') {
-      api.get('/reading/passages')
-        .then((res) => setPassages(res.data || []))
-        .catch((error) => {
-          if (isUpgradeRequiredError(error)) setUpgradeRequired(true)
-          else toast.error('Failed to load reading passages')
-        })
-        .finally(() => setIsLoading(false))
       api.get('/reading/tests')
         .then((res) => setTests(res.data || []))
+        .catch((error) => {
+          if (isUpgradeRequiredError(error)) setUpgradeRequired(true)
+        })
+        .finally(() => setIsLoading(false))
+      api.get('/reading/tests/completed-ids')
+        .then((res) => setCompletedTestIds(new Set(res.data || [])))
         .catch(() => {})
     }
   }, [status])
@@ -249,7 +243,7 @@ export default function ReadingPracticePage() {
             </Link>
           </div>
 
-          <WeakSpots />
+          <WeakSpots endpoint="/reading/weakness" />
 
           {upgradeRequired ? (
             <UpgradeRequired
@@ -268,14 +262,13 @@ export default function ReadingPracticePage() {
               <p className="text-sm text-gray-500 mb-4">A complete OET paper — Part A, B and C in one timed session, just like the exam.</p>
               <div className="grid md:grid-cols-2 gap-6">
                 {tests.map((t) => (
-                  <Card key={t.id} className="p-6 flex flex-col gap-3 hover:shadow-md transition-all border-primary/20">
-                    <span className="px-3 py-1 rounded-full text-xs font-semibold w-fit bg-primary/10 text-primary">Full test</span>
-                    <h3 className="text-xl font-bold text-primary">{t.title}</h3>
-                    <p className="text-sm text-gray-500">Parts A + B + C · 60 min</p>
-                    <Button onClick={() => router.push(`/practice/reading/test/${t.id}`)} className="w-full mt-auto">
-                      Start Full Test →
-                    </Button>
-                  </Card>
+                  <FullTestCard
+                    key={t.id}
+                    title={t.title}
+                    meta="Parts A + B + C · 60 min"
+                    completed={completedTestIds.has(t.id)}
+                    onStart={() => router.push(`/practice/reading/test/${t.id}`)}
+                  />
                 ))}
               </div>
             </div>

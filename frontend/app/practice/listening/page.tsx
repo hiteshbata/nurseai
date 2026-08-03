@@ -6,9 +6,9 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import api, { isUpgradeRequiredError } from '@/lib/api'
 import toast from 'react-hot-toast'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { UpgradeRequired } from '@/components/UpgradeRequired'
+import { FullTestCard } from '@/components/practice/FullTestCard'
+import { WeakSpots } from '@/components/practice/WeakSpots'
 
 interface TestSummary {
   id: number
@@ -20,6 +20,7 @@ export default function ListeningPracticePage() {
   const { status } = useSupabaseSession()
   const router = useRouter()
   const [tests, setTests] = useState<TestSummary[]>([])
+  const [completedTestIds, setCompletedTestIds] = useState<Set<number>>(new Set())
   const [isLoading, setIsLoading] = useState(true)
   const [upgradeRequired, setUpgradeRequired] = useState(false)
 
@@ -36,6 +37,9 @@ export default function ListeningPracticePage() {
           else toast.error('Failed to load listening tests')
         })
         .finally(() => setIsLoading(false))
+      api.get('/listening/tests/completed-ids')
+        .then((res) => setCompletedTestIds(new Set(res.data || [])))
+        .catch(() => {})
     }
   }, [status])
 
@@ -60,6 +64,8 @@ export default function ListeningPracticePage() {
           </Link>
         </div>
 
+        <WeakSpots endpoint="/listening/weakness" />
+
         {upgradeRequired ? (
           <UpgradeRequired
             className="mt-8"
@@ -77,14 +83,13 @@ export default function ListeningPracticePage() {
             <p className="text-sm text-gray-500 mb-4">42 questions across Part A, B and C — just like the real exam. Each extract plays once.</p>
             <div className="grid md:grid-cols-2 gap-6">
               {tests.map((t) => (
-                <Card key={t.id} className="p-6 flex flex-col gap-3 hover:shadow-md transition-all border-primary/20">
-                  <span className="px-3 py-1 rounded-full text-xs font-semibold w-fit bg-primary/10 text-primary">Full test</span>
-                  <h3 className="text-xl font-bold text-primary">{t.title}</h3>
-                  <p className="text-sm text-gray-500">Parts A + B + C · ~45 min</p>
-                  <Button onClick={() => router.push(`/practice/listening/test/${t.id}`)} className="w-full mt-auto">
-                    Start Full Test →
-                  </Button>
-                </Card>
+                <FullTestCard
+                  key={t.id}
+                  title={t.title}
+                  meta="Parts A + B + C · ~45 min"
+                  completed={completedTestIds.has(t.id)}
+                  onStart={() => router.push(`/practice/listening/test/${t.id}`)}
+                />
               ))}
             </div>
           </div>
