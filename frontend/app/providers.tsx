@@ -45,7 +45,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   }, [status, session])
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+    // ponytail: dark mode disabled pending full redesign (audit found only
+    // ~4% component coverage). forcedTheme keeps the .dark CSS vars and
+    // next-themes wiring intact for later; it just stops them from ever
+    // being applied, regardless of OS/system preference or stored choice.
+    <ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light">
       {children}
       <Toaster position="top-center" reverseOrder={false} />
     </ThemeProvider>
