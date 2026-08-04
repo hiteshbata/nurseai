@@ -49,7 +49,7 @@ def _sanitize_transcript(text: str, max_chars: int = 8000) -> tuple[str, list[st
     return stripped[:max_chars], matched
 
 GEMINI_PERSONA_MODEL = "google/gemini-3.1-flash-lite"
-GEMINI_SCORING_FREE_MODEL = "google/gemini-2.5-flash"
+GEMINI_SCORING_FREE_MODEL = "google/gemini-flash-latest"
 GEMINI_SCORING_PREMIUM_MODEL = "google/gemini-3.5-flash"
 OPENAI_MODEL = "gpt-5.4-mini"
 OPENROUTER_MODEL = "openai/gpt-5.4-mini"
