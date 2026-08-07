@@ -2,12 +2,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from typing import Dict, Any, List
 from app.core.supabase import get_supabase
-from app.core.config import settings
-from app.core.error_utils import redact_api_keys
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.admin import require_admin
-from app.services.ai_scoring import _try_parse_json
-import httpx
+from app.services.ai_scoring import _call_ai
 import base64
 import json
 
@@ -15,64 +12,32 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/scenario", tags=["admin"])
 
-# TODO(scenario_vision): still a hardcoded literal -- this OpenRouter vision
-# call gets migrated onto ai_registry's "scenario_vision" purpose in a
-# follow-up pass, not this one.
-VISION_MODEL = "google/gemini-flash-latest"
 MAX_PDF_BYTES = 10 * 1024 * 1024
 _extract_rate_limiter = SlidingWindowRateLimiter(30, 600, name="scenario:extract")
 
 
 async def _call_vision_api(image_base64: str, prompt: str, json_mode: bool = True) -> Dict[str, Any]:
-    """Send image + prompt to Gemini via OpenRouter or direct Gemini API."""
-    openrouter_key = settings.OPENROUTER_API_KEY
-
-    # Try OpenRouter first (supports multimodal)
-    if openrouter_key:
-        try:
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
-                        },
-                    ],
-                }
-            ]
-            payload = {
-                "model": VISION_MODEL,
-                "messages": messages,
-                "temperature": 0.2,
-                "max_tokens": 4000,
-            }
-            if json_mode:
-                payload["response_format"] = {"type": "json_object"}
-
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {openrouter_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                )
-                if resp.status_code == 200:
-                    content = resp.json()["choices"][0]["message"]["content"]
-                    if json_mode:
-                        return json.loads(content)
-                    return {"raw_feedback": content}
-        except Exception as e:
-            logger.error(
-                "[EXTERNAL_API_FAILURE] service=OPENROUTER type=unknown detail=%s",
-                redact_api_keys(str(e)[:500]),
-            )
-            print(f"[OpenRouter vision] failed: {e}")
-
-    raise HTTPException(status_code=502, detail="AI vision provider unavailable")
+    """Send image + prompt to the "scenario_vision" purpose (Admin > AI Models
+    controls the actual model)."""
+    result = await _call_ai(
+        [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
+            ],
+        }],
+        purpose="scenario_vision",
+        max_tokens=4000,
+        json_mode=json_mode,
+        temperature=0.2,
+        timeout=120.0,
+    )
+    if result.get("provider_failure"):
+        raise HTTPException(status_code=502, detail="AI vision provider unavailable")
+    if json_mode and "raw_feedback" in result:
+        raise HTTPException(status_code=502, detail="AI vision provider unavailable")
+    return result
 
 
 EXTRACT_PROMPT = """You are an OET exam content specialist. Analyze this image of an OET roleplay card and extract all content into a structured JSON format. If the image is not an OET roleplay card, return an error. Extract exactly what is written, do not invent or add content that is not visible in the image.
@@ -177,53 +142,32 @@ If the PDF contains no OET roleplay cards, return {"scenarios": [], "error": "No
 
 
 async def _extract_scenarios_from_pdf(pdf_base64: str) -> List[Dict[str, Any]]:
-    """Send the PDF to OpenRouter (mistral-ocr file-parser reads it as rendered
-    pages, same as the reading/writing admin extractors) and get back one draft
-    scenario per roleplay card found."""
-    key = settings.OPENROUTER_API_KEY
-    if not key:
-        raise HTTPException(status_code=502, detail="AI provider not configured")
-
-    payload = {
-        "model": VISION_MODEL,
-        "messages": [{"role": "user", "content": [
+    """Send the PDF to the "scenario_vision" purpose (mistral-ocr file-parser
+    reads it as rendered pages, same as the reading/writing admin extractors)
+    and get back one draft scenario per roleplay card found."""
+    result = await _call_ai(
+        [{"role": "user", "content": [
             {"type": "text", "text": PDF_EXTRACT_PROMPT},
             {"type": "file", "file": {
                 "filename": "scenarios.pdf",
                 "file_data": f"data:application/pdf;base64,{pdf_base64}",
             }},
         ]}],
-        "plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}],
-        "temperature": 0.2,
-        "max_tokens": 8000,
-        "response_format": {"type": "json_object"},
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json=payload,
-            )
-    except httpx.TimeoutException:
-        logger.error("[scenario pdf extract] OpenRouter request timed out")
+        purpose="scenario_vision",
+        max_tokens=8000,
+        json_mode=True,
+        temperature=0.2,
+        extra_payload={"plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}]},
+        timeout=180.0,
+    )
+    if result.get("provider_failure"):
         raise HTTPException(status_code=504, detail="Extraction took too long. Try again.")
-    if resp.status_code != 200:
-        logger.error(
-            "[scenario pdf extract] OpenRouter HTTP %s: %s",
-            resp.status_code, redact_api_keys(resp.text[:300]),
-        )
-        raise HTTPException(status_code=502, detail="AI extraction failed. Try again.")
-
-    content = resp.json()["choices"][0]["message"]["content"]
-    parsed = _try_parse_json("scenario-pdf-extract", content)
-    if parsed is None:
-        logger.warning("[scenario pdf extract] JSON parse failed, raw head=%s", content[:1000])
+    if "raw_feedback" in result:
+        logger.warning("[scenario pdf extract] JSON parse failed, raw head=%s", result["raw_feedback"][:1000])
         raise HTTPException(status_code=502, detail="Could not read that PDF. Try a clearer scan or a different file.")
-    if parsed.get("error") and not parsed.get("scenarios"):
-        raise HTTPException(status_code=422, detail=parsed["error"])
-    return parsed.get("scenarios", [])
+    if result.get("error") and not result.get("scenarios"):
+        raise HTTPException(status_code=422, detail=result["error"])
+    return result.get("scenarios", [])
 
 
 @router.post("/extract-from-pdf")

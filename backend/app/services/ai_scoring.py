@@ -79,11 +79,18 @@ async def _call_ai(
     user_id: str = "",
     session_id: Optional[int] = None,
     temperature: float = 0.0,
+    extra_payload: Optional[Dict[str, Any]] = None,
+    timeout: float = 60.0,
 ) -> Dict[str, Any]:
     """Call the model configured for `purpose` (Admin > AI Models), with a
     single-hop fallback to that model's configured fallback_model_id if the
     primary fails. Every attempt (success or failure) is logged to
-    ai_usage_events via cost_tracking.log_ai_usage."""
+    ai_usage_events via cost_tracking.log_ai_usage.
+
+    extra_payload/timeout exist for the OCR/vision purposes, whose
+    multimodal `messages` content and (for OpenRouter) file-parser plugin
+    params need a longer timeout and a payload extra _call_ai's other
+    callers never use."""
     cost_circuit_breaker.raise_if_tripped()
 
     try:
@@ -104,7 +111,10 @@ async def _call_ai(
 
         start = time.monotonic()
         try:
-            dispatched = await ai_registry.dispatch_call(candidate, messages, max_tokens, json_mode, temperature)
+            dispatched = await ai_registry.dispatch_call(
+                candidate, messages, max_tokens, json_mode, temperature,
+                extra_payload=extra_payload, timeout=timeout,
+            )
         except ai_registry.ModelCallError as e:
             latency_ms = round((time.monotonic() - start) * 1000)
             err_msg = str(e)[:300]
@@ -156,6 +166,7 @@ async def _call_ai(
         # An empty/unparseable response is a bad attempt, not a usable one --
         # try the fallback (if any) instead of returning it as if it worked.
         if result.get("raw_feedback") or (json_mode and result):
+            result["finish_reason"] = dispatched.get("finish_reason")
             return result
         last_error = "empty or unparseable response"
 

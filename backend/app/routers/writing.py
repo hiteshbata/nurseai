@@ -4,13 +4,12 @@ from typing import Optional, List, Dict, Any
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
-from app.core.config import settings
 from app.routers.auth import get_current_user, get_user_supabase, UserInfo
 from supabase import Client
 from app.routers.admin import require_admin
 from app.routers.mock import has_mock_section_access
 from app.core.feature_flags import require_feature
-from app.services.ai_scoring import score_writing, _try_parse_json
+from app.services.ai_scoring import score_writing, _call_ai
 from app.services.plan_gating import has_writing_access, get_plan_from_profile
 from app.services.skill_graph import record_skill_observations, get_weakness
 from app.core.redis_client import get_redis
@@ -243,59 +242,40 @@ async def submit_writing(
     return {"success": True, "feedback": feedback}
 
 
-async def _read_ocr_page(client, idx: int, img_b64: str) -> str:
-    """OCR one page, trying each vision model in turn. Raises HTTPException(502)
-    naming the page if every model fails, so the caller surfaces which photo to
-    re-take."""
-    # TODO(writing_ocr): still hardcoded literals -- this OpenRouter OCR
-    # fallback chain gets migrated onto ai_registry's "writing_ocr" purpose
-    # (primary + fallback_model_id) in a follow-up pass, not this one.
-    models_to_try = [
-        "anthropic/claude-sonnet-5",
-        "google/gemini-flash-latest",
-    ]
-    for model in models_to_try:
-        try:
-            response = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "messages": [{
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "Read this handwritten nursing letter. Extract and return ONLY the text content, exactly as written. Preserve line breaks and paragraphs. Do not correct spelling or grammar."},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
-                        ],
-                    }],
-                    "max_tokens": 1500,
-                },
-            )
-            if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"].strip()
-        except Exception:
-            continue
-    raise HTTPException(status_code=502, detail=f"Could not read page {idx + 1}. Try a clearer, well-lit photo.")
+async def _read_ocr_page(idx: int, img_b64: str) -> str:
+    """OCR one page via the "writing_ocr" purpose (Admin > AI Models controls
+    the primary/fallback model pair). Raises HTTPException(502) naming the
+    page if both fail, so the caller surfaces which photo to re-take."""
+    result = await _call_ai(
+        [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Read this handwritten nursing letter. Extract and return ONLY the text content, exactly as written. Preserve line breaks and paragraphs. Do not correct spelling or grammar."},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+            ],
+        }],
+        purpose="writing_ocr",
+        max_tokens=1500,
+        # 30s (not _call_ai's 60s default): a hung provider fails fast to the
+        # fallback model instead of eating a full minute before it's tried.
+        timeout=30.0,
+    )
+    if result.get("provider_failure"):
+        raise HTTPException(status_code=502, detail=f"Could not read page {idx + 1}. Try a clearer, well-lit photo.")
+    return result.get("raw_feedback", "").strip()
 
 
 async def _ocr_images(images: List[str]) -> str:
-    """OCR each page image (base64) with vision models and return the combined
-    text. OCR only — the student reviews/edits the result before it is scored,
-    so a misread never silently costs them Language/spelling marks.
+    """OCR each page image (base64) and return the combined text. OCR only —
+    the student reviews/edits the result before it is scored, so a misread
+    never silently costs them Language/spelling marks.
 
     Pages are read concurrently (gather preserves order), so wall-time is one
-    page, not the sum -- a slow/hung provider on page 1 no longer stacks on top
-    of pages 2-3. 30s per model call (was 60): a hung provider fails fast to the
-    fallback instead of eating a full minute before model 2 is even tried."""
-    import httpx
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        pages = await asyncio.gather(*(
-            _read_ocr_page(client, idx, img_b64) for idx, img_b64 in enumerate(images)
-        ))
+    page, not the sum -- a slow/hung provider on page 1 no longer stacks on
+    top of pages 2-3."""
+    pages = await asyncio.gather(*(
+        _read_ocr_page(idx, img_b64) for idx, img_b64 in enumerate(images)
+    ))
     return "\n\n".join(pages)
 
 
@@ -437,54 +417,33 @@ If the PDF is not an OET Writing task, return {"error": "No OET writing task fou
 
 
 async def _extract_writing_from_pdf(pdf_base64: str) -> Dict[str, Any]:
-    """Send the PDF to OpenRouter (mistral-ocr file-parser reads it as rendered
-    pages — real OET PDFs are watermark-stamped and the raw text engine choked on
-    them) and get back a structured, editable scenario draft."""
-    import httpx
-
-    key = settings.OPENROUTER_API_KEY
-    if not key:
-        raise HTTPException(status_code=502, detail="AI provider not configured")
-
-    payload = {
-        # TODO(writing_ocr): still a hardcoded literal -- migrated onto
-        # ai_registry's "writing_ocr" purpose in a follow-up pass.
-        "model": "google/gemini-flash-latest",
-        "messages": [{"role": "user", "content": [
+    """Send the PDF to the "writing_content_extraction" purpose (mistral-ocr
+    file-parser reads it as rendered pages — real OET PDFs are watermark-
+    stamped and the raw text engine choked on them) and get back a
+    structured, editable scenario draft."""
+    result = await _call_ai(
+        [{"role": "user", "content": [
             {"type": "text", "text": WRITING_EXTRACT_PROMPT},
             {"type": "file", "file": {
                 "filename": "writing.pdf",
                 "file_data": f"data:application/pdf;base64,{pdf_base64}",
             }},
         ]}],
-        "plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}],
-        "temperature": 0.2,
-        "max_tokens": 8000,
-        "response_format": {"type": "json_object"},
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json=payload,
-            )
-    except httpx.TimeoutException:
-        logger.error("[writing extract] OpenRouter request timed out")
-        raise HTTPException(status_code=504, detail="Extraction took too long. Try again.")
-    if resp.status_code != 200:
-        logger.error("[writing extract] OpenRouter HTTP %s: %s", resp.status_code, resp.text[:300])
+        purpose="writing_content_extraction",
+        max_tokens=8000,
+        json_mode=True,
+        temperature=0.2,
+        extra_payload={"plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}]},
+        timeout=180.0,
+    )
+    if result.get("provider_failure"):
         raise HTTPException(status_code=502, detail="AI extraction failed. Try again.")
-
-    content = resp.json()["choices"][0]["message"]["content"]
-    parsed = _try_parse_json("writing-extract", content)
-    if parsed is None:
-        logger.warning("[writing extract] JSON parse failed, raw head=%s", content[:1000])
+    if "raw_feedback" in result:
+        logger.warning("[writing extract] JSON parse failed, raw head=%s", result["raw_feedback"][:1000])
         raise HTTPException(status_code=502, detail="Could not read that PDF. Try a clearer scan or a different file.")
-    if parsed.get("error"):
-        raise HTTPException(status_code=422, detail=parsed["error"])
-    return parsed
+    if result.get("error"):
+        raise HTTPException(status_code=422, detail=result["error"])
+    return result
 
 
 @router.post("/admin/extract")

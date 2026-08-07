@@ -25,7 +25,6 @@ import tempfile
 import uuid
 from typing import List, Optional, Dict, Any
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 
@@ -45,7 +44,7 @@ from app.services.listening_audio import (
     generate_two_speaker_audio, cut_segment, deepgram_transcribe, timestamped_lines,
     TtsError, DEFAULT_TTS_MODEL, OPENAI_VOICES,
 )
-from app.services.ai_scoring import _try_parse_json, _call_ai
+from app.services.ai_scoring import _call_ai
 from app.services.plan_gating import has_listening_access, has_free_module_attempt, get_plan_from_profile
 
 logger = logging.getLogger(__name__)
@@ -955,14 +954,10 @@ If the PDF contains no usable OET Listening content, return {"error": "No OET li
 
 
 async def _openrouter_pdf(prompt: str, pdf_base64: str, answer_key_base64: Optional[str], max_tokens: int, tag: str) -> Dict[str, Any]:
-    """Send a PDF (and optional answer-key PDF) to OpenRouter (Gemini reads PDFs
-    natively via the mistral-ocr file-parser -- real OET papers are watermark-stamped,
-    which the free text engine chokes on) and parse the JSON reply. Same call shape
-    reading.py uses."""
-    key = settings.OPENROUTER_API_KEY
-    if not key:
-        raise HTTPException(status_code=502, detail="AI provider not configured")
-
+    """Send a PDF (and optional answer-key PDF) to the "listening_ocr" purpose
+    (mistral-ocr file-parser reads it as rendered pages -- real OET papers are
+    watermark-stamped, which the free text engine chokes on) and parse the
+    JSON reply. Same call shape reading.py uses."""
     message_content: List[Dict[str, Any]] = [
         {"type": "text", "text": prompt},
         {"type": "file", "file": {"filename": "listening.pdf", "file_data": f"data:application/pdf;base64,{pdf_base64}"}},
@@ -972,50 +967,33 @@ async def _openrouter_pdf(prompt: str, pdf_base64: str, answer_key_base64: Optio
             "filename": "answer_key.pdf", "file_data": f"data:application/pdf;base64,{answer_key_base64}",
         }})
 
-    payload = {
-        # TODO(listening_ocr): still a hardcoded literal -- the OpenRouter
-        # PDF/mistral-ocr import path gets migrated onto ai_registry's
-        # "listening_ocr" purpose in a follow-up pass, not this one.
-        "model": "google/gemini-flash-latest",
-        "messages": [{"role": "user", "content": message_content}],
-        "plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}],
-        "temperature": 0.2,
-        "max_tokens": max_tokens,
-        "response_format": {"type": "json_object"},
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=240.0) as client:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json=payload,
-            )
-    except httpx.TimeoutException:
-        logger.error("[%s] OpenRouter request timed out", tag)
+    result = await _call_ai(
+        [{"role": "user", "content": message_content}],
+        purpose="listening_ocr",
+        max_tokens=max_tokens,
+        json_mode=True,
+        temperature=0.2,
+        extra_payload={"plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}]},
+        timeout=240.0,
+    )
+    if result.get("provider_failure"):
         raise HTTPException(status_code=504, detail="Extraction took too long. Try uploading one part at a time.")
-    if resp.status_code != 200:
-        logger.error("[%s] OpenRouter HTTP %s: %s", tag, resp.status_code, resp.text[:300])
-        raise HTTPException(status_code=502, detail="AI extraction failed. Try again.")
 
-    choice = resp.json()["choices"][0]
-    content = choice["message"]["content"]
-    if choice.get("finish_reason") == "length":
+    if result.get("finish_reason") == "length":
         # ponytail: no salvage-recovery yet (reading added it only after big papers
         # truncated live). If a monster listening paper truncates, the parse fails and
         # the admin retries one part at a time. Add reading-style _salvage if it recurs.
         logger.warning("[%s] response truncated (finish_reason=length) at max_tokens", tag)
 
-    parsed = _try_parse_json(tag, content)
-    if parsed is None:
-        logger.warning("[%s] JSON parse failed, raw content head=%s", tag, content[:1000])
+    if "raw_feedback" in result:
+        logger.warning("[%s] JSON parse failed, raw content head=%s", tag, result["raw_feedback"][:1000])
         raise HTTPException(
             status_code=502,
             detail="The paper was too large to extract in one pass. Try uploading one part (A, B or C) at a time.",
         )
-    if parsed.get("error"):
-        logger.warning("[%s] model returned no content, raw head=%s", tag, content[:500])
-    return parsed
+    if result.get("error"):
+        logger.warning("[%s] model returned no content, raw head=%s", tag, json.dumps(result)[:500])
+    return result
 
 
 @router.post("/admin/extract")
@@ -1075,46 +1053,25 @@ If the audio is not usable OET Listening content, return {"error": "No usable li
 
 
 async def _transcribe_audio_draft(audio_base64: str, audio_format: str) -> Dict[str, Any]:
-    """Send audio to OpenRouter (Gemini transcribes natively) and get back a
-    structured transcript + questions draft."""
-    key = settings.OPENROUTER_API_KEY
-    if not key:
-        raise HTTPException(status_code=502, detail="AI provider not configured")
-
-    payload = {
-        # TODO(listening_ocr): still a hardcoded literal -- the OpenRouter
-        # PDF/mistral-ocr import path gets migrated onto ai_registry's
-        # "listening_ocr" purpose in a follow-up pass, not this one.
-        "model": "google/gemini-flash-latest",
-        "messages": [{"role": "user", "content": [
+    """Send audio to the "listening_ocr" purpose (Gemini transcribes natively
+    via OpenRouter) and get back a structured transcript + questions draft."""
+    result = await _call_ai(
+        [{"role": "user", "content": [
             {"type": "text", "text": LISTENING_TRANSCRIBE_PROMPT},
             {"type": "input_audio", "input_audio": {"data": audio_base64, "format": audio_format}},
         ]}],
-        "temperature": 0.2,
-        "max_tokens": 8000,
-        "response_format": {"type": "json_object"},
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=240.0) as client:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json=payload,
-            )
-    except httpx.TimeoutException:
-        logger.error("[listening transcribe] OpenRouter request timed out")
+        purpose="listening_ocr",
+        max_tokens=8000,
+        json_mode=True,
+        temperature=0.2,
+        timeout=240.0,
+    )
+    if result.get("provider_failure"):
         raise HTTPException(status_code=504, detail="Transcription took too long. Try a shorter clip.")
-    if resp.status_code != 200:
-        logger.error("[listening transcribe] OpenRouter HTTP %s: %s", resp.status_code, resp.text[:300])
-        raise HTTPException(status_code=502, detail="AI transcription failed. Try again.")
-
-    content = resp.json()["choices"][0]["message"]["content"]
-    parsed = _try_parse_json("listening-transcribe", content)
-    if parsed is None:
-        logger.warning("[listening transcribe] JSON parse failed, raw head=%s", content[:1000])
+    if "raw_feedback" in result:
+        logger.warning("[listening transcribe] JSON parse failed, raw head=%s", result["raw_feedback"][:1000])
         raise HTTPException(status_code=502, detail="AI returned an unreadable response. Try again.")
-    return parsed
+    return result
 
 
 @router.post("/admin/transcribe")
@@ -1167,49 +1124,29 @@ async def _attach_answers_from_pdf(questions: List[dict], answer_key_base64: str
     """One AI call: given ordered questions + a separate answer-key PDF, return
     {questionId: correct_answer} for whichever questions it can resolve. Mirrors
     reading.py's attach-answers."""
-    key = settings.OPENROUTER_API_KEY
-    if not key:
-        raise HTTPException(status_code=502, detail="AI provider not configured")
-
     questions_json = json.dumps([
         {"questionId": q["id"], "content": q["content"], "type": q["type"], "options": q["options"]}
         for q in questions
     ], indent=2)
-    payload = {
-        # TODO(listening_ocr): still a hardcoded literal -- the OpenRouter
-        # PDF/mistral-ocr import path gets migrated onto ai_registry's
-        # "listening_ocr" purpose in a follow-up pass, not this one.
-        "model": "google/gemini-flash-latest",
-        "messages": [{"role": "user", "content": [
+
+    result = await _call_ai(
+        [{"role": "user", "content": [
             {"type": "text", "text": ATTACH_ANSWERS_PROMPT_TEMPLATE.format(questions_json=questions_json)},
             {"type": "file", "file": {"filename": "answer_key.pdf", "file_data": f"data:application/pdf;base64,{answer_key_base64}"}},
         ]}],
-        "plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}],
-        "temperature": 0.1,
-        "max_tokens": 8000,
-        "response_format": {"type": "json_object"},
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json=payload,
-            )
-    except httpx.TimeoutException:
-        logger.error("[listening attach answers] OpenRouter request timed out")
+        purpose="listening_ocr",
+        max_tokens=8000,
+        json_mode=True,
+        temperature=0.1,
+        extra_payload={"plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}]},
+        timeout=180.0,
+    )
+    if result.get("provider_failure"):
         raise HTTPException(status_code=504, detail="Matching timed out. Try again.")
-    if resp.status_code != 200:
-        logger.error("[listening attach answers] OpenRouter HTTP %s: %s", resp.status_code, resp.text[:300])
-        raise HTTPException(status_code=502, detail="AI matching failed. Try again.")
-
-    content = resp.json()["choices"][0]["message"]["content"]
-    parsed = _try_parse_json("listening-attach-answers", content)
-    if parsed is None:
-        logger.warning("[listening attach answers] JSON parse failed, raw head=%s", content[:1000])
+    if "raw_feedback" in result:
+        logger.warning("[listening attach answers] JSON parse failed, raw head=%s", result["raw_feedback"][:1000])
         raise HTTPException(status_code=502, detail="AI returned an unreadable response. Try again.")
-    return {a["questionId"]: a["correct_answer"] for a in parsed.get("answers", []) if a.get("correct_answer")}
+    return {a["questionId"]: a["correct_answer"] for a in result.get("answers", []) if a.get("correct_answer")}
 
 
 def _apply_attached_answers(supabase, questions: List[dict], answers_by_qid: Dict[int, str]) -> int:

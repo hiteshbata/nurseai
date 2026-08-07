@@ -16,11 +16,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 
-from app.core.config import settings
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
@@ -28,7 +26,7 @@ from app.routers.auth import get_current_user, get_user_supabase, UserInfo
 from supabase import Client
 from app.routers.admin import require_admin
 from app.routers.mock import has_mock_section_access
-from app.services.ai_scoring import _try_parse_json, _call_ai
+from app.services.ai_scoring import _call_ai
 from app.services.mcq_grading import grade_exact_match, combine_graded_results, resolve_latest_wrong_answers
 from app.services.open_ended_grading import grade_open_ended_answers
 from app.services.explanations import generate_reading_explanation_with_evidence
@@ -842,14 +840,12 @@ def _salvage_passages(content: str) -> Optional[Dict[str, Any]]:
 
 async def _call_reading_extract(
     pdf_base64: str, answer_key_base64: Optional[str], prompt: str,
-) -> tuple[str, Optional[str]]:
-    """One OpenRouter call for reading extraction with the given prompt. Returns
-    (content, finish_reason). Factored out of _extract_reading_from_pdf so the
-    part-by-part retry fallback can reuse it with a smaller-scope prompt."""
-    key = settings.OPENROUTER_API_KEY
-    if not key:
-        raise HTTPException(status_code=502, detail="AI provider not configured")
-
+) -> Dict[str, Any]:
+    """One call for reading extraction with the given prompt, via the
+    "reading_ocr" purpose. Returns _call_ai's result dict (parsed JSON, or
+    {"raw_feedback": raw_text} if unparseable) plus "finish_reason". Factored
+    out of _extract_reading_from_pdf so the part-by-part retry fallback can
+    reuse it with a smaller-scope prompt."""
     message_content: List[Dict[str, Any]] = [
         {"type": "text", "text": prompt},
         {"type": "file", "file": {
@@ -863,51 +859,34 @@ async def _call_reading_extract(
             "file_data": f"data:application/pdf;base64,{answer_key_base64}",
         }})
 
-    payload = {
-        # TODO(reading_ocr): still a hardcoded literal -- the OpenRouter PDF/
-        # mistral-ocr import path gets migrated onto ai_registry's
-        # "reading_ocr" purpose in a follow-up pass, not this one.
-        "model": "google/gemini-flash-latest",
-        "messages": [{"role": "user", "content": message_content}],
-        # mistral-ocr: visual OCR, reads pages as rendered. Needed because real OET
-        # PDFs come watermark-stamped (repeated logo images overlaid across the page) --
-        # the free "pdf-text" raw content-stream engine choked on that layout and the
-        # model got back scrambled/incomplete text, always falling back to "not found"
-        # even on valid papers. OCR costs more per page but this is a low-volume
-        # admin-only path, not a per-user hot path.
-        "plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}],
-        "temperature": 0.2,
+    result = await _call_ai(
+        [{"role": "user", "content": message_content}],
+        purpose="reading_ocr",
         # A full 3-part paper (Part A ~20 questions + Part B 6 extracts + Part C 16
         # questions, each with full option text and body) genuinely produces a lot of
         # JSON, and a paper with big comparison TABLES in the body pushes it further --
         # 32000 was still cutting off mid-object on those, breaking JSON unrecoverably.
         # Sit near Gemini 2.5 Flash's real output ceiling (~65k). _salvage_passages
         # below still recovers the complete passages if a monster paper truncates anyway.
-        "max_tokens": 60000,
-        "response_format": {"type": "json_object"},
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=240.0) as client:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json=payload,
-            )
-    except httpx.TimeoutException:
-        # OCR on a large multi-page PDF can genuinely take minutes -- surface a clean
-        # message instead of letting an unhandled timeout look like a server crash.
-        logger.error("[reading extract] OpenRouter request timed out")
+        max_tokens=60000,
+        json_mode=True,
+        temperature=0.2,
+        # mistral-ocr: visual OCR, reads pages as rendered. Needed because real OET
+        # PDFs come watermark-stamped (repeated logo images overlaid across the page) --
+        # the free "pdf-text" raw content-stream engine choked on that layout and the
+        # model got back scrambled/incomplete text, always falling back to "not found"
+        # even on valid papers. OCR costs more per page but this is a low-volume
+        # admin-only path, not a per-user hot path.
+        extra_payload={"plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}]},
+        # OCR on a large multi-page PDF can genuinely take minutes.
+        timeout=240.0,
+    )
+    if result.get("provider_failure"):
         raise HTTPException(
             status_code=504,
             detail="Extraction took too long. Try splitting the PDF into smaller files (e.g. one per part) and uploading each separately.",
         )
-    if resp.status_code != 200:
-        logger.error("[reading extract] OpenRouter HTTP %s: %s", resp.status_code, resp.text[:300])
-        raise HTTPException(status_code=502, detail="AI extraction failed. Try again.")
-
-    choice = resp.json()["choices"][0]
-    return choice["message"]["content"], choice.get("finish_reason")
+    return result
 
 
 def _merge_passages(*groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -938,13 +917,13 @@ async def _extract_reading_by_parts(pdf_base64: str, answer_key_base64: Optional
             f'part in the "passages" array.'
         )
         try:
-            content, finish_reason = await _call_reading_extract(pdf_base64, answer_key_base64, prompt)
+            result = await _call_reading_extract(pdf_base64, answer_key_base64, prompt)
         except HTTPException:
             logger.warning("[reading extract] per-part retry request failed for Part %s", part)
             continue
-        if finish_reason == "length":
+        if result.get("finish_reason") == "length":
             logger.warning("[reading extract] per-part retry for Part %s still truncated", part)
-        parsed = _try_parse_json(f"reading-extract-part-{part}", content) or _salvage_passages(content)
+        parsed = _salvage_passages(result["raw_feedback"]) if "raw_feedback" in result else result
         if parsed and parsed.get("passages"):
             passages.extend(parsed["passages"])
         elif not (parsed and parsed.get("error")):
@@ -957,25 +936,33 @@ async def _extract_reading_from_pdf(pdf_base64: str, answer_key_base64: Optional
     (Gemini reads PDFs natively via the file-parser plugin) and get back structured
     passage + questions JSON. A clean, separate answer key is more reliable than one
     the model has to locate and cross-reference inside a single messy exam paper."""
-    content, finish_reason = await _call_reading_extract(pdf_base64, answer_key_base64, READING_EXTRACT_PROMPT)
+    result = await _call_reading_extract(pdf_base64, answer_key_base64, READING_EXTRACT_PROMPT)
+    finish_reason = result.get("finish_reason")
     if finish_reason == "length":
         # The model hit the output cap and the JSON is cut mid-object. Salvage/retry
         # below can still recover it; log it so it's diagnosable.
         logger.warning("[reading extract] response truncated (finish_reason=length) at max_tokens")
 
-    parsed = _try_parse_json("reading-extract", content)
-    if parsed is not None and finish_reason != "length":
-        if parsed.get("error"):
+    parse_failed = "raw_feedback" in result
+    if not parse_failed and finish_reason != "length":
+        if result.get("error"):
             # Model saw the document but decided nothing matched -- log what it actually
             # received so a repeat failure is diagnosable without re-asking the admin.
-            logger.warning("[reading extract] model returned no passages, raw content head=%s", content[:500])
-        return parsed
+            logger.warning("[reading extract] model returned no passages, raw content head=%s", json.dumps(result)[:500])
+        return result
 
     # Full-paper pass either failed to parse or got cut off mid-object. Recover
-    # whatever complete passages salvage can find, then retry part-by-part for the
-    # rest -- a smaller per-call output is far less likely to hit the same ceiling.
-    salvaged = _salvage_passages(content)
-    recovered = salvaged["passages"] if salvaged else []
+    # whatever complete passages salvage can find (or, if it did parse despite the
+    # truncation flag, whatever passages already made it in), then retry part-by-
+    # part for the rest -- a smaller per-call output is far less likely to hit the
+    # same ceiling.
+    if parse_failed:
+        raw_content = result["raw_feedback"]
+        salvaged = _salvage_passages(raw_content)
+        recovered = salvaged["passages"] if salvaged else []
+    else:
+        raw_content = json.dumps(result)
+        recovered = result.get("passages", [])
     if recovered:
         logger.warning(
             "[reading extract] full JSON parse failed; salvaged %d complete passage(s) from a truncated response",
@@ -990,7 +977,7 @@ async def _extract_reading_from_pdf(pdf_base64: str, answer_key_base64: Optional
         # calls logging.basicConfig() -- the root logger defaults to WARNING, so
         # that line is silently dropped in production. Log it again here at WARNING
         # so a parse failure is actually diagnosable from Render logs.
-        logger.warning("[reading extract] JSON parse failed, raw content head=%s", content[:1000])
+        logger.warning("[reading extract] JSON parse failed, raw content head=%s", raw_content[:1000])
         raise HTTPException(
             status_code=502,
             detail="The paper was too large to extract, even after retrying part by part. Try uploading one part (A, B or C) at a time.",
@@ -1529,22 +1516,14 @@ Return ONLY this JSON, no other text:
 async def _attach_answers_from_pdf(questions: List[dict], answer_key_base64: str) -> Dict[int, str]:
     """One AI call: given a passage's already-saved questions and a separate answer-key
     PDF, return {questionId: correct_answer} for whichever questions it can resolve."""
-    key = settings.OPENROUTER_API_KEY
-    if not key:
-        raise HTTPException(status_code=502, detail="AI provider not configured")
-
     questions_json = json.dumps([
         {"questionId": q["id"], "content": q["content"], "type": q["type"], "options": q["options"]}
         for q in questions
     ], indent=2)
     prompt = ATTACH_ANSWERS_PROMPT_TEMPLATE.format(questions_json=questions_json)
 
-    payload = {
-        # TODO(reading_ocr): still a hardcoded literal -- the OpenRouter PDF/
-        # mistral-ocr import path gets migrated onto ai_registry's
-        # "reading_ocr" purpose in a follow-up pass, not this one.
-        "model": "google/gemini-flash-latest",
-        "messages": [{
+    result = await _call_ai(
+        [{
             "role": "user",
             "content": [
                 {"type": "text", "text": prompt},
@@ -1554,33 +1533,20 @@ async def _attach_answers_from_pdf(questions: List[dict], answer_key_base64: str
                 }},
             ],
         }],
-        "plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}],
-        "temperature": 0.1,
-        "max_tokens": 8000,
-        "response_format": {"type": "json_object"},
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json=payload,
-            )
-    except httpx.TimeoutException:
-        logger.error("[attach answers] OpenRouter request timed out")
+        purpose="reading_ocr",
+        max_tokens=8000,
+        json_mode=True,
+        temperature=0.1,
+        extra_payload={"plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}]},
+        timeout=180.0,
+    )
+    if result.get("provider_failure"):
         raise HTTPException(status_code=504, detail="Matching timed out. Try again.")
-    if resp.status_code != 200:
-        logger.error("[attach answers] OpenRouter HTTP %s: %s", resp.status_code, resp.text[:300])
-        raise HTTPException(status_code=502, detail="AI matching failed. Try again.")
-
-    content = resp.json()["choices"][0]["message"]["content"]
-    parsed = _try_parse_json("reading-attach-answers", content)
-    if parsed is None:
-        logger.warning("[attach answers] JSON parse failed, raw content head=%s", content[:1000])
+    if "raw_feedback" in result:
+        logger.warning("[attach answers] JSON parse failed, raw content head=%s", result["raw_feedback"][:1000])
         raise HTTPException(status_code=502, detail="AI returned an unreadable response. Try again.")
 
-    return {a["questionId"]: a["correct_answer"] for a in parsed.get("answers", []) if a.get("correct_answer")}
+    return {a["questionId"]: a["correct_answer"] for a in result.get("answers", []) if a.get("correct_answer")}
 
 
 @router.post("/admin/passages/{passage_id}/attach-answers")

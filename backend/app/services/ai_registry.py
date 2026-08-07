@@ -128,10 +128,18 @@ class ModelCallError(Exception):
         self.status_code = status_code
 
 
-async def _call_gemini(cfg: ModelConfig, messages: list, max_tokens: int, json_mode: bool, temperature: float) -> Dict[str, Any]:
+async def _call_gemini(
+    cfg: ModelConfig, messages: list, max_tokens: int, json_mode: bool, temperature: float,
+    extra_payload: Optional[Dict[str, Any]] = None, timeout: float = 60.0,
+) -> Dict[str, Any]:
     api_key = _api_key_for(cfg.provider)
     if not api_key:
         raise ModelCallError(f"No API key configured for provider {cfg.provider!r}")
+    # ponytail: text-only -- OpenAI-style multimodal content arrays (image_url/
+    # file blocks) and OpenRouter's `extra_payload` plugins aren't translated
+    # to Gemini's own multimodal shape. Not needed today: every OCR/vision
+    # purpose is seeded as provider=openrouter, never native google. Add
+    # translation here if a purpose is ever pointed at a native Gemini model.
 
     system_parts = []
     contents = []
@@ -154,7 +162,7 @@ async def _call_gemini(cfg: ModelConfig, messages: list, max_tokens: int, json_m
 
     base = cfg.api_base or PROVIDER_CONFIG["google"]["base_url"]
     url = base.format(model=cfg.model_name) + f"?key={api_key}"
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(url, json=payload)
         if response.status_code != 200:
             raise ModelCallError(f"Gemini API error {response.status_code}: {response.text[:200]}", response.status_code)
@@ -166,6 +174,7 @@ async def _call_gemini(cfg: ModelConfig, messages: list, max_tokens: int, json_m
         usage_meta = data.get("usageMetadata", {})
         return {
             "text": text,
+            "finish_reason": candidates[0].get("finishReason"),
             "usage": {
                 "input_tokens": usage_meta.get("promptTokenCount", 0),
                 "output_tokens": usage_meta.get("candidatesTokenCount", 0),
@@ -173,7 +182,10 @@ async def _call_gemini(cfg: ModelConfig, messages: list, max_tokens: int, json_m
         }
 
 
-async def _call_openai_compatible(cfg: ModelConfig, messages: list, max_tokens: int, json_mode: bool, temperature: float) -> Dict[str, Any]:
+async def _call_openai_compatible(
+    cfg: ModelConfig, messages: list, max_tokens: int, json_mode: bool, temperature: float,
+    extra_payload: Optional[Dict[str, Any]] = None, timeout: float = 60.0,
+) -> Dict[str, Any]:
     api_key = _api_key_for(cfg.provider)
     provider_cfg = PROVIDER_CONFIG.get(cfg.provider)
     base_url = cfg.api_base or (provider_cfg["base_url"] if provider_cfg else None)
@@ -188,18 +200,24 @@ async def _call_openai_compatible(cfg: ModelConfig, messages: list, max_tokens: 
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
+    if extra_payload:
+        # OpenRouter-specific extras (e.g. the mistral-ocr file-parser
+        # plugin) that aren't part of the standard chat-completions shape --
+        # passed through untouched, only ever set by OCR/vision call sites.
+        payload.update(extra_payload)
 
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(base_url, headers=headers, json=payload)
         if response.status_code != 200:
             raise ModelCallError(f"{cfg.provider} API error {response.status_code}: {response.text[:200]}", response.status_code)
         result = response.json()
-        content = result["choices"][0]["message"]["content"]
+        choice = result["choices"][0]
         usage_obj = result.get("usage", {})
         return {
-            "text": content,
+            "text": choice["message"]["content"],
+            "finish_reason": choice.get("finish_reason"),
             "usage": {
                 "input_tokens": usage_obj.get("prompt_tokens", 0),
                 "output_tokens": usage_obj.get("completion_tokens", 0),
@@ -210,14 +228,17 @@ async def _call_openai_compatible(cfg: ModelConfig, messages: list, max_tokens: 
 _DISPATCH = {"gemini": _call_gemini, "openai_compatible": _call_openai_compatible}
 
 
-async def dispatch_call(cfg: ModelConfig, messages: list, max_tokens: int, json_mode: bool, temperature: float) -> Dict[str, Any]:
+async def dispatch_call(
+    cfg: ModelConfig, messages: list, max_tokens: int, json_mode: bool, temperature: float,
+    extra_payload: Optional[Dict[str, Any]] = None, timeout: float = 60.0,
+) -> Dict[str, Any]:
     """Call `cfg`'s provider via whichever request-shape family it maps to.
     Raises ModelCallError on any failure -- callers (ai_scoring._call_ai,
     the health check below) decide what to do about it."""
     caller = _DISPATCH.get(cfg.family)
     if caller is None:
         raise ModelCallError(f"Provider family {cfg.family!r} is not implemented yet")
-    return await caller(cfg, messages, max_tokens, json_mode, temperature)
+    return await caller(cfg, messages, max_tokens, json_mode, temperature, extra_payload=extra_payload, timeout=timeout)
 
 
 # ── health check ─────────────────────────────────────────────────────
