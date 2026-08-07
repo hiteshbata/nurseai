@@ -49,6 +49,9 @@ const HEALTH_STYLE: Record<string, { bg: string; text: string; label: string }> 
   healthy: { bg: 'bg-green-100', text: 'text-green-800', label: 'Healthy' },
   warning: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Warning' },
   failed: { bg: 'bg-red-100', text: 'text-red-800', label: 'Failed' },
+  // Realtime voice / TTS / STT models aren't chat-completion models, so the
+  // Test button can't ping them the same way -- this is not a failure.
+  not_testable: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'Not testable' },
 }
 
 function HealthPill({ status }: { status: string | null }) {

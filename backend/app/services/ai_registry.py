@@ -245,6 +245,20 @@ async def dispatch_call(
 
 _HEALTHY_LATENCY_MS = 3000
 
+# Providers/purposes that don't speak the chat-completions shape the health
+# check pings -- Deepgram (STT), and any purpose that's realtime voice/TTS/
+# STT. Testing these via a chat ping always fails even when they work fine
+# for real (OpenAI Realtime is a WebSocket API, Google TTS is a synthesis
+# endpoint, etc.) -- that false "Failed" is exactly what this guards against.
+_NON_CHAT_PROVIDERS = {"deepgram"}
+_NON_CHAT_PURPOSE_PREFIXES = ("realtime_voice_", "tts_", "stt_")
+_NOT_TESTABLE_RESULT = {
+    "status": "not_testable",
+    "latency_ms": None,
+    "error": "Not a chat-completions model (realtime voice / TTS / STT) -- "
+             "verify it via the feature that actually uses it instead.",
+}
+
 
 def classify_health(status_code: int, latency_ms: float, error: Optional[str]) -> tuple[str, Optional[str]]:
     """Pure classification, unit-tested in __main__ below."""
@@ -262,6 +276,9 @@ async def run_health_check(provider: str, model_name: str, api_base: Optional[st
     requiring it to already be a saved ai_models row -- backs both the
     saved-row Test button and the create/edit form's Test-Before-Save
     button."""
+    if provider in _NON_CHAT_PROVIDERS:
+        return dict(_NOT_TESTABLE_RESULT)
+
     cfg = ModelConfig(id=0, provider=provider, model_name=model_name, api_base=api_base)
     if cfg.family not in _DISPATCH:
         return {"status": "failed", "latency_ms": None, "error": f"Provider family {cfg.family!r} not implemented"}
@@ -291,13 +308,28 @@ def _persist_health_sync(model_id: int, result: Dict[str, Any]) -> None:
     }).eq("id", model_id).execute()
 
 
-async def run_health_check_for_model(model_id: int) -> Dict[str, Any]:
-    """Test a saved row and persist the result onto its last_health_* columns."""
-    rows = await run_sync(lambda: get_supabase().table("ai_models").select("*").eq("id", model_id).execute().data)
+def _fetch_model_and_purposes_sync(model_id: int) -> tuple[Optional[dict], list[str]]:
+    supabase = get_supabase()
+    rows = supabase.table("ai_models").select("*").eq("id", model_id).execute().data
     if not rows:
+        return None, []
+    purposes = supabase.table("ai_model_purposes").select("purpose").eq("model_id", model_id).execute().data
+    return rows[0], [p["purpose"] for p in purposes]
+
+
+async def run_health_check_for_model(model_id: int) -> Dict[str, Any]:
+    """Test a saved row and persist the result onto its last_health_* columns.
+    Skips the network call entirely (no false "Failed") for a model whose
+    only assigned purposes are all realtime/TTS/STT -- there's nothing
+    chat-shaped to ping."""
+    row, purposes = await run_sync(_fetch_model_and_purposes_sync, model_id)
+    if row is None:
         raise ValueError(f"No ai_models row with id={model_id}")
-    row = rows[0]
-    result = await run_health_check(row["provider"], row["model_name"], row.get("api_base"))
+
+    if purposes and all(p.startswith(_NON_CHAT_PURPOSE_PREFIXES) for p in purposes):
+        result = dict(_NOT_TESTABLE_RESULT)
+    else:
+        result = await run_health_check(row["provider"], row["model_name"], row.get("api_base"))
     await run_sync(_persist_health_sync, model_id, result)
     return result
 
@@ -318,5 +350,9 @@ if __name__ == "__main__":
     assert cfg2.family == "openai_compatible"
     cfg3 = ModelConfig(id=3, provider="groq", model_name="llama-3", api_base="https://api.groq.com/openai/v1/chat/completions")
     assert cfg3.family == "openai_compatible"  # unknown provider still dispatches via the generic family
+
+    import asyncio
+    deepgram_result = asyncio.run(run_health_check("deepgram", "nova-2"))
+    assert deepgram_result["status"] == "not_testable"  # never a chat-completions provider, no network call
 
     print("ai_registry self-check OK")
