@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, useSupabaseSession } from '@/lib/supabase'
 import api from '@/lib/api'
@@ -11,9 +11,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { useSpeakingSession } from '@/app/hooks/useSpeakingSession'
-import { scoreToGrade } from '@/app/practice/speaking/shared'
+import { useRealtimeSpeakingSession, type RealtimeChatMessage } from '@/app/hooks/useRealtimeSpeakingSession'
 import VoiceOrb from '@/components/VoiceOrb'
+import { scoreToGrade } from '@/app/practice/speaking/shared'
 
 type Step = 1 | 2 | 3 | 4 | 5
 
@@ -162,10 +162,10 @@ export default function OnboardingPage() {
 
   // Step 4 state
   const [diagnosticMode, setDiagnosticMode] = useState(false)
-  const [diagnosticScenario, setDiagnosticScenario] = useState<any>(null)
+  // Set only from a previously-saved profile (legacy scored diagnostic runs) --
+  // the current warm-up check never scores, so new completions leave this null.
   const [baselineScore, setBaselineScore] = useState<number | null>(null)
   const [skippedDiagnostic, setSkippedDiagnostic] = useState(false)
-  const [diagnosticLoadError, setDiagnosticLoadError] = useState(false)
 
   const totalSteps = 5
 
@@ -209,40 +209,21 @@ export default function OnboardingPage() {
     if (step > 1) setStep((step - 1) as Step)
   }
 
-  const startDiagnostic = async () => {
-    setDiagnosticLoadError(false)
-    try {
-      const res = await api.get('/speaking/scenarios')
-      const scenarios = res.data || []
-      if (scenarios.length > 0) {
-        setDiagnosticScenario(scenarios[0])
-        setDiagnosticMode(true)
-      } else {
-        setDiagnosticLoadError(true)
-      }
-    } catch (e) {
-      console.error('Failed to load scenarios for diagnostic:', e)
-      setDiagnosticLoadError(true)
-    }
+  const startDiagnostic = () => {
+    setDiagnosticMode(true)
   }
 
-  const handleDiagnosticEnd = async (feedback: any) => {
-    const band = feedback?.overall_band ?? null
-    if (band) {
-      try {
-        await api.put('/onboarding/baseline', null, { params: { baseline_score: band } })
-        setBaselineScore(band)
-      } catch (e) {
-        console.error('Failed to save baseline:', e)
-      }
-    }
+  // No scoring here on purpose -- this is just a mic/voice check to build
+  // momentum early in onboarding, not the roleplay-based baseline diagnostic.
+  // baselineScore stays null; Step 5 shows "Not assessed" and skips the
+  // daily-focus callout, same as a fully-skipped diagnostic.
+  const handleDiagnosticEnd = () => {
     setDiagnosticMode(false)
-    setDiagnosticScenario(null)
+    nextStep()
   }
 
   const handleDiagnosticCancel = () => {
     setDiagnosticMode(false)
-    setDiagnosticScenario(null)
   }
 
   const skipDiagnostic = () => {
@@ -346,27 +327,24 @@ export default function OnboardingPage() {
 
   if (status !== 'authenticated' || checkingStatus) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center" role="status" aria-live="polite">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" aria-hidden="true" />
+        <span className="sr-only">Loading…</span>
       </div>
     )
   }
 
-  // Diagnostic mode — inline VoiceChat replacement
-  if (diagnosticMode && diagnosticScenario) {
+  // Diagnostic mode — quick mic/voice check, no scenario or scoring involved
+  if (diagnosticMode) {
     return (
       <div className="min-h-screen bg-gray-50 py-12 px-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-white rounded-2xl shadow-lg p-8 mb-6">
-            <h2 className="text-2xl font-bold mb-2">Quick Diagnostic</h2>
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <h2 className="text-2xl font-bold mb-2">Quick Voice Check</h2>
             <p className="text-gray-600 mb-6">
-              Complete one roleplay with {diagnosticScenario.title}. This sets your baseline score.
+              One quick question — just to make sure your mic works.
             </p>
-            <VoiceChatInline
-              scenario={diagnosticScenario}
-              onSessionEnd={handleDiagnosticEnd}
-              onCancel={handleDiagnosticCancel}
-            />
+            <WarmUpCheck onComplete={handleDiagnosticEnd} onCancel={handleDiagnosticCancel} />
           </div>
         </div>
       </div>
@@ -625,38 +603,24 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* Step 4 — Quick Diagnostic */}
+          {/* Step 4 — Quick Voice Check */}
           {step === 4 && (
             <div>
-              <h2 className="text-2xl font-bold mb-2">Quick Diagnostic</h2>
+              <h2 className="text-2xl font-bold mb-2">Quick Voice Check</h2>
               <p className="text-gray-600 mb-8">
-                Complete one short roleplay (5 minutes). This sets your baseline score so we can track your progress.
+                One quick question, under a minute — just to make sure your mic and voice practice work before you dive in.
               </p>
-
-              {baselineScore !== null && (
-                <div className="bg-accent/10 border border-accent/20 rounded-xl p-6 mb-6 text-center">
-                  <div className="text-4xl font-bold text-emerald-600 mb-1">{baselineScore.toFixed(1)}/6</div>
-                  <p className="text-emerald-700 font-semibold">Baseline Score Saved</p>
-                </div>
-              )}
 
               <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
                 <h3 className="font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
-                  <Mic className="w-4 h-4" aria-hidden="true" /> Speaking Diagnostic
+                  <Mic className="w-4 h-4" aria-hidden="true" /> Voice Check
                 </h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  You'll have a short conversation with an AI patient, then receive a score.
+                  We'll ask one quick warm-up question — just speak naturally, no scoring involved.
                 </p>
-                {diagnosticLoadError && (
-                  <p className="text-sm text-red-600 mb-3" role="alert">
-                    Couldn't load the diagnostic — please try again.
-                  </p>
-                )}
-                {baselineScore === null && (
-                  <Button type="button" variant="accent" size="lg" className="w-full" onClick={startDiagnostic}>
-                    {diagnosticLoadError ? 'Try Again' : 'Start Diagnostic'}
-                  </Button>
-                )}
+                <Button type="button" variant="accent" size="lg" className="w-full" onClick={startDiagnostic}>
+                  Start Voice Check
+                </Button>
               </div>
 
               {renderNavButtons(true)}
@@ -758,150 +722,74 @@ export default function OnboardingPage() {
   )
 }
 
-function VoiceChatInline({
-  scenario,
-  onSessionEnd,
-  onCancel,
-}: {
-  scenario: any
-  onSessionEnd: (feedback: any) => void
-  onCancel: () => void
-}) {
-  const [convHistory, setConvHistory] = useState<{ role: 'nurse' | 'patient'; content: string }[]>([])
-  const [sessionId, setSessionId] = useState<number | null>(null)
-  const [inputText, setInputText] = useState('')
-  const [isEnding, setIsEnding] = useState(false)
-  const [scoreError, setScoreError] = useState<string | null>(null)
+// A live, spoken conversation with an AI host who asks a few warm-up
+// questions -- the questions themselves live server-side only (see
+// _build_warmup_system_prompt in speaking_realtime.py). scenario: null in
+// the options below is what tells the backend this is the free, unmetered
+// onboarding voice check rather than a real (quota-charged) practice
+// session -- see the `mode: 'warmup'` handshake in useRealtimeSpeakingSession.
+const SESSION_TIMEOUT_MESSAGE = 'Voice session time limit reached.'
 
-  const session = useSpeakingSession({
-    scenario,
+function WarmUpCheck({ onComplete, onCancel }: { onComplete: () => void; onCancel: () => void }) {
+  const [convHistory, setConvHistory] = useState<RealtimeChatMessage[]>([])
+  const [sessionId, setSessionId] = useState<number | null>(null)
+
+  const session = useRealtimeSpeakingSession({
+    scenario: null,
     convHistory,
     setConvHistory,
     sessionId,
     setSessionId,
-    isEnding,
-    autoListen: true,
+    isEnding: false,
   })
 
-  const sendTyped = async () => {
-    const text = inputText.trim()
-    if (!text || session.isProcessing || isEnding) return
-    setInputText('')
-    await session.sendTypedMessage(text)
-  }
+  const startedRef = useRef(false)
+  useEffect(() => {
+    if (startedRef.current) return
+    startedRef.current = true
+    session.startListening()
+    return () => { session.stopListening() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const endSession = async () => {
-    if (!convHistory.some((m) => m.role === 'nurse')) {
-      setScoreError('Speak or type at least one response before ending.')
-      return
-    }
-    setIsEnding(true)
-    session.stopListening()
-    session.stopSpeaking()
-    setScoreError(null)
-    try {
-      const res = await api.post('/speaking/score', {
-        scenario_id: scenario.id,
-        history: convHistory.map((m) => ({ role: m.role, content: m.content })),
-        session_id: sessionId,
-      })
-      onSessionEnd(res.data.feedback)
-    } catch (e) {
-      console.error('Scoring failed:', e)
-      setScoreError("Couldn't score your session — please try again.")
-    } finally {
-      setIsEnding(false)
-    }
-  }
+  // The backend's own timer ends the conversation naturally (~110s, see
+  // REALTIME_WARMUP_MAX_SECONDS) -- that's the "done" signal, since a live
+  // voice session has no other defined end-of-task event.
+  const timedOut = session.sttError === SESSION_TIMEOUT_MESSAGE
+  useEffect(() => {
+    if (timedOut) onComplete()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timedOut])
 
-  const nurseCard = scenario.nurse_card || {}
+  const lastTurn = convHistory[convHistory.length - 1]
 
   return (
     <div>
-      {(nurseCard.role || nurseCard.tasks?.length > 0) && (
-        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4">
-          {nurseCard.role && <p className="text-sm text-gray-700 mb-2">{nurseCard.role}</p>}
-          {nurseCard.tasks?.length > 0 && (
-            <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
-              {nurseCard.tasks.map((task: string, i: number) => (
-                <li key={i}>{task}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      <div className="bg-gray-50 rounded-xl p-4 mb-4 max-h-80 overflow-y-auto space-y-3">
-        {convHistory.length === 0 && (
-          <p className="text-muted-foreground text-center py-8">
-            Tap the mic or type your first message to the patient.
-          </p>
-        )}
-        {convHistory.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'nurse' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[75%] rounded-xl px-4 py-2 ${
-              msg.role === 'nurse' ? 'bg-primary text-white' : 'bg-gray-200 text-gray-800'
-            }`}>
-              <p className="text-xs font-semibold opacity-60 mb-0.5">
-                {msg.role === 'nurse' ? 'You (Nurse)' : 'Patient'}
-              </p>
-              <p className="text-sm">{msg.content}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
       <VoiceOrb
+        variant="hero"
         isListening={session.isListening}
         isConnecting={session.isConnecting}
         isProcessing={session.isProcessing}
         isSpeaking={session.isSpeaking}
-        isEnding={isEnding}
-        canEndSession={convHistory.some((m) => m.role === 'nurse')}
+        isEnding={false}
+        canEndSession={convHistory.some((m) => m.role === 'patient')}
+        getOutputLevel={session.getOutputLevel}
         onToggle={() => (session.isListening ? session.stopListening() : session.startListening())}
-        onEndSession={endSession}
-      />
+        onEndSession={onComplete}
+      >
+        {lastTurn && (
+          <p className="text-sm text-gray-600 italic text-center max-w-sm">
+            {lastTurn.role === 'nurse' ? `“${lastTurn.content}”` : lastTurn.content}
+          </p>
+        )}
+      </VoiceOrb>
 
-      {(session.sttError || scoreError) && (
-        <p className="text-xs text-red-500 text-center mt-1" role="alert">
-          {session.sttError || scoreError}
-        </p>
+      {session.sttError && !timedOut && (
+        <p className="text-xs text-red-500 text-center mt-3" role="alert">{session.sttError}</p>
       )}
 
-      <div className="flex gap-2 mt-3">
-        <Input
-          type="text"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendTyped()}
-          placeholder="Or type your message..."
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          data-lpignore="true"
-          data-1p-ignore
-          className="flex-1"
-          disabled={session.isProcessing || isEnding}
-        />
-        <Button
-          type="button"
-          variant="default"
-          onClick={sendTyped}
-          disabled={!inputText.trim() || session.isProcessing || isEnding}
-        >
-          Send
-        </Button>
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        className="mt-3 w-full"
-        onClick={onCancel}
-        disabled={isEnding}
-      >
-        Cancel & Skip
+      <Button type="button" variant="outline" className="mt-6 w-full" onClick={onCancel}>
+        Skip
       </Button>
     </div>
   )

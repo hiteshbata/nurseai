@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     # router (app/routers/speaking_realtime.py), not by either provider.
     REALTIME_SESSION_MAX_SECONDS: int = 300
     REALTIME_SESSION_WARNING_SECONDS: int = 270
+
+    # Same idea, tighter cap for the scenario-less onboarding voice check
+    # (see realtime_stream's is_warmup path) -- a single-question mic-check
+    # (see _build_warmup_system_prompt) normally wraps up in well under a
+    # minute on its own; this is a safety backstop, not the expected path,
+    # so the warning is set close to the cap rather than deep into it.
+    REALTIME_WARMUP_MAX_SECONDS: int = 45
+    REALTIME_WARMUP_WARNING_SECONDS: int = 35
     # Deepgram STT proxy (app/routers/speaking.py stt_deepgram_stream) has no
     # natural end signal like the realtime voice pipeline does -- cap wall-
     # clock connection time so a client can't hold it open indefinitely.

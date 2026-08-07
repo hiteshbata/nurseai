@@ -267,16 +267,23 @@ def _run_stream(
     fake_supabase = FakeSupabase(state)
     monkeypatch.setattr(srt, "get_supabase", lambda: fake_supabase)
     monkeypatch.setattr(cost_tracking, "get_supabase", lambda: fake_supabase)
+    # _get_voice_provider's 60s TTL cache is a module-level global -- without
+    # resetting it, whichever provider an earlier test in this file cached
+    # wins for every test that runs within that window, regardless of what
+    # this test monkeypatches settings.VOICE_PROVIDER to. Pre-existing
+    # flakiness, unrelated to what this test run is actually exercising.
+    monkeypatch.setattr(srt, "_voice_provider_cache", None)
 
     fake_auth_client = FakeAuthClient(user=auth_user, raises=auth_raises)
     monkeypatch.setattr(srt, "get_auth_client", lambda: fake_auth_client)
 
-    def fake_check_and_increment_session(current_user):
+    def fake_check_and_increment_session(current_user, user_db):
         if quota_raises:
             raise quota_raises
         return {"session_id": session_id_from_quota}
 
     monkeypatch.setattr(srt, "check_and_increment_session", fake_check_and_increment_session)
+    monkeypatch.setattr(srt, "get_user_scoped_client", lambda token: fake_supabase)
     monkeypatch.setattr(srt, "validate_session", lambda user_id, session_id: validate_ok)
     # In-process SlidingWindowRateLimiter is a module-level singleton keyed by
     # user_id (see app.core.rate_limit) -- every test here uses the same
@@ -335,6 +342,30 @@ def test_missing_scenario_id_is_unauthorized(monkeypatch):
     _run_stream(monkeypatch, ws, auth_user=FakeUser())
 
     assert ws.closed == (4401, "Unauthorized")
+
+
+def test_warmup_mode_skips_quota_and_scenario(monkeypatch):
+    """The onboarding voice check (mode: "warmup") must never touch the
+    monthly session quota or require a scenario_id -- see is_warmup in
+    speaking_realtime.py. This is the regression test for that branch."""
+    ws = FakeWebSocket(
+        handshake={"token": "tok", "mode": "warmup"},
+        audio_chunks=[_DISCONNECT],
+    )
+
+    state = _run_stream(monkeypatch, ws, auth_user=FakeUser(), adapter_events=[ResponseDone()])
+
+    ready = next(m for m in ws.sent_json if m["type"] == "session.ready")
+    assert ready["session_id"] is None
+
+    assert len(FakeAdapter.instances) == 1
+    adapter = FakeAdapter.instances[0]
+    assert "onboarding" in adapter.system_prompt.lower()
+    assert adapter.voice == "alloy"
+
+    # No session_usage row was ever created or charged for this session --
+    # the quota path (check_and_increment_session) must never run for warmup.
+    assert state["session_usage_updates"] == []
 
 
 def test_misconfigured_provider(monkeypatch):

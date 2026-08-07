@@ -373,6 +373,10 @@ export function useRealtimeSpeakingSession({
           token: session.access_token,
           scenario_id: scenario?.id,
           session_id: sessionId,
+          // No scenario -- signals the onboarding voice check (backend's
+          // is_warmup): no scenario lookup, no quota charge, a different
+          // (non-patient) persona. See speaking_realtime.py.
+          mode: scenario ? undefined : 'warmup',
         }))
       }
       ws.onerror = () => reject(new Error('connection_failed'))
@@ -462,7 +466,9 @@ export function useRealtimeSpeakingSession({
   }, [connectSocket])
 
   const startListening = useCallback(async () => {
-    if (isListening || isProcessing || isEnding || !scenario) return
+    // scenario is intentionally null for the onboarding voice check (see
+    // the `mode: 'warmup'` handshake above) -- only guard on session state.
+    if (isListening || isProcessing || isEnding) return
     setSttError(null)
     reconnectAttemptsRef.current = 0
 
@@ -545,7 +551,7 @@ export function useRealtimeSpeakingSession({
     // stopListening/teardown/handleServerEvent/playPcm16Chunk/flushPendingAudio/
     // connectSocket are all useCallback-stable given their own deps, so this
     // list only reflects the values that actually change what startListening does.
-  }, [isListening, isProcessing, isEnding, scenario, connectSocket, flushPendingAudio, teardown])
+  }, [isListening, isProcessing, isEnding, connectSocket, flushPendingAudio, teardown])
 
   const sendTypedMessage = useCallback(async (text: string) => {
     const trimmed = text.trim()
