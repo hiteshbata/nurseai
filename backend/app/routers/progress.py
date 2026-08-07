@@ -6,7 +6,7 @@ from app.core.supabase import get_supabase
 from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo
-from app.services.ai_scoring import _call_ai, GEMINI_SCORING_FREE_MODEL
+from app.services.ai_scoring import _call_ai
 from app.services.plan_gating import get_plan_from_profile, has_study_plan_access, get_history_limit
 from app.services.coach import (
     compute_criteria_averages,
@@ -177,8 +177,8 @@ Be specific — cite actual criteria from the data (empathy, fluency, grammar, e
 
     result = await _call_ai(
         [{"role": "user", "content": prompt}],
+        purpose="progress_summary",
         max_tokens=300,
-        model=GEMINI_SCORING_FREE_MODEL,
     )
 
     summary = result.get("raw_feedback", "").strip()

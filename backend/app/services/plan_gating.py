@@ -2,7 +2,6 @@ from datetime import datetime, timezone, timedelta
 from typing import Literal, Optional
 
 from app.core.plans import GRACE_PERIOD_DAYS, PLAN_PERIOD_DAYS
-from app.services.ai_scoring import GEMINI_SCORING_FREE_MODEL, GEMINI_SCORING_PREMIUM_MODEL
 
 PlanType = Literal["free", "basic", "pro", "elite"]
 
@@ -72,10 +71,12 @@ def compute_renewed_expiry(
     return now + timedelta(days=PLAN_PERIOD_DAYS), True
 
 
-def get_scoring_model(plan: str) -> str:
+def get_scoring_purpose(plan: str) -> str:
+    """Which ai_model_purposes row scores a speaking attempt -- Admin > AI
+    Models controls the actual model behind each tier."""
     if plan in PREMIUM_PLANS:
-        return GEMINI_SCORING_PREMIUM_MODEL
-    return GEMINI_SCORING_FREE_MODEL
+        return "speaking_scoring_premium"
+    return "speaking_scoring_free"
 
 
 def get_realtime_model(plan: str) -> str:
@@ -136,7 +137,7 @@ def has_study_plan_access(plan: str) -> bool:
 
 def get_scoring_criteria_count(plan: str) -> int:
     """All plans now score against the full 9 OET criteria — differentiation
-    between tiers is the scoring model (see get_scoring_model), not criteria
+    between tiers is the scoring model (see get_scoring_purpose), not criteria
     depth. Kept as a function (rather than inlining 9 at call sites) so a
     future tier change has one place to edit. Historical submissions scored
     before this change may still carry the old 3-criteria shape; callers that

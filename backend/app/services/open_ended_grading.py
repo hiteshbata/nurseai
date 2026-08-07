@@ -4,7 +4,7 @@ batched AI call per submission, tolerant of wording/spelling variants."""
 import json
 from typing import Dict, List, Optional
 
-from app.services.ai_scoring import _call_ai, GEMINI_SCORING_FREE_MODEL
+from app.services.ai_scoring import _call_ai
 
 
 async def grade_open_ended_answers(
@@ -35,9 +35,9 @@ Return ONLY this JSON, no other text:
 
     result = await _call_ai(
         [{"role": "user", "content": prompt}],
+        purpose="open_ended_grading",
         max_tokens=1500,
         json_mode=True,
-        model=GEMINI_SCORING_FREE_MODEL,
         user_id=user_id,
     )
     if result.get("provider_failure") or "results" not in result:

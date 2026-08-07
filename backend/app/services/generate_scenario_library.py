@@ -15,7 +15,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from app.core.supabase import get_supabase
-from app.services.ai_scoring import _call_ai, GEMINI_SCORING_PREMIUM_MODEL
+from app.services.ai_scoring import _call_ai
 
 logger = logging.getLogger(__name__)
 
@@ -138,9 +138,9 @@ async def generate_one_scenario(
         prompt = _speaking_prompt(specialty, difficulty, avoid_titles)
         result = await _call_ai(
             [{"role": "user", "content": prompt}],
+            purpose="scenario_library_generation",
             max_tokens=1200,
             json_mode=True,
-            model=GEMINI_SCORING_PREMIUM_MODEL,
         )
         errors = validate_scenario(result)
         if not errors:

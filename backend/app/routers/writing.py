@@ -10,7 +10,7 @@ from supabase import Client
 from app.routers.admin import require_admin
 from app.routers.mock import has_mock_section_access
 from app.core.feature_flags import require_feature
-from app.services.ai_scoring import score_writing, _try_parse_json, GEMINI_SCORING_FREE_MODEL
+from app.services.ai_scoring import score_writing, _try_parse_json
 from app.services.plan_gating import has_writing_access, get_plan_from_profile
 from app.services.skill_graph import record_skill_observations, get_weakness
 from app.core.redis_client import get_redis
@@ -247,9 +247,12 @@ async def _read_ocr_page(client, idx: int, img_b64: str) -> str:
     """OCR one page, trying each vision model in turn. Raises HTTPException(502)
     naming the page if every model fails, so the caller surfaces which photo to
     re-take."""
+    # TODO(writing_ocr): still hardcoded literals -- this OpenRouter OCR
+    # fallback chain gets migrated onto ai_registry's "writing_ocr" purpose
+    # (primary + fallback_model_id) in a follow-up pass, not this one.
     models_to_try = [
         "anthropic/claude-sonnet-5",
-        GEMINI_SCORING_FREE_MODEL,
+        "google/gemini-flash-latest",
     ]
     for model in models_to_try:
         try:
@@ -444,7 +447,9 @@ async def _extract_writing_from_pdf(pdf_base64: str) -> Dict[str, Any]:
         raise HTTPException(status_code=502, detail="AI provider not configured")
 
     payload = {
-        "model": GEMINI_SCORING_FREE_MODEL,
+        # TODO(writing_ocr): still a hardcoded literal -- migrated onto
+        # ai_registry's "writing_ocr" purpose in a follow-up pass.
+        "model": "google/gemini-flash-latest",
         "messages": [{"role": "user", "content": [
             {"type": "text", "text": WRITING_EXTRACT_PROMPT},
             {"type": "file", "file": {

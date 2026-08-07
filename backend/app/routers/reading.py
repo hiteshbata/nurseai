@@ -28,7 +28,7 @@ from app.routers.auth import get_current_user, get_user_supabase, UserInfo
 from supabase import Client
 from app.routers.admin import require_admin
 from app.routers.mock import has_mock_section_access
-from app.services.ai_scoring import _try_parse_json, _call_ai, GEMINI_SCORING_FREE_MODEL
+from app.services.ai_scoring import _try_parse_json, _call_ai
 from app.services.mcq_grading import grade_exact_match, combine_graded_results, resolve_latest_wrong_answers
 from app.services.open_ended_grading import grade_open_ended_answers
 from app.services.explanations import generate_reading_explanation_with_evidence
@@ -610,9 +610,9 @@ Return ONLY this JSON, no other text:
 
     result = await _call_ai(
         [{"role": "user", "content": prompt}],
+        purpose="dictionary_definition",
         max_tokens=150,
         json_mode=True,
-        model=GEMINI_SCORING_FREE_MODEL,
     )
     if result.get("provider_failure"):
         return ""
@@ -864,7 +864,10 @@ async def _call_reading_extract(
         }})
 
     payload = {
-        "model": GEMINI_SCORING_FREE_MODEL,
+        # TODO(reading_ocr): still a hardcoded literal -- the OpenRouter PDF/
+        # mistral-ocr import path gets migrated onto ai_registry's
+        # "reading_ocr" purpose in a follow-up pass, not this one.
+        "model": "google/gemini-flash-latest",
         "messages": [{"role": "user", "content": message_content}],
         # mistral-ocr: visual OCR, reads pages as rendered. Needed because real OET
         # PDFs come watermark-stamped (repeated logo images overlaid across the page) --
@@ -1092,9 +1095,9 @@ Return ONLY this JSON, no other text:
 
     result = await _call_ai(
         [{"role": "user", "content": prompt}],
+        purpose="reading_content_rewrite",
         max_tokens=1500,
         json_mode=True,
-        model=GEMINI_SCORING_FREE_MODEL,
     )
     new_text = (result.get("text") or "").strip()
     if result.get("provider_failure") or not new_text:
@@ -1537,7 +1540,10 @@ async def _attach_answers_from_pdf(questions: List[dict], answer_key_base64: str
     prompt = ATTACH_ANSWERS_PROMPT_TEMPLATE.format(questions_json=questions_json)
 
     payload = {
-        "model": GEMINI_SCORING_FREE_MODEL,
+        # TODO(reading_ocr): still a hardcoded literal -- the OpenRouter PDF/
+        # mistral-ocr import path gets migrated onto ai_registry's
+        # "reading_ocr" purpose in a follow-up pass, not this one.
+        "model": "google/gemini-flash-latest",
         "messages": [{
             "role": "user",
             "content": [

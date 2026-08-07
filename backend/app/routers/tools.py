@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from app.routers.auth import _client_ip
 from app.core.captcha import verify_captcha
 from app.core.rate_limit import SlidingWindowRateLimiter
-from app.services.ai_scoring import _call_ai, GEMINI_SCORING_FREE_MODEL
+from app.services.ai_scoring import _call_ai
 
 logger = logging.getLogger(__name__)
 
@@ -138,9 +138,9 @@ Be concrete -- reference the actual sub-test names and point gaps above. Do NOT 
         result = await asyncio.wait_for(
             _call_ai(
                 [{"role": "user", "content": prompt}],
+                purpose="study_plan_generation",
                 max_tokens=900,
                 json_mode=True,
-                model=GEMINI_SCORING_FREE_MODEL,
             ),
             timeout=_AI_CALL_TIMEOUT_SECONDS,
         )

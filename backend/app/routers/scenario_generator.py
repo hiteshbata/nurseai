@@ -6,7 +6,7 @@ from app.core.config import settings
 from app.core.error_utils import redact_api_keys
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.admin import require_admin
-from app.services.ai_scoring import _try_parse_json, GEMINI_SCORING_FREE_MODEL
+from app.services.ai_scoring import _try_parse_json
 import httpx
 import base64
 import json
@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/scenario", tags=["admin"])
 
-VISION_MODEL = GEMINI_SCORING_FREE_MODEL
+# TODO(scenario_vision): still a hardcoded literal -- this OpenRouter vision
+# call gets migrated onto ai_registry's "scenario_vision" purpose in a
+# follow-up pass, not this one.
+VISION_MODEL = "google/gemini-flash-latest"
 MAX_PDF_BYTES = 10 * 1024 * 1024
 _extract_rate_limiter = SlidingWindowRateLimiter(30, 600, name="scenario:extract")
 

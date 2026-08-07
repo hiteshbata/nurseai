@@ -24,7 +24,7 @@ from app.services.ai_scoring import get_patient_response, score_speaking, _call_
 from app.services.pronunciation import get_pronunciation_feedback
 from app.services.skill_graph import record_skill_observations, get_weakness
 from app.services.plan_gating import (
-    get_scoring_model,
+    get_scoring_purpose,
     get_plan_from_profile,
     get_scoring_criteria_count,
     has_pronunciation_access,
@@ -817,7 +817,7 @@ async def score_speaking_session(
 
     is_premium_trial = plan == "free" and await run_sync(is_first_ever_session, current_user.id, "speaking")
     effective_plan = "pro" if is_premium_trial else plan
-    scoring_model = get_scoring_model(effective_plan)
+    scoring_purpose = get_scoring_purpose(effective_plan)
 
     # Get scenario
     scenario_data = await run_sync(
@@ -843,7 +843,7 @@ async def score_speaking_session(
         supabase=supabase,
         user_id=current_user.id,
         session_id=request.session_id,
-        model=scoring_model,
+        purpose=scoring_purpose,
         criteria_count=criteria_count,
         enhanced_feedback=effective_plan in PREMIUM_PLANS,
     )
@@ -1027,9 +1027,9 @@ Return ONLY this JSON, no other text:
 
     result = await _call_ai(
         [{"role": "user", "content": prompt}],
+        purpose="scenario_card_generation",
         max_tokens=1500,
         json_mode=True,
-        model="google/gemini-3.5-flash",
     )
     
     if "nurse_card" not in result:

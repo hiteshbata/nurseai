@@ -3,7 +3,7 @@ and Listening both cache this on questions.explanation, keyed by question id,
 generated once ever per question."""
 import json
 
-from app.services.ai_scoring import _call_ai, GEMINI_SCORING_FREE_MODEL
+from app.services.ai_scoring import _call_ai
 
 
 async def generate_mcq_explanation(question: dict, subject: str, context_noun: str) -> str:
@@ -27,9 +27,9 @@ Return ONLY this JSON, no other text:
 
     result = await _call_ai(
         [{"role": "user", "content": prompt}],
+        purpose="explanation_mcq",
         max_tokens=300,
         json_mode=True,
-        model=GEMINI_SCORING_FREE_MODEL,
     )
     if result.get("provider_failure"):
         return ""
@@ -69,9 +69,9 @@ Return ONLY this JSON, no other text:
 
     result = await _call_ai(
         [{"role": "user", "content": prompt}],
+        purpose="reading_explanation",
         max_tokens=500,
         json_mode=True,
-        model=GEMINI_SCORING_FREE_MODEL,
     )
     if result.get("provider_failure"):
         return {"explanation": "", "evidence": ""}

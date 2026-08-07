@@ -8,7 +8,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.services.ai_scoring import _call_ai, GEMINI_SCORING_PREMIUM_MODEL
+from app.services.ai_scoring import _call_ai
 
 logger = logging.getLogger(__name__)
 
@@ -173,9 +173,9 @@ Be concrete -- reference the actual weak criteria and scenario names above. Do N
     try:
         result = await _call_ai(
             [{"role": "user", "content": prompt}],
+            purpose="coach",
             max_tokens=500,
             json_mode=True,
-            model=GEMINI_SCORING_PREMIUM_MODEL,
         )
     except Exception as e:
         logger.warning("[STUDY_PLAN_AI_FAILURE] error=%s", str(e)[:300])

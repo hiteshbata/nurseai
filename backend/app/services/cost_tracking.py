@@ -64,12 +64,20 @@ async def log_ai_usage(
     model: Optional[str] = None,
     is_estimate: bool = False,
     detail: Optional[dict[str, Any]] = None,
+    purpose: Optional[str] = None,
+    latency_ms: Optional[int] = None,
+    success: bool = True,
+    error_message: Optional[str] = None,
 ) -> None:
     """One row per STT/LLM/TTS/realtime call, independent of session_usage
     (which only exists for speaking sessions) -- this is the durable log
     that per-user/per-plan margin reporting reads from. Best-effort like
     increment_session_cost above: never let a logging failure surface to
-    the caller or block the request it's attached to."""
+    the caller or block the request it's attached to.
+
+    Logs both successes and failures (success=False, error_message set) so
+    this is the complete AI-request log the admin panel's health/analytics
+    view reads, not just a cost ledger."""
     try:
         await run_sync(_log_ai_usage_sync, {
             "user_id": user_id,
@@ -80,6 +88,10 @@ async def log_ai_usage(
             "cost_usd": cost_usd,
             "is_estimate": is_estimate,
             "detail": detail,
+            "purpose": purpose,
+            "latency_ms": latency_ms,
+            "success": success,
+            "error_message": error_message,
         })
     except Exception as e:
         logger.warning("[AI_USAGE_LOG_FAILED] call_type=%s provider=%s detail=%s", call_type, provider, str(e)[:300])
