@@ -21,6 +21,7 @@ from app.routers.admin import require_admin
 from app.core.feature_flags import require_feature, close_if_disabled
 from app.services.speech_to_text import speech_to_text
 from app.services.ai_scoring import get_patient_response, score_speaking, _call_ai
+from app.services import ai_registry
 from app.services.pronunciation import get_pronunciation_feedback
 from app.services.skill_graph import record_skill_observations, get_weakness
 from app.services.plan_gating import (
@@ -117,14 +118,14 @@ async def text_to_speech(
     gender = payload.get("gender")
     voice_name = payload.get("voice_name", "")
     if is_premium_trial:
-        voice_name = get_tts_voice("pro", gender)
+        voice_name = await get_tts_voice("pro", gender)
     elif plan in PREMIUM_PLANS and not is_premium_voice(voice_name):
         # Scenario voice_config defaults to WaveNet regardless of plan (see
         # tts_service.get_default_voice_config) -- Pro/Elite need to be
         # upgraded to Chirp3-HD here since nothing upstream requests it.
-        voice_name = get_tts_voice(plan, gender)
+        voice_name = await get_tts_voice(plan, gender)
     elif is_premium_voice(voice_name) and plan not in PREMIUM_PLANS:
-        voice_name = get_tts_voice(plan, gender)
+        voice_name = await get_tts_voice(plan, gender)
     speaking_rate = payload.get("speaking_rate", 0.95)
     pitch = payload.get("pitch", 0.0)
     language_code = payload.get("language_code", "en-GB")
@@ -220,13 +221,14 @@ async def stt_deepgram_stream(websocket: WebSocket):
         await websocket.close()
         return
 
+    # nova-3 is English-only and defaults to a US-accent acoustic model;
+    # nova-2 has a dedicated en-IN locale, which is what our nursing
+    # students actually speak -- the "stt_deepgram_stream" purpose (Admin >
+    # AI Models) controls which one, en-IN below is fixed regardless.
+    deepgram_model = (await ai_registry.get_model_config("stt_deepgram_stream")).model_name
     deepgram_url = (
         "wss://api.deepgram.com/v1/listen"
-        # nova-3 is English-only and defaults to a US-accent acoustic model;
-        # nova-2 has a dedicated en-IN locale, which is what our nursing
-        # students actually speak -- switching both together, since en-IN
-        # isn't a supported language option under nova-3.
-        "?model=nova-2"
+        f"?model={deepgram_model}"
         "&language=en-IN"
         "&interim_results=true"
         "&endpointing=1500"
@@ -460,8 +462,8 @@ async def stt_deepgram_stream(websocket: WebSocket):
             # the way its REST response does.
             stream_seconds = time.monotonic() - stream_started_at
             await log_ai_usage(
-                "stt", "deepgram", estimate_deepgram_cost("nova-2", stream_seconds),
-                user_id=user.id, model="nova-2", is_estimate=True,
+                "stt", "deepgram", estimate_deepgram_cost(deepgram_model, stream_seconds),
+                user_id=user.id, model=deepgram_model, purpose="stt_deepgram_stream", is_estimate=True,
                 detail={"audio_seconds": round(stream_seconds, 2)},
             )
 

@@ -79,20 +79,23 @@ def get_scoring_purpose(plan: str) -> str:
     return "speaking_scoring_free"
 
 
-def get_realtime_model(plan: str) -> str:
+def get_realtime_purpose(plan: str) -> str:
     """OpenAI realtime (STS) model tier -- free/basic get the cheaper mini
     model, Pro/Elite get flagship gpt-realtime. Only applies when
-    VOICE_PROVIDER=openai; Gemini has no mini tier wired up yet."""
-    from app.core.config import settings
+    VOICE_PROVIDER=openai; Gemini has no mini tier wired up yet. Returns an
+    ai_model_purposes key -- resolve via ai_registry.get_model_config()."""
     if plan in PREMIUM_PLANS:
-        return settings.OPENAI_REALTIME_MODEL
-    return settings.OPENAI_REALTIME_MODEL_MINI
+        return "realtime_voice_openai_standard"
+    return "realtime_voice_openai_mini"
 
 
-def get_tts_voice(plan: str, gender: Optional[str] = None) -> str:
+async def get_tts_voice(plan: str, gender: Optional[str] = None) -> str:
+    from app.services import ai_registry
     if plan in PREMIUM_PLANS:
-        return "en-GB-Chirp3-HD-Charon" if gender == "male" else "en-GB-Chirp3-HD-Aoede"
-    return "en-GB-Wavenet-A"
+        purpose = "tts_google_chirp_male" if gender == "male" else "tts_google_chirp_female"
+    else:
+        purpose = "tts_google_wavenet"
+    return (await ai_registry.get_model_config(purpose)).model_name
 
 
 def is_premium_voice(voice_name: str) -> bool:

@@ -73,7 +73,8 @@ from app.services.realtime.pricing import (
 )
 from app.services.cost_tracking import increment_session_cost, log_ai_usage
 from app.services.ai_scoring import MEDICAL_JARGON
-from app.services.plan_gating import get_plan_from_profile, get_realtime_model
+from app.services.plan_gating import get_plan_from_profile, get_realtime_purpose
+from app.services import ai_registry
 from app.core.feature_flags import close_if_disabled
 from app.services.alerts import send_alert
 
@@ -129,11 +130,13 @@ def _get_voice_provider() -> str:
     return provider
 
 
-def _provider_credentials(provider: str, plan: str) -> tuple[str, str]:
+async def _provider_credentials(provider: str, plan: str) -> tuple[str, str]:
     if provider == "openai":
-        return settings.OPENAI_API_KEY, get_realtime_model(plan)
+        model = (await ai_registry.get_model_config(get_realtime_purpose(plan))).model_name
+        return settings.OPENAI_API_KEY, model
     if provider == "gemini":
-        return settings.GEMINI_API_KEY, settings.GEMINI_LIVE_MODEL
+        model = (await ai_registry.get_model_config("realtime_voice_gemini")).model_name
+        return settings.GEMINI_API_KEY, model
     raise ValueError(f"Unknown VOICE_PROVIDER: {provider!r}")
 
 
@@ -412,7 +415,7 @@ async def realtime_stream(websocket: WebSocket):
     )
     plan = get_plan_from_profile(profile_data.data[0] if profile_data.data else {})
 
-    api_key, model = _provider_credentials(provider, plan)
+    api_key, model = await _provider_credentials(provider, plan)
     if not api_key:
         logger.error("[REALTIME_CONFIG_ERROR] API key not configured for provider=%s", provider)
         await _send_json_safe(websocket, {"type": "error", "error": f"{provider} voice provider not configured"})

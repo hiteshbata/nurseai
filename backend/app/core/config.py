@@ -23,9 +23,11 @@ class Settings(BaseSettings):
     REDIS_URL: str = ""
     OPENROUTER_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+    # No longer read directly for the live realtime call (Admin > AI Models'
+    # "realtime_voice_openai_standard"/"_mini" purposes control that --
+    # see plan_gating.get_realtime_purpose) -- kept as the mini-tier
+    # reference value for realtime/pricing.py's cost estimator.
     OPENAI_REALTIME_MODEL: str = "gpt-realtime"
-    # Free-plan tier for the same adapter -- see get_realtime_model() in
-    # app/services/plan_gating.py for which plans get which model.
     OPENAI_REALTIME_MODEL_MINI: str = "gpt-realtime-mini"
     GEMINI_API_KEY: str = ""
     AI_PROVIDER: str = "gemini"
@@ -36,10 +38,6 @@ class Settings(BaseSettings):
     # /speaking/realtime/stream websocket talks to -- see
     # app/services/realtime/factory.py.
     VOICE_PROVIDER: str = "openai"
-    # Verify the current live-capable model name in Google AI Studio before
-    # changing this -- the Gemini Live model catalog moves fast. See
-    # app/services/realtime/gemini_adapter.py module docstring.
-    GEMINI_LIVE_MODEL: str = "models/gemini-3.1-flash-live-preview"
     # Backend-enforced hard cap on a single realtime voice session, plus a
     # heads-up sent to the client before the cutoff. Enforced by the
     # router (app/routers/speaking_realtime.py), not by either provider.

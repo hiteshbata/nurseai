@@ -20,6 +20,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.threading import run_sync
+from app.services import ai_registry
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,6 @@ OPENAI_TTS_URL = "https://api.openai.com/v1/audio/speech"
 # Voices supported by BOTH tts-1 and gpt-4o-mini-tts. Ordered so the first two
 # distinct speakers get clearly different-sounding voices by default.
 OPENAI_VOICES = ["onyx", "nova", "echo", "shimmer", "alloy", "fable"]
-DEFAULT_TTS_MODEL = "gpt-4o-mini-tts"
 MAX_TURN_CHARS = 4000   # OpenAI TTS hard limit is 4096 chars/request; stay under
 MAX_TURNS = 120
 GAP_SECONDS = 0.6       # natural pause between speaker turns
@@ -140,9 +140,10 @@ async def deepgram_transcribe(audio: bytes, content_type: str) -> List[dict]:
     if not key:
         raise RuntimeError("no_deepgram_key")
     async with httpx.AsyncClient(timeout=300.0) as client:
+        deepgram_model = (await ai_registry.get_model_config("stt_deepgram_content_rest")).model_name
         resp = await client.post(
             DEEPGRAM_URL,
-            params={"model": "nova-2", "smart_format": "true", "punctuate": "true"},
+            params={"model": deepgram_model, "smart_format": "true", "punctuate": "true"},
             headers={"Authorization": f"Token {key}", "Content-Type": content_type},
             content=audio,
         )
@@ -197,13 +198,16 @@ def cut_segment(src_path: str, start: float, end: float) -> bytes:
 async def generate_two_speaker_audio(
     turns: List[dict],
     voices: Optional[Dict[str, str]] = None,
-    model: str = DEFAULT_TTS_MODEL,
+    model: Optional[str] = None,
 ) -> bytes:
     """turns: [{"speaker": str, "text": str}]. Returns one stitched mp3 (bytes).
     Raises TtsError for bad input (400-worthy), RuntimeError for a provider/ffmpeg
-    failure (502-worthy)."""
+    failure (502-worthy). model=None resolves to the "tts_openai" purpose
+    (Admin > AI Models) -- pass an explicit model to override."""
     if not settings.OPENAI_API_KEY:
         raise RuntimeError("no_key")
+    if model is None:
+        model = (await ai_registry.get_model_config("tts_openai")).model_name
     if not turns:
         raise TtsError("Add at least one line of dialogue before generating audio.")
     if len(turns) > MAX_TURNS:

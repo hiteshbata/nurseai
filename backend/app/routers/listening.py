@@ -42,7 +42,7 @@ from app.services.explanations import generate_mcq_explanation
 from app.services.skill_graph import record_skill_observations, get_weakness
 from app.services.listening_audio import (
     generate_two_speaker_audio, cut_segment, deepgram_transcribe, timestamped_lines,
-    TtsError, DEFAULT_TTS_MODEL, OPENAI_VOICES,
+    TtsError, OPENAI_VOICES,
 )
 from app.services.ai_scoring import _call_ai
 from app.services.plan_gating import has_listening_access, has_free_module_attempt, get_plan_from_profile
@@ -719,7 +719,7 @@ class TtsTurnIn(BaseModel):
 class GenerateAudioRequest(BaseModel):
     turns: List[TtsTurnIn]
     voices: Optional[Dict[str, str]] = None  # speaker label -> OpenAI voice; auto-assigned if omitted
-    model: str = DEFAULT_TTS_MODEL
+    model: Optional[str] = None  # None resolves to the "tts_openai" purpose (Admin > AI Models)
 
 
 @router.get("/admin/tts-voices")

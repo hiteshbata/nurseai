@@ -38,7 +38,7 @@ async def synthesize_speech(
         raise Exception("no_key")
 
     text = strip_action_tags(text) or text
-    effective_voice = voice_name or get_tts_voice(plan)
+    effective_voice = voice_name or await get_tts_voice(plan)
     payload = {
         "input": {"text": text},
         "voice": {
