@@ -864,7 +864,7 @@ async def _call_reading_extract(
         }})
 
     payload = {
-        "model": "google/gemini-2.5-flash",
+        "model": GEMINI_SCORING_FREE_MODEL,
         "messages": [{"role": "user", "content": message_content}],
         # mistral-ocr: visual OCR, reads pages as rendered. Needed because real OET
         # PDFs come watermark-stamped (repeated logo images overlaid across the page) --
@@ -1537,7 +1537,7 @@ async def _attach_answers_from_pdf(questions: List[dict], answer_key_base64: str
     prompt = ATTACH_ANSWERS_PROMPT_TEMPLATE.format(questions_json=questions_json)
 
     payload = {
-        "model": "google/gemini-2.5-flash",
+        "model": GEMINI_SCORING_FREE_MODEL,
         "messages": [{
             "role": "user",
             "content": [

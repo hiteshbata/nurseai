@@ -19,7 +19,7 @@ from __future__ import annotations
 # string each call site already uses (see ai_scoring.py's *_MODEL constants).
 LLM_USD_PER_1K_TOKENS: dict[str, tuple[float, float]] = {
     "google/gemini-3.1-flash-lite": (0.00004, 0.00015),
-    "google/gemini-2.5-flash": (0.00008, 0.00030),
+    "google/gemini-flash-latest": (0.00008, 0.00030),
     "google/gemini-3.5-flash": (0.00012, 0.00045),
     "gpt-5.4-mini": (0.00015, 0.00060),
     "openai/gpt-5.4-mini": (0.00015, 0.00060),

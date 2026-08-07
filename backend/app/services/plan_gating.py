@@ -2,6 +2,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Literal, Optional
 
 from app.core.plans import GRACE_PERIOD_DAYS, PLAN_PERIOD_DAYS
+from app.services.ai_scoring import GEMINI_SCORING_FREE_MODEL, GEMINI_SCORING_PREMIUM_MODEL
 
 PlanType = Literal["free", "basic", "pro", "elite"]
 
@@ -73,8 +74,8 @@ def compute_renewed_expiry(
 
 def get_scoring_model(plan: str) -> str:
     if plan in PREMIUM_PLANS:
-        return "google/gemini-3.5-flash"
-    return "google/gemini-2.5-flash"
+        return GEMINI_SCORING_PREMIUM_MODEL
+    return GEMINI_SCORING_FREE_MODEL
 
 
 def get_realtime_model(plan: str) -> str:

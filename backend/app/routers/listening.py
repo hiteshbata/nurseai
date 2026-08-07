@@ -973,7 +973,7 @@ async def _openrouter_pdf(prompt: str, pdf_base64: str, answer_key_base64: Optio
         }})
 
     payload = {
-        "model": "google/gemini-2.5-flash",
+        "model": GEMINI_SCORING_FREE_MODEL,
         "messages": [{"role": "user", "content": message_content}],
         "plugins": [{"id": "file-parser", "pdf": {"engine": "mistral-ocr"}}],
         "temperature": 0.2,
@@ -1079,7 +1079,7 @@ async def _transcribe_audio_draft(audio_base64: str, audio_format: str) -> Dict[
         raise HTTPException(status_code=502, detail="AI provider not configured")
 
     payload = {
-        "model": "google/gemini-2.5-flash",
+        "model": GEMINI_SCORING_FREE_MODEL,
         "messages": [{"role": "user", "content": [
             {"type": "text", "text": LISTENING_TRANSCRIBE_PROMPT},
             {"type": "input_audio", "input_audio": {"data": audio_base64, "format": audio_format}},
@@ -1170,7 +1170,7 @@ async def _attach_answers_from_pdf(questions: List[dict], answer_key_base64: str
         for q in questions
     ], indent=2)
     payload = {
-        "model": "google/gemini-2.5-flash",
+        "model": GEMINI_SCORING_FREE_MODEL,
         "messages": [{"role": "user", "content": [
             {"type": "text", "text": ATTACH_ANSWERS_PROMPT_TEMPLATE.format(questions_json=questions_json)},
             {"type": "file", "file": {"filename": "answer_key.pdf", "file_data": f"data:application/pdf;base64,{answer_key_base64}"}},

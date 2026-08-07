@@ -10,7 +10,7 @@ from supabase import Client
 from app.routers.admin import require_admin
 from app.routers.mock import has_mock_section_access
 from app.core.feature_flags import require_feature
-from app.services.ai_scoring import score_writing, _try_parse_json
+from app.services.ai_scoring import score_writing, _try_parse_json, GEMINI_SCORING_FREE_MODEL
 from app.services.plan_gating import has_writing_access, get_plan_from_profile
 from app.services.skill_graph import record_skill_observations, get_weakness
 from app.core.redis_client import get_redis
@@ -249,7 +249,7 @@ async def _read_ocr_page(client, idx: int, img_b64: str) -> str:
     re-take."""
     models_to_try = [
         "anthropic/claude-sonnet-5",
-        "google/gemini-2.5-flash",
+        GEMINI_SCORING_FREE_MODEL,
     ]
     for model in models_to_try:
         try:
@@ -444,7 +444,7 @@ async def _extract_writing_from_pdf(pdf_base64: str) -> Dict[str, Any]:
         raise HTTPException(status_code=502, detail="AI provider not configured")
 
     payload = {
-        "model": "google/gemini-2.5-flash",
+        "model": GEMINI_SCORING_FREE_MODEL,
         "messages": [{"role": "user", "content": [
             {"type": "text", "text": WRITING_EXTRACT_PROMPT},
             {"type": "file", "file": {
