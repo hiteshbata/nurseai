@@ -752,12 +752,33 @@ function WarmUpCheck({ onComplete, onCancel }: { onComplete: () => void; onCance
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // The backend's own timer ends the conversation naturally (~110s, see
-  // REALTIME_WARMUP_MAX_SECONDS) -- that's the "done" signal, since a live
-  // voice session has no other defined end-of-task event.
+  // The persona (_build_warmup_system_prompt) asks exactly one question,
+  // then wraps up: that's turn 1 (the question) and turn 2 (the closing
+  // line) on the 'patient' role. Once the closing line has both arrived
+  // AND finished playing (isSpeaking false, not just isProcessing false --
+  // otherwise this fires while the AI is still mid-sentence), the
+  // conversation is done -- advance without waiting on the user to notice
+  // and tap "End Session" themselves, or on the 45s backstop timer.
+  const completedRef = useRef(false)
+  const hostTurns = convHistory.filter((m) => m.role === 'patient').length
+  const naturallyDone = hostTurns >= 2 && !session.isProcessing && !session.isSpeaking
+  useEffect(() => {
+    if (!naturallyDone || completedRef.current) return
+    completedRef.current = true
+    session.stopListening()
+    onComplete()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [naturallyDone])
+
+  // Backstop only -- covers the model going off-script (e.g. a genuine
+  // follow-up instead of wrapping up) or a dropped connection. The happy
+  // path above should almost always fire first.
   const timedOut = session.sttError === SESSION_TIMEOUT_MESSAGE
   useEffect(() => {
-    if (timedOut) onComplete()
+    if (timedOut && !completedRef.current) {
+      completedRef.current = true
+      onComplete()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timedOut])
 
@@ -775,7 +796,11 @@ function WarmUpCheck({ onComplete, onCancel }: { onComplete: () => void; onCance
         canEndSession={convHistory.some((m) => m.role === 'patient')}
         getOutputLevel={session.getOutputLevel}
         onToggle={() => (session.isListening ? session.stopListening() : session.startListening())}
-        onEndSession={onComplete}
+        onEndSession={() => {
+          if (completedRef.current) return
+          completedRef.current = true
+          onComplete()
+        }}
       >
         {lastTurn && (
           <p className="text-sm text-gray-600 italic text-center max-w-sm">
