@@ -37,6 +37,12 @@ const NAV_GROUPS = [
     ],
   },
   {
+    label: 'AI',
+    items: [
+      { href: '/admin/ai-models', label: 'AI Models' },
+    ],
+  },
+  {
     label: 'Revenue',
     items: [
       { href: '/admin/ai-costs', label: 'AI Cost & Margin' },

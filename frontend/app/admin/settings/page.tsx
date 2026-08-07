@@ -17,8 +17,6 @@ interface FeatureFlag {
 }
 
 const SETTINGS_SCHEMA: Record<string, string> = {
-  ai_model: 'AI model for scoring and patient chat',
-  ai_patient_model: 'AI model for patient role-play',
   voice_provider: 'Realtime voice-to-voice provider',
   speaking_price_monthly: 'Monthly subscription price in INR',
   announcement_banner_text: 'Message shown in the site-wide banner',
@@ -199,34 +197,6 @@ export default function AdminSettingsPage() {
 
         <div className="bg-white p-8 rounded-lg shadow space-y-6">
           <div>
-            <h2 className="text-xl font-bold mb-4 text-purple-700">AI Models</h2>
-            <div className="space-y-4">
-              {['ai_model', 'ai_patient_model'].map((key) => (
-                <div key={key}>
-                  <label htmlFor={`setting-${key}`} className="block text-sm font-semibold mb-2">
-                    {SETTINGS_SCHEMA[key]}
-                  </label>
-                  <select
-                    id={`setting-${key}`}
-                    value={settings[key] || ''}
-                    onChange={(e) => {
-                      setSettings({ ...settings, [key]: e.target.value })
-                      updateSetting(key, e.target.value)
-                    }}
-                    disabled={saving === key}
-                    className="w-full px-4 py-2 border rounded-lg"
-                  >
-                    <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
-                    <option value="google/gemini-2.5-flash-preview">Gemini 2.5 Flash Preview</option>
-                    <option value="openai/gpt-4o">GPT-4o</option>
-                    <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
-                  </select>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="border-t pt-6">
             <h2 className="text-xl font-bold mb-4 text-blue-700">Voice</h2>
             <div className="space-y-4">
               <div>

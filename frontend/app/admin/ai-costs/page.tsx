@@ -64,6 +64,9 @@ interface AiCostMetrics {
   by_call_type: { call_type: string; cost_usd: number }[]
   by_provider: { provider: string; cost_usd: number }[]
   by_model: { model: string; cost_usd: number }[]
+  by_purpose: { purpose: string; cost_usd: number }[]
+  avg_latency_ms: number | null
+  success_rate_pct: number | null
   plan_margins: PlanMargin[]
   top_spenders: TopSpender[]
   daily_trend: { date: string; cost_usd: number }[]
@@ -155,6 +158,19 @@ export default function AiCostsPage() {
             value={`${(100 - metrics.estimate_ratio_pct).toFixed(0)}%`}
             sub={metrics.estimate_ratio_pct > 30 ? 'more than 30% of costs are rough estimates' : undefined}
             subColor={metrics.estimate_ratio_pct > 30 ? STATUS.warning : undefined}
+          />
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4 mb-8">
+          <StatTile
+            label="Avg AI response latency"
+            value={metrics.avg_latency_ms === null ? 'n/a' : `${metrics.avg_latency_ms.toLocaleString('en-IN')}ms`}
+          />
+          <StatTile
+            label="AI call success rate"
+            value={metrics.success_rate_pct === null ? 'n/a' : `${metrics.success_rate_pct.toFixed(1)}%`}
+            sub={metrics.success_rate_pct !== null && metrics.success_rate_pct < 95 ? 'below 95% — check provider health' : undefined}
+            subColor={metrics.success_rate_pct !== null && metrics.success_rate_pct < 95 ? STATUS.warning : undefined}
           />
         </div>
 
@@ -280,6 +296,23 @@ export default function AiCostsPage() {
                 <Bar dataKey="cost_usd" radius={[0, 4, 4, 0]} maxBarSize={24}>
                   {metrics.by_model.map((row, i) => (
                     <Cell key={row.model} fill={row.model === 'other' ? '#c3c2b7' : COST_HUE} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <p className="text-sm font-semibold text-slate-700 mb-4">Cost by purpose</p>
+            <ResponsiveContainer width="100%" height={Math.max(120, metrics.by_purpose.length * 40)}>
+              <BarChart data={metrics.by_purpose} layout="vertical" margin={{ top: 4, right: 16, bottom: 0, left: 8 }}>
+                <CartesianGrid stroke={GRID} horizontal={false} />
+                <XAxis type="number" tick={AXIS_TICK} tickFormatter={(v) => `$${v}`} axisLine={{ stroke: AXIS }} tickLine={false} />
+                <YAxis type="category" dataKey="purpose" tick={AXIS_TICK} axisLine={false} tickLine={false} width={140} />
+                <Tooltip formatter={(v: number) => formatUSD(v)} contentStyle={TOOLTIP_STYLE} />
+                <Bar dataKey="cost_usd" radius={[0, 4, 4, 0]} maxBarSize={24}>
+                  {metrics.by_purpose.map((row) => (
+                    <Cell key={row.purpose} fill={row.purpose === 'other' || row.purpose === 'unknown' ? '#c3c2b7' : COST_HUE} />
                   ))}
                 </Bar>
               </BarChart>
