@@ -8,7 +8,7 @@ from app.core.supabase import get_supabase
 from app.core.redis_client import get_redis
 from app.core import circuit_breaker
 from app.core.request_id import RequestIDMiddleware, RequestIDLogFilter
-from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads, reading, listening, hub, vocab, mock, referrals, tools
+from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, admin_ai_models, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads, reading, listening, hub, vocab, mock, referrals, tools
 from app.services.oet_questions import oet_service
 from app.services.seed_scenarios import seed_scenarios
 
@@ -130,6 +130,7 @@ app.include_router(speaking_realtime.router)
 app.include_router(scoring.router)
 app.include_router(progress.router)
 app.include_router(admin.router)
+app.include_router(admin_ai_models.router)
 app.include_router(grammar.router)
 app.include_router(comparison.router)
 app.include_router(writing.router)
