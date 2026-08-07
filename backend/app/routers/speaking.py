@@ -735,6 +735,7 @@ def get_scenario(scenario_id: int, current_user: UserInfo = Depends(get_current_
 async def chat_with_patient(
     request: PatientChatRequest,
     current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
 ):
     """
     Multi-turn conversation with AI patient.
@@ -749,7 +750,7 @@ async def chat_with_patient(
     if session_id is not None and not await run_sync(validate_session, current_user.id, session_id):
         session_id = None
     if session_id is None:
-        usage = await run_sync(check_and_increment_session, current_user)
+        usage = await run_sync(check_and_increment_session, current_user, user_db)
         session_id = usage["session_id"]
 
     supabase = get_supabase()
