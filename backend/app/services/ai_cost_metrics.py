@@ -81,6 +81,17 @@ def compute_ai_cost_metrics(
     by_call_type = _ranked(_grouped_sum(this_month, "call_type"), "call_type")
     by_provider = _ranked(_grouped_sum(this_month, "provider"), "provider")
     by_model = _ranked(_grouped_sum(this_month, "model"), "model", top_n=TOP_MODELS_LIMIT)
+    by_purpose = _ranked(_grouped_sum(this_month, "purpose"), "purpose", top_n=TOP_MODELS_LIMIT)
+
+    # ── latency + success rate (both columns added 2026-08-07 -- events from
+    # before that have no latency_ms and are excluded from the average
+    # rather than counted as 0, which would understate it) ──────────────
+    latencies = [e["latency_ms"] for e in this_month if e.get("latency_ms") is not None]
+    avg_latency_ms = round(sum(latencies) / len(latencies)) if latencies else None
+    success_rate_pct = (
+        round(sum(1 for e in this_month if e.get("success", True)) / calls_this_month * 100, 1)
+        if calls_this_month else None
+    )
 
     # ── per-plan cost + gross margin ────────────────────────────────
     # price_inr - avg cost-to-serve per active user on that plan, in the
@@ -170,6 +181,9 @@ def compute_ai_cost_metrics(
         "by_call_type": by_call_type,
         "by_provider": by_provider,
         "by_model": by_model,
+        "by_purpose": by_purpose,
+        "avg_latency_ms": avg_latency_ms,
+        "success_rate_pct": success_rate_pct,
         "plan_margins": plan_margins,
         "top_spenders": top_spenders,
         "daily_trend": daily_trend,
@@ -192,7 +206,7 @@ def get_ai_cost_metrics(supabase, now: Optional[datetime] = None) -> Dict[str, A
 
     events = (
         supabase.table("ai_usage_events")
-        .select("user_id, session_id, call_type, provider, model, cost_usd, is_estimate, created_at")
+        .select("user_id, session_id, call_type, provider, model, purpose, cost_usd, is_estimate, latency_ms, success, created_at")
         .gte("created_at", window_start.isoformat())
         .execute()
         .data
@@ -222,10 +236,10 @@ if __name__ == "__main__":
         "u2": {"user_id": "u2", "plan": "free", "plan_expires_at": None, "subscription_status": "none"},
     }
     _events = [
-        {"user_id": "u1", "call_type": "llm", "provider": "google", "model": "gemini-3.5-flash", "cost_usd": 0.02, "is_estimate": False, "created_at": (_now - timedelta(days=2)).isoformat()},
-        {"user_id": "u1", "call_type": "tts", "provider": "google", "model": "chirp3-hd", "cost_usd": 0.01, "is_estimate": True, "created_at": (_now - timedelta(days=1)).isoformat()},
-        {"user_id": "u2", "call_type": "stt", "provider": "deepgram", "model": "nova-3", "cost_usd": 0.005, "is_estimate": False, "created_at": (_now - timedelta(days=1)).isoformat()},
-        {"user_id": None, "call_type": "llm", "provider": "google", "model": "gemini-2.5-flash", "cost_usd": 0.001, "is_estimate": False, "created_at": (_now - timedelta(days=1)).isoformat()},
+        {"user_id": "u1", "call_type": "llm", "provider": "google", "model": "gemini-3.5-flash", "purpose": "speaking_scoring_premium", "cost_usd": 0.02, "is_estimate": False, "latency_ms": 800, "success": True, "created_at": (_now - timedelta(days=2)).isoformat()},
+        {"user_id": "u1", "call_type": "tts", "provider": "google", "model": "chirp3-hd", "purpose": "tts_google_chirp_female", "cost_usd": 0.01, "is_estimate": True, "latency_ms": None, "success": True, "created_at": (_now - timedelta(days=1)).isoformat()},
+        {"user_id": "u2", "call_type": "stt", "provider": "deepgram", "model": "nova-3", "purpose": "stt_deepgram_rest", "cost_usd": 0.005, "is_estimate": False, "latency_ms": 400, "success": True, "created_at": (_now - timedelta(days=1)).isoformat()},
+        {"user_id": None, "call_type": "llm", "provider": "google", "model": "gemini-2.5-flash", "purpose": "grammar_tutor", "cost_usd": 0.001, "is_estimate": False, "latency_ms": 200, "success": False, "created_at": (_now - timedelta(days=1)).isoformat()},
     ]
     result = compute_ai_cost_metrics(_events, _profiles, now=_now)
     assert result["calls_this_month"] == 4
@@ -237,4 +251,9 @@ if __name__ == "__main__":
     assert unattributed_row["total_cost_usd"] == 0.0
     assert result["top_spenders"][0]["user_id"] == "u1"
     assert len(result["daily_trend"]) == TREND_DAYS + 1
+    assert result["avg_latency_ms"] == round((800 + 400 + 200) / 3)  # the None latency is excluded, not counted as 0
+    assert result["success_rate_pct"] == 75.0
+    assert {r["purpose"] for r in result["by_purpose"]} == {
+        "speaking_scoring_premium", "tts_google_chirp_female", "stt_deepgram_rest", "grammar_tutor",
+    }
     print("ai_cost_metrics self-check OK")
