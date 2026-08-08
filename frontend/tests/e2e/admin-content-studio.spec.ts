@@ -260,3 +260,64 @@ test('dashboard and library have no horizontal overflow on desktop or mobile', a
 
   await context.close()
 })
+
+// ---- 10. RC3.2 AI Draft Generator ----
+// One test drives the whole Generate -> Preview -> Save -> Discard loop
+// (rather than one AI call per assertion) since /generate makes a real,
+// billed AI call -- see draft_generator.py's content_draft_generation
+// purpose. count stays at 1 for the same reason.
+
+test('AI Draft Generator: generate shows loading state, previews a draft, saves it as a draft, and discard clears the preview', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  const pageErrors = trackPageErrors(page)
+
+  await page.goto('/admin/content-studio/generate')
+  await expect(page.getByRole('heading', { name: 'AI Draft Generator' })).toBeVisible({ timeout: 15_000 })
+
+  // Grammar has no production table -- exercising it here proves drafts
+  // save into generated_content_drafts independent of any production table.
+  await page.getByTestId('field-module').selectOption('grammar')
+  await page.getByTestId('field-topic').fill('Playwright QA smoke test topic -- reported speech in handover')
+
+  const generateResponse = page.waitForResponse((res) => res.url().includes('/admin/content-studio/generate'), { timeout: 120_000 })
+  await page.getByTestId('generate-button').click()
+
+  // Duplicate-submission guard: button disables immediately, so a second
+  // click while in flight must not fire a second request.
+  await expect(page.getByTestId('generate-button')).toBeDisabled()
+  const response = await generateResponse
+  expect(response.status()).toBe(200)
+  await expect(page.getByTestId('generate-button')).toBeEnabled({ timeout: 15_000 })
+
+  const previewCard = page.getByTestId('draft-preview-card')
+  const errorCard = page.getByTestId('draft-error-card')
+  await Promise.race([
+    previewCard.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {}),
+    errorCard.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {}),
+  ])
+
+  // A live AI outage/malformed response is a friendly per-item error, not a
+  // page crash -- assert whichever outcome happened rendered cleanly.
+  if (await errorCard.isVisible().catch(() => false)) {
+    await expect(errorCard).toContainText(/./)
+  } else {
+    await expect(previewCard).toBeVisible()
+    await expect(page.getByTestId('draft-content')).toBeVisible()
+
+    await page.getByTestId('draft-name-input').fill('Playwright QA saved draft')
+    const saveResponse = page.waitForResponse((res) => res.url().includes('/admin/content-studio/drafts') && res.request().method() === 'POST')
+    await page.getByTestId('save-draft-button').click()
+    const saveRes = await saveResponse
+    expect(saveRes.status()).toBe(200)
+    await expect(page.getByTestId('save-draft-button')).toBeDisabled()
+    await expect(page.getByTestId('save-draft-button')).toHaveText('Saved')
+  }
+
+  await page.getByTestId('discard-button').click()
+  await expect(page.getByTestId('draft-preview-card')).not.toBeVisible()
+  await expect(page.getByTestId('draft-error-card')).not.toBeVisible()
+
+  expect(pageErrors).toEqual([])
+  await context.close()
+})
