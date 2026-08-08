@@ -9,13 +9,26 @@ this file must match reality (see Definition of Done in
 
 ## Development branch
 
-**Status: V1**
+**Status: V2**
 
-`main` is the only long-lived branch. Feature branches are short-lived and
-merged directly into `main` (e.g. `fix/voiceorb-a11y`). There is no
-persistent `develop` or `staging` branch today — this is a solo/small-team
-project, not a 20-engineer org, and a long-lived integration branch would
-be overhead with no second team to protect from.
+Three-tier flow: `feature/*` → `develop` → `main`.
+
+- **`feature/*`** — one branch per unit of work (e.g. `fix/voiceorb-a11y`).
+  Short-lived, deleted after merge. Branches off `develop`, merges back
+  into `develop`.
+- **`develop`** — the integration branch. Where feature branches land and
+  get combined before anything reaches production. Lets several things
+  in flight get reviewed/combined without each one individually touching
+  `main`.
+- **`main`** — production. Vercel/Render auto-deploy on merge to `main`
+  (see Production below) — merging here ships to real users. Only
+  `develop` merges into `main`, not individual feature branches directly.
+
+Superseded V1 (`main` as the only long-lived branch, feature branches
+merged straight into it) once `develop` was introduced 2026-08-08 — see
+[docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md). The V1 rationale
+(solo/small-team, no long-lived branch to protect from) still holds for
+why there's no further staging tier beyond these three.
 
 ## QA
 
