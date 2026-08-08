@@ -11,6 +11,14 @@ interface Props {
   allowReplay?: boolean
 }
 
+// Module-level pub/sub so only one player plays at a time: starting one
+// broadcasts its id, every other mounted instance pauses itself.
+type PlayListener = (playingId: string) => void
+const activeListeners = new Set<PlayListener>()
+function broadcastPlay(id: string) {
+  activeListeners.forEach((fn) => fn(id))
+}
+
 function fmt(sec: number) {
   if (!isFinite(sec)) return '0:00'
   const m = Math.floor(sec / 60)
@@ -25,6 +33,8 @@ function fmt(sec: number) {
  * the click gesture so the browser doesn't autoplay-block it. */
 export default function ListeningAudioPlayer({ srcs, allowReplay = false }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null)
+  const idRef = useRef<string | null>(null)
+  if (idRef.current === null) idRef.current = Math.random().toString(36).slice(2)
   const [idx, setIdx] = useState(0)
   const [state, setState] = useState<'idle' | 'playing' | 'paused' | 'ended'>('idle')
   const [cur, setCur] = useState(0)
@@ -51,12 +61,24 @@ export default function ListeningAudioPlayer({ srcs, allowReplay = false }: Prop
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx])
 
+  // Only one player plays at a time: pause this one if another instance starts.
+  useEffect(() => {
+    const onPlay: PlayListener = (playingId) => {
+      if (playingId === idRef.current) return
+      audioRef.current?.pause()
+      setState((s) => (s === 'playing' ? 'paused' : s))
+    }
+    activeListeners.add(onPlay)
+    return () => { activeListeners.delete(onPlay) }
+  }, [])
+
   const onToggle = () => {
     if (locked || total === 0) return
     setErr('')
     const a = audioRef.current
     if (!a) return
     if (state === 'playing') { a.pause(); setState('paused'); return }   // pause
+    broadcastPlay(idRef.current!)
     if (state === 'paused') { setState('playing'); attemptPlay(); return } // resume from where it is
     if (state === 'ended' && idx !== 0) { setState('playing'); setIdx(0); return } // replay via effect
     // idle (or single-clip replay): start from the top
