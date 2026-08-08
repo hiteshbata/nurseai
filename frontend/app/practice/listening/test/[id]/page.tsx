@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSupabaseSession } from '@/lib/supabase'
 import api, { isUpgradeRequiredError } from '@/lib/api'
+import { trackEvent } from '@/lib/analytics'
 import toast from 'react-hot-toast'
 import { Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -215,6 +216,11 @@ export default function ListeningTestSessionPage() {
       }
       setResult(res.data)
       window.scrollTo(0, 0)
+      trackEvent('score_viewed', {
+        module: 'listening',
+        test_id: test.id,
+        overall_score: res.data?.score,
+      })
     } catch (error) {
       if (!isUpgradeRequiredError(error)) toast.error('Failed to submit test')
     } finally {

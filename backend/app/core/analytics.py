@@ -42,6 +42,10 @@ def track_event(distinct_id: str, event: str, properties: Optional[Dict[str, Any
     if not client:
         return
     try:
-        client.capture(distinct_id=distinct_id, event=event, properties=properties or {})
+        # One PostHog project for every deployment target -- SENTRY_ENVIRONMENT
+        # (reused, not PostHog-specific) is what tells rc1/local apart from
+        # production in it, same as the frontend's environment super-property.
+        event_properties = {"environment": settings.SENTRY_ENVIRONMENT, **(properties or {})}
+        client.capture(distinct_id=distinct_id, event=event, properties=event_properties)
     except Exception as e:
         logger.warning("PostHog capture failed for event=%s: %s", event, str(e)[:200])

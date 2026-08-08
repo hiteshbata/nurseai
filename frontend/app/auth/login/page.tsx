@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase, signIn, useSupabaseSession, humanizeAuthError } from '@/lib/supabase'
 import api from '@/lib/api'
+import { trackEvent } from '@/lib/analytics'
 import { trackMetaEvent } from '@/lib/meta-pixel'
 import toast from 'react-hot-toast'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
@@ -110,6 +111,7 @@ export default function LoginPage() {
     setIsLoading(true)
     try {
       await signIn(email, password)
+      trackEvent('login_completed', { method: 'email' })
       trackMetaEvent('UserLoggedIn', { method: 'email' }, { email })
       toast.success('Logged in successfully!')
       const returnTo = getSafeReturnTo()
