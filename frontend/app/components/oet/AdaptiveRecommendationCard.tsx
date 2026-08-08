@@ -1,30 +1,43 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Star } from 'lucide-react'
 import api from '@/lib/api'
+import { MODULE_META } from './ModuleProgressCard'
+import type { ModuleName, NextBestAction } from './types'
 
-interface CaseData {
-  scenario_id: number
-  title: string
-  difficulty: string
-  reason: string
+const MODULE_RECOMMEND_ENDPOINT: Record<ModuleName, string> = {
+  speaking: '/speaking/scenarios/recommend',
+  writing: '/writing/scenarios/recommend',
+  reading: '/reading/tests/recommend',
+  listening: '/listening/tests/recommend',
 }
 
-export function RecommendedCaseCard() {
+type RecommendedItem = {
+  title: string
+  reason: string
+  scenario_id?: number
+}
+
+export function AdaptiveRecommendationCard({ nextBestAction }: { nextBestAction: NextBestAction }) {
   const router = useRouter()
-  const [rec, setRec] = useState<CaseData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [item, setItem] = useState<RecommendedItem | null>(null)
+  const [loading, setLoading] = useState(!!nextBestAction)
 
   useEffect(() => {
+    if (!nextBestAction) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
     api
-      .get('/speaking/scenarios/recommend')
-      .then((res) => setRec(res.data))
-      .catch(() => setRec(null))
+      .get(MODULE_RECOMMEND_ENDPOINT[nextBestAction.module])
+      .then((res) => setItem(res.data))
+      .catch(() => setItem(null))
       .finally(() => setLoading(false))
-  }, [])
+  }, [nextBestAction])
 
   if (loading) {
     return (
@@ -41,15 +54,15 @@ export function RecommendedCaseCard() {
     )
   }
 
-  if (!rec) {
+  if (!nextBestAction || !item) {
     return (
-      <div className="w-full rounded-2xl p-5 bg-card border border-dashed border-border motion-safe:animate-[message-in_0.4s_ease-out_0.24s_both]">
+      <div className="w-full rounded-2xl p-5 bg-card border border-dashed border-border">
         <div className="flex flex-col gap-1">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Recommended for you
+            Adaptive Recommendation
           </h2>
           <p className="text-sm text-muted-foreground mb-3">
-            Complete a speaking session to get a personalized recommendation.
+            Complete a session in any module to get a personalized recommendation.
           </p>
           <Link
             href="/practice/speaking"
@@ -62,30 +75,27 @@ export function RecommendedCaseCard() {
     )
   }
 
-  const diffLabel =
-    rec.difficulty === 'beginner' || rec.difficulty === 'easy'
-      ? 'Beginner'
-      : rec.difficulty === 'advanced' || rec.difficulty === 'hard'
-        ? 'Advanced'
-        : 'Medium'
+  const meta = MODULE_META[nextBestAction.module]
+  const href = nextBestAction.module === 'speaking' && item.scenario_id
+    ? `${meta.href}?scenario=${item.scenario_id}`
+    : meta.href
 
   return (
     <button
-      onClick={() => router.push(`/practice/speaking?scenario=${rec.scenario_id}`)}
-      className="w-full text-left rounded-2xl p-5 flex items-center justify-between gap-4 cursor-pointer hover:opacity-90 hover:shadow-md active:opacity-80 active:scale-[0.99] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 motion-safe:animate-[message-in_0.4s_ease-out_0.24s_both]"
+      onClick={() => router.push(href)}
+      className="w-full text-left rounded-2xl p-5 flex items-center justify-between gap-4 cursor-pointer hover:opacity-90 hover:shadow-md active:opacity-80 active:scale-[0.99] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
       style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)' }}
-      aria-label={`Start ${rec.title} case`}
+      aria-label={`Start ${item.title} in ${meta.label}`}
     >
       <div className="flex flex-col gap-1 min-w-0">
         <span className="text-xs font-semibold uppercase tracking-wide text-emerald-700 flex items-center gap-1">
-          <Star className="w-3.5 h-3.5" aria-hidden="true" /> Recommended for you
+          <Star className="w-3.5 h-3.5" aria-hidden="true" /> Next Best Action · {meta.label}
         </span>
         <h3 className="text-xl font-bold text-foreground text-balance truncate">
-          {rec.title}
+          {item.title}
         </h3>
-        <p className="text-sm text-muted-foreground truncate">
-          {diffLabel} · {rec.reason}
-        </p>
+        <p className="text-sm text-muted-foreground truncate">{nextBestAction.reason}</p>
+        <p className="text-xs text-muted-foreground/80">{nextBestAction.confidence_message}</p>
       </div>
 
       <div

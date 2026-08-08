@@ -463,6 +463,15 @@ def _recommend_reading_tests(current_user: UserInfo, user_db: Client, limit: int
     return recs
 
 
+@router.get("/tests/recommend")
+def recommend_test(
+    current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
+):
+    """Recommend a single test -- used by the dashboard's Next Best Action card."""
+    return _recommend_reading_tests(current_user, user_db, limit=1)[0]
+
+
 @router.get("/tests/completed-ids")
 async def list_completed_test_ids(
     current_user: UserInfo = Depends(get_current_user),

@@ -4,7 +4,9 @@ import { FirstRunHero } from "./oet/FirstRunHero"
 import { HeroCards } from "./oet/hero-cards"
 import { ProgressSection } from "./oet/progress-section"
 import { StatsRow } from "./oet/stats-row"
-import { RecommendedCaseCard } from "./oet/RecommendedCaseCard"
+import { AdaptiveRecommendationCard } from "./oet/AdaptiveRecommendationCard"
+import { ModuleProgressCard } from "./oet/ModuleProgressCard"
+import { WeakSkillsList } from "./oet/WeakSkillsList"
 import { CoachSummaryCard } from "./oet/CoachSummaryCard"
 import { StudyPlanCard } from "./oet/StudyPlanCard"
 import { StreakHeatmapCard } from "./oet/StreakHeatmapCard"
@@ -13,7 +15,9 @@ import { MilestoneBadges } from "./oet/MilestoneBadges"
 import { ProgressChart } from "./ProgressChart"
 import { RecentSessions } from "./oet/recent-sessions"
 import { UpgradeBanner } from "./UpgradeBanner"
-import type { OetDashboardProps } from "./oet/types"
+import type { ModuleName, OetDashboardProps } from "./oet/types"
+
+const MODULE_ORDER: ModuleName[] = ["speaking", "reading", "listening", "writing"]
 
 function SkeletonBlock({ className }: { className?: string }) {
   return (
@@ -87,7 +91,15 @@ function OetDashboardImpl(props: OetDashboardProps) {
 
               {props.historyReady === false ? <ChartSkeleton /> : <ProgressChart data={props.scoreHistory || []} />}
 
-              <RecommendedCaseCard />
+              <AdaptiveRecommendationCard nextBestAction={props.nextBestAction ?? null} />
+
+              {props.moduleAverages && (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {MODULE_ORDER.map((mod) => (
+                    <ModuleProgressCard key={mod} module={mod} data={props.moduleAverages![mod]} />
+                  ))}
+                </div>
+              )}
 
               <StudyPlanCard />
 
@@ -99,6 +111,8 @@ function OetDashboardImpl(props: OetDashboardProps) {
                 speakingAvg={props.speakingAvg}
                 thisWeekCount={props.thisWeekCount}
               />
+
+              <WeakSkillsList skills={props.weakSkills || []} />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <StreakHeatmapCard

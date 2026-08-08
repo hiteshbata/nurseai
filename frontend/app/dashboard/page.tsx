@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { OetDashboard } from '@/components/oet-dashboard'
 import { scoreToGrade } from '@/app/practice/speaking/shared'
 import { RouteSpinner } from '@/components/RouteSpinner'
+import type { ModuleAverages, NextBestAction, WeakSkillEntry } from '@/components/oet/types'
 
 interface Stats {
   total_submissions: number
@@ -27,6 +28,9 @@ interface Stats {
   }>
   current_streak: number
   longest_streak: number
+  module_averages: ModuleAverages
+  weak_skills: WeakSkillEntry[]
+  next_best_action: NextBestAction
 }
 
 interface SessionUsage {
@@ -261,6 +265,9 @@ export default function DashboardPage() {
         thisWeekCount={thisWeekCount}
         recentSubmissions={mappedSubmissions}
         suggestedAction={suggestedAction}
+        moduleAverages={stats?.module_averages}
+        weakSkills={stats?.weak_skills}
+        nextBestAction={stats?.next_best_action}
         criteriaScores={criteriaScores}
         totalSessionsScored={totalSessionsScored}
         recentSubmissionDates={recentSubmissionDates}
