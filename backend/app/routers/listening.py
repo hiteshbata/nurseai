@@ -206,6 +206,17 @@ async def list_completed_test_ids(
     return sorted(test_ids)
 
 
+@router.get("/tests/recommend")
+def recommend_test(
+    current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
+):
+    """Recommend a single test -- used by the dashboard's Next Best Action
+    card. Must stay registered before /tests/{test_id} below, or that route
+    swallows "recommend" as a test_id path param first."""
+    return _recommend_listening_tests(current_user, user_db, limit=1)[0]
+
+
 @router.get("/tests/{test_id}")
 def get_test(test_id: int, current_user: UserInfo = Depends(get_current_user)):
     """Full test for the session player. correct_answer + transcript are NOT sent

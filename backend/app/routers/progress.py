@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
-from app.routers.auth import get_current_user, UserInfo
+from app.routers.auth import get_current_user, get_user_supabase, UserInfo
 from app.services.ai_scoring import _call_ai
 from app.services.plan_gating import get_plan_from_profile, has_study_plan_access, get_history_limit
 from app.services.coach import (
@@ -16,6 +16,9 @@ from app.services.coach import (
     build_study_plan,
     CRITERIA_LABELS,
 )
+from app.services.coaching_messages import CONFIDENCE_MESSAGE
+from app.services.dashboard_analytics import compute_trend, get_skill_insights, pick_weakest_module
+from supabase import Client
 import json
 
 router = APIRouter(prefix="/progress", tags=["progress"])
@@ -30,35 +33,42 @@ STUDY_PLAN_RATE_LIMIT_MAX_CALLS = 10
 STUDY_PLAN_RATE_LIMIT_WINDOW_SECONDS = 600
 _study_plan_rate_limiter = SlidingWindowRateLimiter(STUDY_PLAN_RATE_LIMIT_MAX_CALLS, STUDY_PLAN_RATE_LIMIT_WINDOW_SECONDS, name="progress:study_plan")
 
+MODULE_NAMES = ["speaking", "writing", "reading", "listening"]
+
+
 @router.get("/stats")
-def get_user_stats(
+async def get_user_stats(
     current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
 ):
     supabase = get_supabase()
 
-    # Only score/module are needed for the aggregates below -- narrow select
-    # avoids transferring full answer/feedback text for every submission
-    # a user has ever made, which otherwise grows unboundedly with history.
-    agg_data = supabase.table("submissions").select("score, module").eq(
+    # One narrow, oldest-first query backs the overall average, per-module
+    # averages+trend, last-activity, and streak -- replaces the previous two
+    # separate full-history scans (score+module, then created_at again).
+    agg_data = supabase.table("submissions").select("score, module, created_at").eq(
         "user_id", current_user.id
-    ).execute()
+    ).order("created_at").execute()
     submissions = agg_data.data
-
-    # Narrow created_at-only query over the full history so streaks aren't
-    # limited by the top-10 cap on recent_submissions below.
-    dates_data = supabase.table("submissions").select("created_at").eq(
-        "user_id", current_user.id
-    ).execute()
-    current_streak, longest_streak = compute_streaks([s["created_at"] for s in dates_data.data])
+    current_streak, longest_streak = compute_streaks([s["created_at"] for s in submissions])
 
     if not submissions:
         return {
             "total_submissions": 0,
             "average_score": 0,
-            "module_scores": {"speaking": 0, "writing": 0, "reading": 0, "listening": 0},
+            "module_scores": {m: 0 for m in MODULE_NAMES},
             "recent_submissions": [],
             "current_streak": current_streak,
             "longest_streak": longest_streak,
+            "module_averages": {
+                m: {
+                    "average": 0, "trend": "insufficient_data", "last_activity": None,
+                    "submission_count": 0, "weakest_skill": None, "strongest_skill": None,
+                }
+                for m in MODULE_NAMES
+            },
+            "weak_skills": [],
+            "next_best_action": None,
         }
 
     def to_band(val: float) -> float:
@@ -69,9 +79,18 @@ def get_user_stats(
     avg = sum(scores) / total
 
     module_scores = {}
-    for mod in ["speaking", "writing", "reading", "listening"]:
-        mod_subs = [to_band(s["score"]) for s in submissions if s["module"] == mod]
-        module_scores[mod] = sum(mod_subs) / len(mod_subs) if mod_subs else 0
+    module_averages = {}
+    for mod in MODULE_NAMES:
+        mod_subs = [s for s in submissions if s["module"] == mod]  # oldest-first, from the query order above
+        mod_scores = [to_band(s["score"]) for s in mod_subs]
+        mod_avg = sum(mod_scores) / len(mod_scores) if mod_scores else 0
+        module_scores[mod] = mod_avg
+        module_averages[mod] = {
+            "average": mod_avg,
+            "trend": compute_trend(mod_scores) if mod_scores else "insufficient_data",
+            "last_activity": mod_subs[-1]["created_at"] if mod_subs else None,
+            "submission_count": len(mod_subs),
+        }
 
     # Bounded at the DB level (ORDER BY + LIMIT) instead of fetching every
     # submission just to sort them in Python and keep the top 10.
@@ -86,6 +105,34 @@ def get_user_stats(
         "created_at": s["created_at"],
     } for s in recent_data.data]
 
+    # Per-module weakest/strongest skill + cross-module weak-skills list +
+    # a module-level Next Best Action pointer -- all read off the same
+    # skill_graph.get_weakness() every module's own /weakness endpoint
+    # already uses (see app.services.dashboard_analytics).
+    skill_insights = await get_skill_insights(user_db, current_user.id)
+    for mod in MODULE_NAMES:
+        module_averages[mod].update(skill_insights["module_extremes"][mod])
+    weak_skills = skill_insights["weak_skills"]
+
+    next_best_action = None
+    weakest_module = pick_weakest_module(module_averages)
+    if weakest_module:
+        matching_skill = next((s for s in weak_skills if s["module"] == weakest_module), None)
+        if matching_skill:
+            reason = f"{matching_skill['label']} is your weakest area in {weakest_module}, based on your recent sessions."
+            confidence_message = CONFIDENCE_MESSAGE["history"].format(attempts=matching_skill["attempts"])
+            based_on = "history"
+        else:
+            reason = f"Your {weakest_module} average ({module_averages[weakest_module]['average']:.1f}/6) is your lowest-scoring module."
+            confidence_message = "Not enough attempts yet on individual skills within this module -- keep practicing to sharpen this."
+            based_on = "module_average"
+        next_best_action = {
+            "module": weakest_module,
+            "reason": reason,
+            "confidence_message": confidence_message,
+            "based_on": based_on,
+        }
+
     return {
         "total_submissions": total,
         "average_score": avg,
@@ -93,6 +140,9 @@ def get_user_stats(
         "recent_submissions": recent_list,
         "current_streak": current_streak,
         "longest_streak": longest_streak,
+        "module_averages": module_averages,
+        "weak_skills": weak_skills,
+        "next_best_action": next_best_action,
     }
 
 @router.get("/history")

@@ -48,6 +48,37 @@ export type SessionUsageData = {
   plan: string
 }
 
+export type SkillRef = {
+  skill: string
+  label: string
+  band: number
+  attempts: number
+}
+
+export type ModuleName = "speaking" | "reading" | "listening" | "writing"
+
+export type Trend = "improving" | "stable" | "declining" | "insufficient_data"
+
+export type ModuleAverage = {
+  average: number
+  trend: Trend
+  last_activity: string | null
+  submission_count: number
+  weakest_skill: SkillRef | null
+  strongest_skill: SkillRef | null
+}
+
+export type ModuleAverages = Record<ModuleName, ModuleAverage>
+
+export type WeakSkillEntry = SkillRef & { module: ModuleName }
+
+export type NextBestAction = {
+  module: ModuleName
+  reason: string
+  confidence_message: string
+  based_on: string
+} | null
+
 export type OetDashboardProps = {
   userName: string
   examDaysLeft: number | null
@@ -66,6 +97,9 @@ export type OetDashboardProps = {
   thisWeekCount: number
   recentSubmissions: Submission[]
   suggestedAction: string
+  moduleAverages?: ModuleAverages | null
+  weakSkills?: WeakSkillEntry[]
+  nextBestAction?: NextBestAction
   criteriaScores?: CriteriaScores
   totalSessionsScored?: number
   recentSubmissionDates?: string[]

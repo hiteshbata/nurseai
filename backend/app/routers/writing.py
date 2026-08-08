@@ -194,6 +194,17 @@ async def writing_weakness(
     return await get_weakness(user_db, current_user.id, "writing:")
 
 
+@router.get("/scenarios/recommend")
+def recommend_scenario(
+    current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
+):
+    """Recommend a single scenario -- used by the dashboard's Next Best Action
+    card. Must stay registered before /scenarios/{scenario_id} below, or that
+    route swallows "recommend" as a scenario_id path param first."""
+    return _recommend_writing_scenarios(current_user, user_db, limit=1)[0]
+
+
 @router.get("/scenarios/{scenario_id}")
 def get_scenario(scenario_id: int, current_user: UserInfo = Depends(get_current_user)):
     """Get a writing scenario with nurse card (scoring rubric NOT sent to student)."""
