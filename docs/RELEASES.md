@@ -77,14 +77,17 @@ beta/dogfooding program exists.
 
 ## Versioning strategy
 
-**Status: V1 (none) / Future (semantic, if ever needed)**
+**Status: V1 (none, one-off exception for RC1) / Future (semantic, if ever
+needed)**
 
-No version numbers, no git tags, no changelog today. The product ships
-continuously; "what version is live" is answered by "what's the latest
-commit on `main` that's deployed," not a version string. This is
+No version numbers, no changelog today; "what version is live" is normally
+answered by "what's the latest commit on `main` that's deployed," not a
+version string. RC1 got one lightweight git tag (`v1.0.0-rc1`, on the merge
+commit) purely as a stable pointer back to "the commit RC1's live
+verification ran against" — not the start of a semver practice. This is
 appropriate for a single-deployment web product with no external API
-consumers or installable artifact — introduce semantic versioning only if
-a future need actually requires it (e.g. a public API with external
+consumers or installable artifact — introduce real semantic versioning only
+if a future need actually requires it (e.g. a public API with external
 integrators, Phase 5+), not before.
 
 ## Recent releases
@@ -134,10 +137,10 @@ strategy above). It exists so a batch of related work lands and gets
 verified together, rather than trickling to `main` one QA-approved-but-
 unverified sprint at a time.
 
-- **RC1 — Adaptive Learning V1** (opened 2026-08-08): bundles Sprint 1
-  (Adaptive Speaking), Sprint 2 (Adaptive Reading), Sprint 3 (Adaptive
-  Listening), Sprint 4 (Adaptive Writing). All four are code-complete,
-  QA-gated, and CTO-approved.
+- **RC1 — Adaptive Learning V1** (opened 2026-08-08, closed 2026-08-08,
+  tagged `v1.0.0-rc1`): bundles Sprint 1 (Adaptive Speaking), Sprint 2
+  (Adaptive Reading), Sprint 3 (Adaptive Listening), Sprint 4 (Adaptive
+  Writing). All four are code-complete, QA-gated, and CTO-approved.
   - [x] Adaptive Learning (all four modules, code-complete)
   - [x] Monitoring — Sentry environment tagging (dev/rc1/production, one
     project), backend dev-mode gate mirroring the frontend
@@ -145,17 +148,18 @@ unverified sprint at a time.
     key split), missing `login_completed`/reading+listening `score_viewed`
     events added
   - [x] Playwright — 5 RC1 smoke tests (landing CSP, `/health`, pricing,
-    login, signup) written and passing locally (`npm run test:e2e`);
-    `/health` needs a live backend to exercise, untested against one so far
+    login, signup) written and passing locally (`npm run test:e2e`)
+  - [x] Merge `develop` → `main` for Speaking (2026-08-08, `9f508508`) and
+    Reading/Listening/Writing (2026-08-08, merge commit on top of
+    `9f508508`)
   - [ ] Live verification — click-through of all four insights cards
     plus the monitoring/analytics changes above against real (rc1 or
     production) traffic (see Definition of Done in
-    [PRODUCT_OS.md](PRODUCT_OS.md))
-  - [ ] Merge `develop` → `main` for Reading, Listening, and Writing
-    (Speaking's insights card is the only one merged past `develop` so far)
+    [PRODUCT_OS.md](PRODUCT_OS.md)) — do after this merge deploys
   - [ ] Founder approval
 
-  No new Adaptive Learning feature work is in scope while RC1 is open.
+  This closes the git-workflow portion of RC1. Live verification and
+  founder approval remain open — see [BACKLOG.md](BACKLOG.md).
 
 ## Rollback
 
