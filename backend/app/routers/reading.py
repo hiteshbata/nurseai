@@ -35,6 +35,7 @@ from app.services.reading_skills import classify_reading_skill, SKILL_LABELS
 from app.services.observation_service import validate_and_normalize
 from app.services.coaching_messages import RECOMMENDATION_REASON, ACTIONABLE_IMPROVEMENT, CONFIDENCE_MESSAGE
 from app.services.plan_gating import has_reading_access, has_free_module_attempt, get_plan_from_profile
+from app.services.mock_reference_guard import block_if_referenced_by_mock_test
 
 logger = logging.getLogger(__name__)
 
@@ -1561,6 +1562,7 @@ def delete_test(test_id: int, _admin=Depends(require_admin)):
     existing = supabase.table("reading_tests").select("id").eq("id", test_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Test not found")
+    block_if_referenced_by_mock_test(supabase, "reading_test_id", test_id)
     supabase.table("reading_tests").delete().eq("id", test_id).execute()
     return {"success": True}
 

@@ -46,6 +46,7 @@ from app.services.listening_audio import (
     TtsError, OPENAI_VOICES,
 )
 from app.services.ai_scoring import _call_ai
+from app.services.mock_reference_guard import block_if_referenced_by_mock_test
 from app.services.plan_gating import has_listening_access, has_free_module_attempt, get_plan_from_profile
 
 logger = logging.getLogger(__name__)
@@ -1048,6 +1049,7 @@ def delete_test(test_id: int, _admin=Depends(require_admin)):
     existing = supabase.table("listening_tests").select("id").eq("id", test_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Test not found")
+    block_if_referenced_by_mock_test(supabase, "listening_test_id", test_id)
     supabase.table("listening_tests").delete().eq("id", test_id).execute()
     return {"success": True}
 

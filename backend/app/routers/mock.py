@@ -97,6 +97,48 @@ def _active_speaking_scenario_ids(supabase) -> List[int]:
     return [r["id"] for r in rows]
 
 
+# ── staleness guard (a pack/session's frozen content ids may have since been
+# unpublished by an admin -- Mock Test is a dynamic-reference design, see
+# reading.py's/listening.py's/writing.py's own is_active checks on every
+# content fetch, so this only closes the ORCHESTRATION-layer gap: without it,
+# a stale pack still LISTS and STARTS, and a stale session still ADVANCES,
+# right up until the section player's own fetch 404s on the student mid-mock) ─
+
+CONTENT_TABLE = {"listening": "listening_tests", "reading": "reading_tests", "writing": "scenarios", "speaking": "scenarios"}
+
+
+def _content_is_active(supabase, module: str, content_id: Optional[int]) -> bool:
+    """Gate right before handing a student into one section, so a section that
+    went stale since the mock was built/started fails clearly instead of the
+    section player hitting a bare 404 partway through."""
+    if content_id is None:
+        return False
+    row = supabase.table(CONTENT_TABLE[module]).select("id").eq("id", content_id).eq("is_active", True).execute()
+    return bool(row.data)
+
+
+def _active_content_id_sets(supabase) -> Dict[str, set]:
+    """Every currently-active id per content table, fetched once so checking a
+    whole pack's 5 frozen picks is 3 queries total instead of 5 per pack."""
+    return {
+        "listening_tests": {r["id"] for r in supabase.table("listening_tests").select("id").eq("is_active", True).execute().data},
+        "reading_tests": {r["id"] for r in supabase.table("reading_tests").select("id").eq("is_active", True).execute().data},
+        "scenarios": {r["id"] for r in supabase.table("scenarios").select("id").eq("is_active", True).execute().data},
+    }
+
+
+def _pack_is_servable(row: Dict[str, Any], active: Dict[str, set]) -> bool:
+    """False if any of a pack's (or session's) 5 frozen content ids is missing
+    or has gone inactive since it was frozen."""
+    return (
+        row.get("listening_test_id") in active["listening_tests"]
+        and row.get("reading_test_id") in active["reading_tests"]
+        and row.get("writing_scenario_id") in active["scenarios"]
+        and row.get("speaking_scenario_id_1") in active["scenarios"]
+        and row.get("speaking_scenario_id_2") in active["scenarios"]
+    )
+
+
 # ── mock test packs (admin-curated, numbered "Mock Test 1/2/3...") ─────
 # Phase 1/2 assembled content randomly per attempt (see git history). That
 # meant slow "assembling your paper..." start-up and no way to guarantee two
@@ -230,11 +272,18 @@ async def current_mock(current_user: UserInfo = Depends(get_current_user)):
 @router.get("/tests")
 async def list_mock_tests(current_user: UserInfo = Depends(get_current_user)):
     """Active Mock Test packs to choose from, flagged with whether this
-    student has already completed each one (picker offers Retake vs Start)."""
+    student has already completed each one (picker offers Retake vs Start).
+    Drops any pack whose frozen content has gone inactive since it was built
+    -- see _pack_is_servable -- so the picker never offers one that would
+    404 partway through."""
     supabase = get_supabase()
     packs = (await run_sync(
-        supabase.table("mock_tests").select("id, label").eq("is_active", True).order("id").execute
+        supabase.table("mock_tests").select("*").eq("is_active", True).order("id").execute
     )).data
+    if not packs:
+        return []
+    active = await run_sync(_active_content_id_sets, supabase)
+    packs = [p for p in packs if _pack_is_servable(p, active)]
     if not packs:
         return []
     completed_rows = (await run_sync(
@@ -284,7 +333,14 @@ async def start_mock(req: StartMockRequest, request: Request, current_user: User
         .order("created_at", desc=True).limit(1).execute
     )
     if existing.data:
-        session = await _ensure_section_started(supabase, existing.data[0])
+        session = existing.data[0]
+        active = await run_sync(_active_content_id_sets, supabase)
+        if not _pack_is_servable(session, active):
+            raise HTTPException(
+                status_code=409,
+                detail="This mock test can't continue — some of its content is no longer available. Contact support.",
+            )
+        session = await _ensure_section_started(supabase, session)
         return _client_payload(session)
 
     if current_user.is_anonymous or plan == "free":
@@ -311,6 +367,10 @@ async def start_mock(req: StartMockRequest, request: Request, current_user: User
     if not pack.data:
         raise HTTPException(status_code=404, detail="This mock test pack isn't available.")
     p = pack.data[0]
+
+    active = await run_sync(_active_content_id_sets, supabase)
+    if not _pack_is_servable(p, active):
+        raise HTTPException(status_code=404, detail="This mock test pack isn't available.")
 
     row = await run_sync(
         supabase.table("mock_test_sessions").insert({
@@ -454,11 +514,19 @@ async def section_done(
             detail=f"Out of order — the current section is {session.get('current_section')}.",
         )
 
-    results = dict(session.get("results") or {})
-    results[request.section] = request.result or {"done": True}
-
     idx = SECTION_ORDER.index(request.section)
     next_section = SECTION_ORDER[idx + 1] if idx + 1 < len(SECTION_ORDER) else None
+    # Don't advance the student into a section whose content has gone stale
+    # since the mock was built/started -- fail clearly here instead of the
+    # next section player hitting a bare 404 right after this call.
+    if next_section and not await run_sync(_content_is_active, supabase, next_section, session.get(CONTENT_KEY[next_section])):
+        raise HTTPException(
+            status_code=409,
+            detail=f"The {next_section} section of this mock is no longer available. Contact support.",
+        )
+
+    results = dict(session.get("results") or {})
+    results[request.section] = request.result or {"done": True}
 
     update: Dict[str, Any] = {"results": results, "updated_at": _now_iso()}
     if next_section:
@@ -518,6 +586,11 @@ async def speaking_next(
     if not nxt:
         raise HTTPException(status_code=409, detail="Both role plays are already recorded.")
     roleplay, scenario_id = nxt
+    if not await run_sync(_content_is_active, supabase, "speaking", scenario_id):
+        raise HTTPException(
+            status_code=409,
+            detail="This mock's Speaking role play is no longer available. Contact support.",
+        )
 
     # Each role play is a normal speaking session under the hood (see
     # speaking_realtime.py) and draws from the same monthly speaking quota as
