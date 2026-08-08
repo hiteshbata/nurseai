@@ -9,6 +9,96 @@ dashboard.
 
 ---
 
+## 2026-08-08 — RC3.1: Content Studio Foundation + QA
+
+Admin-only foundation for the future AI Content Studio (RC3, opened this
+sprint). CTO scope was explicit: architecture only — no AI generation, no
+review/publishing workflow, no schema change, no learner-facing change.
+Read-only end-to-end: dashboard, searchable library, detail page.
+
+**Business goal**: Give the founder one place to see everything content-
+related across all six planned modules before any content-production or
+AI-generation tooling gets built on top of it, without inventing workflow
+states the data model can't actually support yet (see
+[docs/CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md), the design-only
+proposal this sprint builds toward).
+
+**What changed**: New `/admin/content-studio` dashboard shows Total/
+Published/Unpublished counts overall and per module (Speaking, Reading,
+Listening, Writing); Vocabulary and Grammar render as static "Coming Soon"
+tiles and are never queried (neither has an admin-ready content store —
+`vocab_cards` is a per-user SRS deck, Grammar has no table at all). A new
+Library page lists every content item across the four real modules with
+search, and Module/Status/Difficulty filters — no filter is shown for
+metadata that doesn't exist yet (Specialty/Topic/Skill tags), per CTO
+instruction. Every item gets a stable, derived (not stored) human-readable
+Content ID: `SPK-000144`, `WRT-000012`, `RDG-000016`, `LST-000254`. A
+read-only detail page shows what metadata exists today and labels Version/
+Created By/Review History as "Not tracked yet — planned for RC3.3" rather
+than faking them.
+
+Status is a **two-value proxy** (Published/Unpublished) off the existing
+`is_active` boolean — the CTO explicitly rejected fabricating Draft/Review/
+Archived states ahead of the schema change that would make them real
+(RC3.3).
+
+**Files changed**:
+- `backend/app/services/content_studio.py` (new) — pure aggregation over
+  existing `scenarios` (speaking/writing), `reading_passages`,
+  `listening_sections` rows; no new tables, no migration.
+- `backend/app/routers/admin_content_studio.py` (new) — `GET
+  /admin/content-studio/{summary,items,items/{module}/{id}}`, gated
+  `require_admin` only (not `require_analyst` — this exposes unpublished
+  content across every module, per CTO review).
+- `backend/app/main.py` — router registration.
+- `frontend/app/admin/content-studio/{page.tsx,library/page.tsx,
+  [module]/[id]/page.tsx}` (new) — dashboard, library, detail.
+- `frontend/app/admin/AdminShell.tsx` — one nav entry added.
+- `frontend/tests/e2e/admin-content-studio.spec.ts` (new, RC3.1 QA) — 8
+  scenarios: dashboard load + card rendering, Coming Soon tiles, library
+  filters/search/pagination, detail page, admin access, non-staff denial
+  (mocked `/auth/me`, no second real account needed), responsive layout,
+  API verification.
+- `frontend/.gitignore` — `tests/e2e/*.json` (Playwright storageState
+  files hold live session tokens; this was already missing before RC3.1,
+  closed while touching the file for the same reason).
+
+**User-visible changes**: None — admin-only, behind `require_admin`.
+
+**QA notes**: Suite passes 8/8 live against production data
+(`SPK-000189` etc. are real rows, not fixtures). Two genuine product
+defects found and fixed: the library table had no horizontal-scroll
+container (would overflow the page body at mobile widths — table now
+scrolls inside `overflow-x-auto`, page body doesn't); the three filter
+`<select>`s and the search `<input>` had no accessible name (added
+`aria-label`). Two test-authoring bugs also found and fixed, in the test
+itself, not the product: a `.count()` check that raced ahead of an async
+fetch, and an anchored regex (`^...$`) that failed against
+`toContainText`'s substring semantics. Full regression run (existing +
+new suite, `--workers=1`): 19/20 pass; the one failure
+(`login.spec.ts`) is a pre-existing, already-documented shared-test-
+account login race (see RC2's QA notes below), confirmed unrelated by
+running it standalone (passes clean).
+
+**Known limitations**:
+- Dashboard's Published/Unpublished split is real but coarse — a
+  "Published" item could equally be an untouched AI first draft as a
+  founder-reviewed final version. True Draft/Review/Approved/Published/
+  Archived states need the schema change deferred to RC3.3.
+  `is_active` is a publish switch, not a review-workflow status, and
+  this sprint deliberately didn't pretend otherwise.
+- Vocabulary and Grammar have zero admin tooling behind their "Coming
+  Soon" tiles — RC3.2/RC3.3 scope, not started.
+- Not yet live-verified against a live preview/production deploy (same
+  gate RC1/RC2 are still waiting on).
+
+**Future follow-ups**:
+- RC3.2 — Content Production (explicitly out of scope this sprint).
+- RC3.3 — Review Workflow, Publishing, and the `status`/`version`/
+  `created_by`/`review_history` schema this sprint's detail page already
+  has placeholders for.
+- Live-verify per the same pattern as RC1/RC2 once deployed.
+
 ## 2026-08-08 — RC2: Adaptive Dashboard V1 + QA
 
 Cross-module dashboard surfacing the same `user_skill_stats`/skill-graph
