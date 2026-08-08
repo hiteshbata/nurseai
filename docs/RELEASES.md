@@ -98,6 +98,12 @@ through commits.
   after a full QA gate (functional/regression/security/performance/
   accessibility/mobile/UX/code-quality/tech-debt review). No schema change.
   See [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **2026-08-08 — Adaptive Reading V1** (Sprint 2): same rule-based coaching
+  insights pattern, ported locally to the Reading test results page.
+  CTO-approved after backend tests + frontend typecheck/lint/build. No
+  schema change. Committed to `develop`, not yet merged to `main` — not a
+  release to production yet, listed here for the record. See
+  [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
 
 ## Rollback
 

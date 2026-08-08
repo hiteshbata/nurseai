@@ -78,6 +78,94 @@ scoring logic, or any other module.
   `/speaking/score` hasn't happened yet (tracked in
   [BACKLOG.md](BACKLOG.md) → Now).
 
+---
+
+## 2026-08-08 — Adaptive Reading V1
+
+**Feature name**: Adaptive Reading V1 (Sprint 2)
+
+**Business goal**: Same "what should I practice next" answer Sprint 1 gave
+Speaking learners, now on the Reading test results page — without waiting
+on Content Normalization (the per-item skill metadata Reading's content
+library doesn't have yet, see [CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md))
+or a shared cross-module recommendation service.
+
+**What changed**: `/reading/tests/{id}/submit` now returns an `insights`
+object built from the just-graded session plus the learner's existing
+`user_skill_stats` history: strongest reading skill (this session),
+weakest skill (prefers historical pattern via the existing `get_weakness`
+when one exists, else this session's own lowest-scoring skill), a
+recommendation reason, one actionable improvement, a confidence message,
+and a recommended next test (`_recommend_reading_tests`: unattempted tests
+first, then the learner's lowest-scored attempted tests, weakest first).
+The Reading test results page renders this as a "Today's Reading Insights"
+card. Runs entirely on `user_skill_stats` as already deployed — no new
+table, no migration.
+
+Deliberately **not** built as a shared `next_best_action` service or a new
+Reading-specific recommendation endpoint — both were proposed during
+planning and explicitly rejected in favor of keeping this sprint the same
+size and shape as Sprint 1 (local, per-module functions; extraction happens
+once Speaking, Reading, Listening and Writing each have a working
+implementation to extract from).
+
+**Files changed**:
+- `backend/app/routers/reading.py` — `_recommend_reading_tests`,
+  `_reading_skill_label`, `_build_reading_insights`, wired into
+  `submit_reading_test`; both `record_skill_observations` call sites (
+  standalone passage + full test) now pass through the existing
+  `validate_and_normalize` first, matching Speaking's hygiene.
+- `backend/app/services/coaching_messages.py` — reworded "criterion" →
+  "area" in the existing tier-keyed templates so Reading could reuse them
+  unmodified instead of forking a Reading-specific copy.
+- `frontend/app/practice/reading/test/[id]/page.tsx` — "Today's Reading
+  Insights" card, same layout as Speaking's.
+- `backend/tests/test_reading_insights.py` (new).
+
+**User-visible changes**: After finishing a full Reading test, the results
+page shows a new card: strongest/weakest reading skill with band scores,
+why the weakest skill was picked, one specific thing to practice next, a
+confidence note, and a link to a recommended next test. No change to
+existing scoring, per-part bands, or the standalone single-passage flow
+(`/reading/submit` gained the `validate_and_normalize` hygiene fix only —
+no insights there, out of scope for V1).
+
+**Technical decisions**:
+- **Content-level, not skill-aware, recommendation (intentional Phase 1
+  decision).** `_recommend_reading_tests` ranks by attempted/unattempted
+  and average score only — it does not filter candidate tests by which
+  skill they'd exercise, because no content item carries skill metadata
+  yet (Sprint 1.5's named gap). Filtering would require scanning every
+  active test's questions on every submit to derive skill coverage
+  on the fly, which was explicitly rejected as unnecessary work in the hot
+  grading path. The weakest skill is still surfaced accurately (via
+  `get_weakness`, already free) — it's reported, not used to filter the
+  pick. Future Content Normalization enables true skill-aware routing
+  without changing this response shape (`next_best_action` stays
+  `{test_id, title, reason}` regardless of how it's picked).
+- **No shared `next_best_action` service.** Considered and rejected during
+  planning (see CTO review history) in favor of a local port of Sprint 1's
+  pattern — avoids introducing an abstraction before a second and third
+  real caller (Listening, Writing) exist to shape its interface honestly.
+- **No new Reading recommendation endpoint.** `next_best_action` rides
+  inside the existing submit response only, same as Speaking's
+  `/speaking/score` — not a new `/reading/tests/recommend` route.
+- `reading_skills.py` untouched — stays classification/label-only; the
+  wording generalization needed for cross-module reuse went into
+  `coaching_messages.py` instead, keeping the separation between
+  "how a question is classified" and "what the learner is told" intact.
+
+**Known limitations**:
+- Recommendation quality is a step behind Speaking's: Speaking's rubric
+  criteria are AI-graded and directly meaningful; Reading's `reading:skill:*`
+  tags come from a keyword heuristic (`classify_reading_skill`), a coarser
+  signal.
+- Standalone single-passage practice (`/reading/submit`) has no insights
+  card — scoped to the full-test flow only for V1.
+- Not yet merged to `main` or live-verified against production traffic —
+  code-complete, QA-reviewed (backend tests, frontend typecheck/lint/build),
+  and CTO-approved, committed to `develop` only as of this entry.
+
 **Future follow-ups**:
 - Live-verify the insights card in production.
 - Extend `validate_and_normalize` to Reading/Listening/Writing's existing

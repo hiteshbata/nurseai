@@ -13,7 +13,8 @@ Document set: [ROADMAP.md](ROADMAP.md) · [SPRINTS.md](SPRINTS.md) ·
 [BACKLOG.md](BACKLOG.md) · [DECISIONS.md](DECISIONS.md) ·
 [ARCHITECTURE.md](ARCHITECTURE.md) · [MODULES.md](MODULES.md) ·
 [AI_SYSTEM.md](AI_SYSTEM.md) · [DATABASE.md](DATABASE.md) ·
-[CONTENT_STRATEGY.md](CONTENT_STRATEGY.md) · [RELEASES.md](RELEASES.md)
+[CONTENT_STRATEGY.md](CONTENT_STRATEGY.md) ·
+[CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md) · [RELEASES.md](RELEASES.md)
 
 ---
 
@@ -68,7 +69,15 @@ See [SPRINTS.md](SPRINTS.md) for the live sprint board. As of 2026-08-08:
 **Learner Brain Foundation** — tag skill-graph rows by product
 (`user_skill_stats.product`), add append-only observation history
 (`skill_observations`). Migrations written, not yet applied. Sprint 1
-(Adaptive Speaking V1) closed this same day — see Completed Work below.
+(Adaptive Speaking V1) and Sprint 1.5 (Content Foundation design,
+documentation-only — see [CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md))
+closed this same day — see Completed Work below. Sprint 2 (Adaptive Reading
+V1) also closed 2026-08-08, CTO-approved: same rule-based insights pattern
+as Sprint 1, ported locally into `reading.py` rather than shared.
+Recommendations are content-level (unattempted → weakest-attempted →
+random), not yet skill-aware — the content library still has no per-item
+skill metadata (the gap Sprint 1.5 named); Content Normalization enables
+skill-aware routing later without changing the response shape.
 
 ## Current Milestone
 
@@ -103,6 +112,25 @@ health checks, and audit-logged rollback. See
   recommended next scenario. Ships entirely on `user_skill_stats` as
   already deployed, no schema change. See
   [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **Sprint 1.5 — Content Foundation design** (complete 2026-08-08,
+  documentation-only, no code/schema change): content audit across all
+  four live modules, a six-area taxonomy (Speaking/Reading/Listening/
+  Writing/Vocabulary/Grammar), a metadata standard, a 5-tier Beginner→Exam
+  Ready difficulty model, a pre-publish quality checklist, and the
+  Draft→Review→Approval→Publish content workflow. See
+  [CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md) — proposal stage, awaiting
+  review before any schema/migration work starts.
+- **Sprint 2 — Adaptive Reading V1** (complete + CTO-approved 2026-08-08):
+  same rule-based, same-session coaching pattern as Sprint 1 (strongest/
+  weakest reading skill, recommendation reason, actionable improvement,
+  confidence message, recommended next test) on the Reading test results
+  page. Ported locally into `reading.py` rather than extracted into a
+  shared service — extraction deferred until Speaking, Reading, Listening
+  and Writing each have one. Recommendation is content-level (unattempted →
+  weakest-attempted → random), not skill-filtered — an intentional Phase 1
+  decision pending Content Normalization (see
+  [CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md)). No schema change. See
+  [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
 
 ## In Progress
 
@@ -113,6 +141,10 @@ health checks, and audit-logged rollback. See
 - Production live-verification of Adaptive Speaking V1's insights card
   (code/QA complete and CTO-approved; the click-through against real
   production traffic is still open — see [BACKLOG.md](BACKLOG.md) Now).
+- Production live-verification of Adaptive Reading V1's insights card
+  (code/QA complete and CTO-approved 2026-08-08; not yet merged to `main`
+  or click-through verified against production — see
+  [BACKLOG.md](BACKLOG.md) Now).
 
 ## Next Work
 
