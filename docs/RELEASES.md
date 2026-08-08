@@ -111,6 +111,51 @@ through commits.
   `develop`, not yet merged to `main` — not a release to production yet,
   listed here for the record. See
   [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **2026-08-08 — Adaptive Writing V1** (Sprint 4): same rule-based coaching
+  insights pattern, ported locally to the Writing results page. Criterion
+  scores rescaled from their native OET ranges (Purpose /3, the other five
+  /7) onto the shared 0-6 band via a new writing-local
+  `normalize_writing_score` helper, kept out of `ObservationService` per
+  CTO instruction. CTO-approved after 11 new backend tests, a full backend
+  regression run, and a clean frontend typecheck. No schema change.
+  Committed to `develop`, not yet merged to `main` — not a release to
+  production yet, listed here for the record. Closes **Adaptive Learning
+  V1** across all four OET modules — see Release Candidates below and
+  [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+
+## Release Candidates
+
+**Status: V1 (informal, first use)**
+
+An RC is an internal label for bundling a set of related, already
+CTO-approved sprints for merge and live-verification as one unit — not a
+git tag, and not a version number shipped to users (see Versioning
+strategy above). It exists so a batch of related work lands and gets
+verified together, rather than trickling to `main` one QA-approved-but-
+unverified sprint at a time.
+
+- **RC1 — Adaptive Learning V1** (opened 2026-08-08): bundles Sprint 1
+  (Adaptive Speaking), Sprint 2 (Adaptive Reading), Sprint 3 (Adaptive
+  Listening), Sprint 4 (Adaptive Writing). All four are code-complete,
+  QA-gated, and CTO-approved.
+  - [x] Adaptive Learning (all four modules, code-complete)
+  - [x] Monitoring — Sentry environment tagging (dev/rc1/production, one
+    project), backend dev-mode gate mirroring the frontend
+  - [x] Analytics — PostHog environment tagging (one project, no per-env
+    key split), missing `login_completed`/reading+listening `score_viewed`
+    events added
+  - [x] Playwright — 5 RC1 smoke tests (landing CSP, `/health`, pricing,
+    login, signup) written and passing locally (`npm run test:e2e`);
+    `/health` needs a live backend to exercise, untested against one so far
+  - [ ] Live verification — click-through of all four insights cards
+    plus the monitoring/analytics changes above against real (rc1 or
+    production) traffic (see Definition of Done in
+    [PRODUCT_OS.md](PRODUCT_OS.md))
+  - [ ] Merge `develop` → `main` for Reading, Listening, and Writing
+    (Speaking's insights card is the only one merged past `develop` so far)
+  - [ ] Founder approval
+
+  No new Adaptive Learning feature work is in scope while RC1 is open.
 
 ## Rollback
 
