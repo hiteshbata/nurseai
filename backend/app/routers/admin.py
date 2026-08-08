@@ -10,6 +10,7 @@ from app.core.supabase import get_supabase, get_auth_client
 from app.core.plans import GRACE_PERIOD_DAYS, PLAN_PERIOD_DAYS, PLAN_PRICE_INR
 from app.routers.payments import get_current_plan, grant_subscription_period, get_razorpay_client, _process_refund
 from app.services.plan_gating import get_plan_from_profile
+from app.services.mock_reference_guard import block_if_referenced_by_mock_test
 from app.services.founder_metrics import get_founder_metrics
 from app.services.ai_cost_metrics import get_ai_cost_metrics
 from app.core import cost_circuit_breaker
@@ -230,6 +231,14 @@ def admin_delete_scenario(
     admin's intent (get it out of the active list) still succeeds without data loss."""
     supabase = get_supabase()
     if hard:
+        # A hard delete's FK to mock_tests/mock_test_sessions is ON DELETE SET
+        # NULL (non-blocking) -- unlike the submissions FK caught below, it
+        # wouldn't raise on its own, so it's checked explicitly before the
+        # delete is attempted. A scenario only ever matches one of these three
+        # columns (module-dependent); checking all three is simplest and costs
+        # nothing on the other two.
+        for column in ("writing_scenario_id", "speaking_scenario_id_1", "speaking_scenario_id_2"):
+            block_if_referenced_by_mock_test(supabase, column, scenario_id)
         try:
             supabase.table("scenarios").delete().eq("id", scenario_id).execute()
             _write_audit_log(supabase, current_user, "scenario_deleted", "scenario", target_id=scenario_id)
@@ -488,24 +497,27 @@ class SetRoleRequest(BaseModel):
 @router.post("/users/role")
 def admin_set_user_role(
     req: SetRoleRequest,
-    current_user: UserInfo = Depends(require_admin),
+    current_user: UserInfo = Depends(require_owner),
 ):
-    """Set a user's role. A caller can never grant a role ranked above
-    their own -- an admin can create support/analyst/admin staff but not
-    another owner; only an owner can create owners."""
+    """Set a user's staff role. Owner-only -- admins/analysts cannot
+    promote anyone, so this is the one place role escalation can happen.
+    Refuses to demote the last remaining owner (would lock out staff
+    management entirely)."""
     if req.role not in ALLOWED_ROLES:
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {sorted(ALLOWED_ROLES)}")
     supabase = get_supabase()
-    caller_role = _get_role(supabase, current_user.id)
-    if ROLE_RANK[req.role] > ROLE_RANK.get(caller_role, 0):
-        raise HTTPException(status_code=403, detail="Cannot grant a role higher than your own")
+    old_role = _get_role(supabase, req.user_id)
+    if old_role == "owner" and req.role != "owner":
+        owners = supabase.table("user_roles").select("user_id").eq("role", "owner").execute().data
+        if len(owners) <= 1:
+            raise HTTPException(status_code=400, detail="Cannot remove the last remaining Owner")
     supabase.table("user_roles").upsert({
         "user_id": req.user_id,
         "role": req.role,
     }).execute()
     _write_audit_log(
-        supabase, current_user, "role_changed", "user",
-        target_id=req.user_id, detail={"role": req.role},
+        supabase, current_user, "staff_role_changed", "user",
+        target_id=req.user_id, detail={"old_role": old_role, "new_role": req.role},
     )
     return {"success": True}
 

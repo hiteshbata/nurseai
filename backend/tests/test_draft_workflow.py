@@ -16,10 +16,24 @@ class FakeResult:
         self.data = data
 
 
+class _NotProxy:
+    """Mirrors supabase-py's query.not_.in_(col, values) -- a NOT IN filter.
+    Only .in_ is implemented; nothing else in this codebase uses .not_ yet."""
+    def __init__(self, query):
+        self._query = query
+
+    def in_(self, col, values):
+        self._query._not_in_filters.append((col, set(values)))
+        return self._query
+
+
 class FakeQuery:
-    def __init__(self, rows):
+    def __init__(self, rows, table_name=None, enforce_source_draft_unique=False):
         self._rows = rows
+        self._table_name = table_name
+        self._enforce_source_draft_unique = enforce_source_draft_unique
         self._filters = []
+        self._not_in_filters = []
         self._op = None
         self._payload = None
 
@@ -40,6 +54,10 @@ class FakeQuery:
     def order(self, *_a, **_k):
         return self
 
+    @property
+    def not_(self):
+        return _NotProxy(self)
+
     def update(self, payload):
         self._op = "update"
         self._payload = payload
@@ -55,12 +73,25 @@ class FakeQuery:
         return self
 
     def execute(self):
-        matched = [r for r in self._rows if all(r.get(c) == v for c, v in self._filters)]
+        matched = [
+            r for r in self._rows
+            if all(r.get(c) == v for c, v in self._filters)
+            and all(r.get(c) not in vals for c, vals in self._not_in_filters)
+        ]
         if self._op == "update":
             for r in matched:
                 r.update(self._payload)
             return FakeResult(matched)
         if self._op == "insert":
+            # Mirrors reading_passages_source_draft_uidx / listening_sections_source_draft_uidx
+            # (20260808050000_draft_review_workflow.sql) -- a partial unique index on
+            # source_draft_id, null-safe (legacy rows with no source_draft_id never conflict).
+            if self._enforce_source_draft_unique:
+                sdid = self._payload.get("source_draft_id")
+                if sdid is not None and any(r.get("source_draft_id") == sdid for r in self._rows):
+                    raise Exception(
+                        f'duplicate key value violates unique constraint "{self._table_name}_source_draft_uidx"'
+                    )
             new_id = max([r.get("id", 0) for r in self._rows], default=0) + 1
             row = {"id": new_id, **self._payload}
             self._rows.append(row)
@@ -73,12 +104,20 @@ class FakeQuery:
 
 
 class FakeSupabase:
+    # Only these two tables get the new partial unique index -- scenarios
+    # stays protected by its existing title uniqueness instead (see the
+    # migration comment), so it's deliberately not in this set.
+    UNIQUE_SOURCE_DRAFT_TABLES = {"reading_passages", "listening_sections"}
+
     def __init__(self):
         self.tables = {}
 
     def table(self, name):
         self.tables.setdefault(name, [])
-        return FakeQuery(self.tables[name])
+        return FakeQuery(
+            self.tables[name], table_name=name,
+            enforce_source_draft_unique=name in self.UNIQUE_SOURCE_DRAFT_TABLES,
+        )
 
 
 def _draft(status="draft", **overrides):
@@ -290,6 +329,335 @@ def test_published_listening_content_starts_inactive_and_hidden_from_students(mo
 
     visible_ids = [r["id"] for r in fake.table("listening_sections").select("id").eq("is_active", True).execute().data]
     assert result["id"] not in visible_ids
+
+
+# ── Blocker 1: one draft is at most one production row ──────────────────
+# (reading_passages_source_draft_uidx / listening_sections_source_draft_uidx,
+# 20260808050000_draft_review_workflow.sql, plus publish()'s own
+# _existing_production_id lookup for every module). Guards double-click
+# Publish, two admins racing, or a retry after publish() succeeded but the
+# subsequent mark_published() call failed -- and, per the final design
+# review, also legitimate republish-after-edit: that case UPDATEs the
+# existing row rather than erroring or duplicating (see the "full
+# republish lifecycle" tests further down).
+
+def test_reading_publish_succeeds_first_time(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(module="reading", generated_content={
+        "title": "First publish", "part": "B", "body": "text", "questions": [],
+    })
+    result = draft_publisher.publish(draft, "admin-1")
+    assert result["table"] == "reading_passages"
+    assert result["action"] == "created"
+    assert len(fake.tables["reading_passages"]) == 1
+
+
+def test_reading_republish_of_unchanged_draft_updates_not_duplicates(monkeypatch):
+    """Two Publish calls for the same draft, no edit in between (double-click,
+    or two admins racing) -- must not create a second row. In the ordinary
+    (non-racing) case the router's own status=='approved' check is the first
+    line of defense (status flips to 'published' after the first call, so a
+    literal double-click never reaches publish() a second time at all); this
+    exercises publish() itself directly, as the backstop for whatever gets
+    past that check (a genuine race, or a retry after mark_published failed)."""
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=42, module="reading", generated_content={
+        "title": "Race condition", "part": "B", "body": "text", "questions": [],
+    })
+    first = draft_publisher.publish(draft, "admin-1")
+    second = draft_publisher.publish(draft, "admin-2")
+    assert first["action"] == "created"
+    assert second["action"] == "updated"
+    assert first["id"] == second["id"]
+    assert len(fake.tables["reading_passages"]) == 1
+
+
+def test_listening_republish_of_unchanged_draft_updates_not_duplicates(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=43, module="listening", generated_content={
+        "title": "Race condition", "transcript": [], "questions": [],
+    })
+    first = draft_publisher.publish(draft, "admin-1")
+    second = draft_publisher.publish(draft, "admin-2")
+    assert first["action"] == "created"
+    assert second["action"] == "updated"
+    assert first["id"] == second["id"]
+    assert len(fake.tables["listening_sections"]) == 1
+
+
+def test_legacy_rows_with_null_source_draft_id_unaffected(monkeypatch):
+    fake = FakeSupabase()
+    # Pre-existing rows from before this workflow existed -- no source_draft_id at all.
+    fake.tables["reading_passages"] = [
+        {"id": 1, "title": "Legacy passage 1", "is_active": True},
+        {"id": 2, "title": "Legacy passage 2", "is_active": True},
+    ]
+    fake.tables["listening_sections"] = [
+        {"id": 1, "title": "Legacy section", "is_active": True},
+    ]
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+
+    reading_draft = _draft(id=44, module="reading", generated_content={
+        "title": "New passage", "part": "B", "body": "text", "questions": [],
+    })
+    listening_draft = _draft(id=45, module="listening", generated_content={
+        "title": "New section", "transcript": [], "questions": [],
+    })
+    reading_result = draft_publisher.publish(reading_draft, "admin-1")
+    listening_result = draft_publisher.publish(listening_draft, "admin-1")
+
+    assert reading_result["table"] == "reading_passages"
+    assert listening_result["table"] == "listening_sections"
+    assert len(fake.tables["reading_passages"]) == 3
+    assert len(fake.tables["listening_sections"]) == 2
+
+
+# ── Blocker 2: content edit after approval forces re-review ────────────
+# An approval signs off on specific content, not "whatever this becomes
+# later". update_content() must drop approved/published back to 'review'
+# (and clear the stale approved_by/approved_at) when generated_content
+# itself changes -- not on a metadata-only or rename-only save.
+
+def test_approved_draft_content_edit_forces_review(monkeypatch):
+    rows = [_draft(status="approved", approved_by="admin-1", approved_at="2026-08-01T00:00:00Z",
+                    generated_content={"title": "original"})]
+    fake = _patched(monkeypatch, rows)
+    updated = draft_store.update_content(1, generated_content={"title": "changed"}, editor_id="a1")
+    assert updated["status"] == "review"
+    assert updated["approved_by"] is None
+    assert updated["approved_at"] is None
+    assert fake.tables["generated_content_drafts"][0]["status"] == "review"
+
+
+def test_approved_draft_metadata_only_edit_keeps_approved(monkeypatch):
+    rows = [_draft(status="approved", approved_by="admin-1", approved_at="2026-08-01T00:00:00Z",
+                    generated_content={"title": "original"}, metadata={})]
+    _patched(monkeypatch, rows)
+    updated = draft_store.update_content(1, metadata={"note": "internal only"}, editor_id="a1")
+    assert updated["status"] == "approved"
+    assert updated["approved_by"] == "admin-1"
+    assert updated["approved_at"] == "2026-08-01T00:00:00Z"
+
+
+def test_draft_status_content_edit_no_regression(monkeypatch):
+    rows = [_draft(status="draft", generated_content={"title": "original"})]
+    _patched(monkeypatch, rows)
+    updated = draft_store.update_content(1, generated_content={"title": "changed"}, editor_id="a1")
+    assert updated["status"] == "draft"
+
+
+def test_review_status_content_edit_no_regression(monkeypatch):
+    rows = [_draft(status="review", generated_content={"title": "original"})]
+    _patched(monkeypatch, rows)
+    updated = draft_store.update_content(1, generated_content={"title": "changed"}, editor_id="a1")
+    assert updated["status"] == "review"
+
+
+def test_published_draft_content_edit_forces_review_not_silent(monkeypatch):
+    rows = [_draft(status="published", approved_by="admin-1", approved_at="2026-08-01T00:00:00Z",
+                    published_by="owner-1", published_at="2026-08-02T00:00:00Z",
+                    generated_content={"title": "original"})]
+    fake = _patched(monkeypatch, rows)
+    updated = draft_store.update_content(1, generated_content={"title": "changed"}, editor_id="a1")
+    assert updated["status"] != "published"
+    assert updated["status"] == "review"
+    assert updated["approved_by"] is None
+    assert fake.tables["generated_content_drafts"][0]["status"] != "published"
+
+
+def test_publish_still_requires_approved_after_edit_reset(monkeypatch):
+    """After the reset above, the draft is 'review' again -- mark_published
+    (called by the publish router only after draft_publisher.publish()
+    succeeds) must still refuse it, same as any other non-approved draft."""
+    rows = [_draft(status="review")]
+    _patched(monkeypatch, rows)
+    try:
+        draft_store.mark_published(1, "owner-1")
+        assert False, "expected InvalidTransitionError"
+    except draft_store.InvalidTransitionError:
+        pass
+
+
+# ── Full lifecycle: publish -> edit -> review -> approve -> republish ──
+# End-to-end coverage of the fix from the final design review: publish()
+# was insert-only, so this legitimate cycle either dead-ended (Reading/
+# Listening, blocked by the new unique index with no update path) or could
+# create a second live row (Speaking/Writing, if the edit changed the
+# title). draft_store and draft_publisher each call get_supabase()
+# independently, so these need both monkeypatched to the SAME fake to
+# observe the whole cycle, not just one service's half of it.
+
+def _shared_fake(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_store, "get_supabase", lambda: fake)
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    return fake
+
+
+def test_reading_full_republish_lifecycle(monkeypatch):
+    fake = _shared_fake(monkeypatch)
+    fake.tables["generated_content_drafts"] = [_draft(
+        id=1, status="approved", module="reading",
+        generated_content={
+            "title": "V1", "part": "B", "body": "first version",
+            "questions": [{"type": "mcq", "content": "q1", "options": ["a", "b"], "correct_answer": "a"}],
+        },
+    )]
+
+    draft = draft_store.get_draft(1)
+    first = draft_publisher.publish(draft, "owner-1")
+    draft_store.mark_published(1, "owner-1")
+    assert first["action"] == "created"
+    assert len(fake.tables["reading_passages"]) == 1
+    passage_id = first["id"]
+
+    # A separate, existing admin action -- publish() itself never sets is_active=True.
+    fake.tables["reading_passages"][0]["is_active"] = True
+
+    updated = draft_store.update_content(1, generated_content={
+        "title": "V2", "part": "B", "body": "corrected version",
+        "questions": [{"type": "mcq", "content": "q1-fixed", "options": ["a", "b"], "correct_answer": "b"}],
+    }, editor_id="analyst-1")
+    assert updated["status"] == "review"
+
+    # Currently-live production content is untouched while the draft is under review.
+    assert fake.tables["reading_passages"][0]["is_active"] is True
+    assert fake.tables["reading_passages"][0]["body"] == "first version"
+
+    draft_store.approve(1, "admin-1")
+    draft = draft_store.get_draft(1)
+    second = draft_publisher.publish(draft, "owner-1")
+    draft_store.mark_published(1, "owner-1")
+
+    assert second["action"] == "updated"
+    assert second["id"] == passage_id
+    assert len(fake.tables["reading_passages"]) == 1  # still exactly one row -- no duplicate
+
+    row = next(r for r in fake.tables["reading_passages"] if r["id"] == passage_id)
+    assert row["body"] == "corrected version"
+    assert row["is_active"] is True  # republish didn't reset the earlier "make live"
+    assert row["source_draft_id"] == 1
+
+    q_texts = {q["content"] for q in fake.tables["questions"] if q.get("passage_id") == passage_id}
+    assert q_texts == {"q1-fixed"}  # old question replaced, not appended alongside
+
+
+def test_listening_full_republish_lifecycle(monkeypatch):
+    fake = _shared_fake(monkeypatch)
+    fake.tables["generated_content_drafts"] = [_draft(
+        id=1, status="approved", module="listening",
+        generated_content={
+            "title": "V1", "transcript": [{"speaker": "Nurse", "text": "v1"}],
+            "questions": [{"type": "mcq", "content": "q1", "options": ["a", "b"], "correct_answer": "a"}],
+        },
+    )]
+
+    draft = draft_store.get_draft(1)
+    first = draft_publisher.publish(draft, "owner-1")
+    draft_store.mark_published(1, "owner-1")
+    section_id = first["id"]
+    fake.tables["listening_sections"][0]["is_active"] = True
+
+    draft_store.update_content(1, generated_content={
+        "title": "V2", "transcript": [{"speaker": "Nurse", "text": "v2"}],
+        "questions": [{"type": "mcq", "content": "q1-fixed", "options": ["a", "b"], "correct_answer": "b"}],
+    }, editor_id="analyst-1")
+    assert fake.tables["listening_sections"][0]["is_active"] is True  # still untouched, still under review
+
+    draft_store.approve(1, "admin-1")
+    draft = draft_store.get_draft(1)
+    second = draft_publisher.publish(draft, "owner-1")
+    updated_draft = draft_store.mark_published(1, "owner-1")
+
+    assert second["action"] == "updated"
+    assert second["id"] == section_id
+    assert len(fake.tables["listening_sections"]) == 1
+    assert updated_draft["status"] == "published"
+
+    row = next(r for r in fake.tables["listening_sections"] if r["id"] == section_id)
+    assert row["title"] == "V2"
+    assert row["is_active"] is True
+    assert row["source_draft_id"] == 1
+    q_texts = {q["content"] for q in fake.tables["questions"] if q.get("section_id") == section_id}
+    assert q_texts == {"q1-fixed"}
+
+
+def test_writing_full_republish_lifecycle_with_title_change(monkeypatch):
+    """The exact case the final review flagged as a blocker: scenarios has
+    no source_draft_id uniqueness (title uniqueness covers first-publish
+    races instead), so a republish whose edit also changes the title used
+    to sail past that guard and INSERT a second, duplicate, live scenario.
+    publish() now looks the row up by source_draft_id before deciding
+    insert vs. update, so the title changing is irrelevant to that decision."""
+    fake = _shared_fake(monkeypatch)
+    fake.tables["generated_content_drafts"] = [_draft(
+        id=2, status="approved", module="writing",
+        generated_content={
+            "title": "Discharge Letter V1", "difficulty": "medium",
+            "case_notes": "notes v1", "task": "task v1", "key_points": ["a"],
+        },
+    )]
+
+    draft = draft_store.get_draft(2)
+    first = draft_publisher.publish(draft, "owner-1")
+    draft_store.mark_published(2, "owner-1")
+    assert first["action"] == "created"
+    assert len(fake.tables["scenarios"]) == 1
+
+    draft_store.update_content(2, generated_content={
+        "title": "Discharge Letter V2 (renamed)", "difficulty": "medium",
+        "case_notes": "notes v2", "task": "task v2", "key_points": ["b"],
+    }, editor_id="analyst-1")
+    draft_store.approve(2, "admin-1")
+    draft = draft_store.get_draft(2)
+    second = draft_publisher.publish(draft, "owner-1")
+    updated_draft = draft_store.mark_published(2, "owner-1")
+
+    assert second["action"] == "updated"
+    assert second["id"] == first["id"]
+    assert len(fake.tables["scenarios"]) == 1  # still one scenario -- no duplicate live row
+    assert updated_draft["status"] == "published"
+    row = fake.tables["scenarios"][0]
+    assert row["title"] == "Discharge Letter V2 (renamed)"
+    assert row["setting"] == "notes v2"
+    assert row["source_draft_id"] == 2
+
+
+def test_speaking_full_republish_lifecycle_with_title_change(monkeypatch):
+    fake = _shared_fake(monkeypatch)
+    fake.tables["generated_content_drafts"] = [_draft(
+        id=3, status="approved", module="speaking",
+        generated_content={
+            "title": "Anxious Patient V1", "difficulty": "easy", "setting": "ward v1",
+            "nurse_card": {}, "interlocutor_card": {},
+        },
+    )]
+
+    draft = draft_store.get_draft(3)
+    first = draft_publisher.publish(draft, "owner-1")
+    draft_store.mark_published(3, "owner-1")
+    assert first["action"] == "created"
+    assert len(fake.tables["scenarios"]) == 1
+
+    draft_store.update_content(3, generated_content={
+        "title": "Anxious Patient V2 (renamed)", "difficulty": "easy", "setting": "ward v2",
+        "nurse_card": {}, "interlocutor_card": {},
+    }, editor_id="analyst-1")
+    draft_store.approve(3, "admin-1")
+    draft = draft_store.get_draft(3)
+    second = draft_publisher.publish(draft, "owner-1")
+    updated_draft = draft_store.mark_published(3, "owner-1")
+
+    assert second["action"] == "updated"
+    assert second["id"] == first["id"]
+    assert len(fake.tables["scenarios"]) == 1
+    assert updated_draft["status"] == "published"
+    row = fake.tables["scenarios"][0]
+    assert row["title"] == "Anxious Patient V2 (renamed)"
+    assert row["source_draft_id"] == 3
 
 
 if __name__ == "__main__":

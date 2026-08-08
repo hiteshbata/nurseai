@@ -140,6 +140,29 @@ through commits.
   `develop` → `main`. Not tagged — RC3 stays open pending its remaining
   sub-sprints (Content Production, Review Workflow). See Release
   Candidates below and [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **2026-08-09 — RC3 complete (AI Content Studio)**: closes out all four
+  RC3 sub-sprints as one unit.
+  - **Content Studio Foundation (RC3.1)**: see above, already on `main`.
+  - **AI Draft Generator (RC3.2)**: AI-generated drafts, persisted only to
+    `generated_content_drafts` — never to a production content table.
+  - **Draft Review/Approval/Publishing (RC3.3)**: full status machine
+    (draft → review → approved → published/archived), a revision log that
+    only fires on real content/metadata changes, a Publish Preview that
+    matches what Publish actually creates, and per-module publish targets
+    (Speaking/Writing → `scenarios` with `key_points` on Writing; Reading/
+    Listening → standalone, inactive `reading_passages`/
+    `listening_sections` rows with no Test Builder linkage; Vocab/Grammar
+    blocked). Schema:
+    `supabase/migrations/20260808050000_draft_review_workflow.sql`.
+  - **Staff Role Management (RC3.4)**: five-tier Staff Role selector
+    (None/Support/Analyst/Admin/Owner) replacing the old binary Grant/
+    Revoke Admin toggle, rank-based permission inheritance, Owner-only
+    role assignment, last-Owner protection, full audit logging.
+  - **Final QA**: 14/14 pass (Playwright + direct-API) against the live
+    Supabase project — zero code changes required, no blocking defects.
+  Committed to `develop`, not yet merged to `main` — not a release to
+  production yet, listed here for the record. See Release Candidates
+  below and [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
 
 ## Release Candidates
 
@@ -198,22 +221,53 @@ unverified sprint at a time.
   and founder approval remain open. See
   [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
 
-- **RC3 — AI Content Studio** (opened 2026-08-08, not closed): unlike RC1/
-  RC2, this RC bundles multiple sequential sub-sprints rather than one —
-  Content Production and Review Workflow are real future work, not
-  hypothetical, so RC3 stays open (and untagged) until all of them land,
-  not just the first.
+- **RC3 — AI Content Studio** (opened 2026-08-08, closed 2026-08-09): unlike
+  RC1/RC2, this RC bundled four sequential sub-sprints rather than one —
+  Content Production, Review Workflow, and Staff Role Management were real
+  future work, not hypothetical, so RC3 stayed open (and untagged) until all
+  of them landed, not just the first.
   - [x] **RC3.1 — Content Studio Foundation** (code-complete, QA-gated):
     admin-only dashboard/library/detail pages, read-only, no schema
     change. Merged `develop` → `main` (`d32c5327`).
-  - [ ] RC3.2 — Content Production (not started, explicitly out of scope
-    for RC3.1 per CTO instruction)
-  - [ ] RC3.3 — Review Workflow, Publishing, and the `status`/`version`
-    schema change RC3.1 deliberately deferred (not started)
-  - [ ] Live verification
+  - [x] **RC3.2 — AI Draft Generator** (code-complete): `/admin/content-
+    studio/generate` calls the AI and returns unpersisted draft(s);
+    `POST /drafts` persists to `generated_content_drafts` only — never to
+    a production content table. Merged `develop` → `main` (`31aa6149`).
+  - [x] **RC3.3 — Review Workflow, Publishing** (code-complete, migration
+    applied, QA-gated): draft → review → approved → published/archived
+    status machine, revision log (real content/metadata changes only, not
+    status-only transitions or renames), Publish Preview that matches
+    Publish exactly, Speaking/Writing → `scenarios` (Writing includes
+    `key_points`), Reading/Listening → standalone `reading_passages`/
+    `listening_sections` rows (`is_active=false`, no `reading_tests`/
+    `listening_tests` row created — Test Builder grouping stays deferred),
+    Vocab/Grammar correctly blocked from publishing. Schema:
+    `supabase/migrations/20260808050000_draft_review_workflow.sql`,
+    applied to the live `Nurse Ai` Supabase project 2026-08-09.
+  - [x] **RC3.4 — Staff Role Management** (code-complete, QA-gated):
+    replaced the binary Grant/Revoke Admin toggle with a five-tier Staff
+    Role selector (None/Support/Analyst/Admin/Owner) on the Users list and
+    detail pages, rank-based permission inheritance (`ROLE_RANK` in
+    `admin.py`), role changes restricted to Owner only, last-remaining-
+    Owner demotion blocked, every change audit-logged
+    (`staff_role_changed`, old/new role, changed-by).
+  - [x] Final QA — 14/14 Playwright + direct-API pass against the live
+    Supabase project (role assignment, Owner inheritance across every
+    require_* tier, last-Owner protection, non-Owner blocked from
+    assigning Owner at both the UI and API layer, learner accounts
+    confirmed to have zero staff permissions, full Content Studio
+    lifecycle generate→save→edit→submit→approve→reject→preview→publish→
+    unpublish, revision-log correctness, audit trail correctness, zero
+    500s including a deliberate concurrent double-publish race). Zero
+    code changes required as a result — no blocking defects found.
+  - [ ] Live verification — click-through against real (`develop`-deployed
+    or production) traffic (see Definition of Done in
+    [PRODUCT_OS.md](PRODUCT_OS.md)) — do after this merges to `main`; the
+    QA above ran against local dev wired to the live Supabase project, not
+    a deployed environment.
   - [ ] Founder approval
-  - [ ] Tag — deferred until RC3 closes (see Versioning strategy above);
-    RC3.1 alone does not warrant `v1.2.0-rc3`.
+  - [ ] Tag — deferred until merged `develop` → `main` (see Versioning
+    strategy above).
 
 ## Rollback
 

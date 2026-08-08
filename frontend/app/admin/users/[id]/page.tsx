@@ -5,6 +5,17 @@ import { useParams, useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import { beginImpersonation } from '@/lib/impersonation'
 
+// Matches backend/app/routers/admin.py's ROLE_RANK / ALLOWED_ROLES.
+const STAFF_ROLES = ['user', 'support', 'analyst', 'admin', 'owner'] as const
+const ROLE_LABEL: Record<string, string> = { user: 'None', support: 'Support', analyst: 'Analyst', admin: 'Admin', owner: 'Owner' }
+const ROLE_BADGE: Record<string, string> = {
+  owner: 'bg-amber-100 text-amber-800',
+  admin: 'bg-purple-100 text-purple-800',
+  analyst: 'bg-blue-100 text-blue-800',
+  support: 'bg-teal-100 text-teal-800',
+  user: 'bg-gray-100 text-gray-600',
+}
+
 interface Submission {
   id: number
   scenario_id: number | null
@@ -57,6 +68,7 @@ export default function AdminUserDetailPage() {
   const userId = params.id as string
 
   const [user, setUser] = useState<UserDetail | null>(null)
+  const [viewerRole, setViewerRole] = useState<string>('user')
   const [loading, setLoading] = useState(true)
   const [savingRole, setSavingRole] = useState(false)
   const [impersonating, setImpersonating] = useState(false)
@@ -79,6 +91,7 @@ export default function AdminUserDetailPage() {
     fetchUser()
     fetchPayments()
     fetchTranscripts()
+    api.get('/auth/me').then((res) => setViewerRole(res.data?.role || 'user')).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
@@ -135,17 +148,16 @@ export default function AdminUserDetailPage() {
     }
   }
 
-  const toggleRole = async () => {
-    if (!user) return
-    const newRole = user.role === 'admin' ? 'user' : 'admin'
-    if (!confirm(`Change this user's role to "${newRole}"?`)) return
+  const handleRoleChange = async (newRole: string) => {
+    if (!user || newRole === user.role) return
+    if (!confirm(`Change this user's Staff Role to "${ROLE_LABEL[newRole]}"?`)) return
     setSavingRole(true)
     try {
       await api.post('/admin/users/role', { user_id: user.user_id, role: newRole })
       setUser({ ...user, role: newRole })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update role:', error)
-      alert('Failed to update role.')
+      alert(error.response?.data?.detail || 'Failed to update role.')
     } finally {
       setSavingRole(false)
     }
@@ -296,19 +308,25 @@ export default function AdminUserDetailPage() {
             </div>
           </div>
           <div className="text-right">
-            <span className={`inline-block px-3 py-1 rounded text-xs font-semibold ${
-              user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-600'
-            }`}>
-              {user.role}
+            <span className={`inline-block px-3 py-1 rounded text-xs font-semibold ${ROLE_BADGE[user.role] || ROLE_BADGE.user}`}>
+              {ROLE_LABEL[user.role] || user.role}
             </span>
-            <button
-              onClick={toggleRole}
-              disabled={savingRole}
-              className="block mt-2 text-sm text-blue-600 hover:underline disabled:opacity-50"
-            >
-              {savingRole ? 'Saving...' : user.role === 'admin' ? 'Revoke admin' : 'Make admin'}
-            </button>
-            {user.role !== 'admin' && (
+            <div className="mt-2">
+              <label htmlFor="staffRole" className="sr-only">Staff Role</label>
+              <select
+                id="staffRole"
+                value={user.role}
+                onChange={(e) => handleRoleChange(e.target.value)}
+                disabled={savingRole || viewerRole !== 'owner'}
+                title={viewerRole !== 'owner' ? 'Only an Owner can change staff roles' : undefined}
+                className="text-sm border rounded px-2 py-1 disabled:opacity-50 disabled:bg-gray-50"
+              >
+                {STAFF_ROLES.map((r) => (
+                  <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+                ))}
+              </select>
+            </div>
+            {user.role === 'user' && (
               <button
                 onClick={handleImpersonate}
                 disabled={impersonating}
@@ -562,7 +580,7 @@ export default function AdminUserDetailPage() {
         </div>
 
         {/* Danger zone */}
-        {user.role !== 'admin' && (
+        {user.role === 'user' && (
           <div className="bg-white rounded-lg shadow p-6 mt-6 border border-red-200">
             <h2 className="text-lg font-bold mb-4 text-red-700">Danger Zone</h2>
 

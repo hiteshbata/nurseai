@@ -14,7 +14,7 @@ interface AuditEntry {
 }
 
 const ACTION_COLORS: Record<string, string> = {
-  role_changed: 'bg-purple-100 text-purple-800',
+  staff_role_changed: 'bg-purple-100 text-purple-800',
   plan_changed: 'bg-blue-100 text-blue-800',
   scenario_created: 'bg-green-100 text-green-800',
   scenario_updated: 'bg-green-100 text-green-800',

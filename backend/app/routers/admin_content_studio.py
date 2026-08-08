@@ -1,17 +1,21 @@
 """Admin endpoints for the AI Content Studio.
 
-RC3.1 (dashboard + library + detail) is read-only. RC3.2 adds the AI Draft
+RC3.1 (dashboard + library + detail) is read-only. RC3.2 added the AI Draft
 Generator: /generate calls the AI and returns unpersisted draft(s); /drafts
-persists them to generated_content_drafts ONLY -- never to a production
-content table (scenarios/reading_passages/listening_sections). No
-publishing, review workflow, or version history here; see
-app/services/draft_generator.py and app/services/draft_store.py.
+persists them to generated_content_drafts ONLY. RC3.3 adds the human
+review/publish workflow on top -- see app/services/draft_store.py for the
+status machine and app/services/draft_publisher.py for the one place that
+actually writes to a production content table (scenarios/reading_passages/
+listening_sections), always by copying a draft, never moving it.
 
 See docs/CONTENT_FOUNDATION.md for the target metadata model RC3.1 scaffolds
 toward, and app/services/content_studio.py for the read-side aggregation.
 
-require_admin only (not require_analyst) -- this exposes unpublished
-content across every module, per CTO review.
+Permission tiers (CTO decision, RC3.3): analyst can view/edit drafts, admin
+can review/approve/reject/archive, owner can publish/unpublish. Generating
+new drafts (AI cost) and hard-deleting a draft stay admin-only, unchanged
+from RC3.2. RC3.1's read-only production-content endpoints below are
+untouched, still admin-only.
 """
 from typing import Any, Dict, List, Optional
 
@@ -20,9 +24,9 @@ from pydantic import BaseModel, Field
 
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.supabase import get_supabase
-from app.routers.admin import require_admin, _write_audit_log
+from app.routers.admin import require_admin, require_analyst, require_owner, _write_audit_log
 from app.routers.auth import UserInfo
-from app.services import content_studio, draft_generator, draft_store
+from app.services import content_studio, draft_generator, draft_publisher, draft_store
 
 router = APIRouter(prefix="/admin/content-studio", tags=["admin"])
 
@@ -142,31 +146,44 @@ def list_drafts(
     status: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
-    current_user: UserInfo = Depends(require_admin),
+    current_user: UserInfo = Depends(require_analyst),
 ):
     return draft_store.list_drafts(module=module, status=status, limit=limit, offset=offset)
 
 
 @router.get("/drafts/{draft_id}")
-def get_draft(draft_id: int, current_user: UserInfo = Depends(require_admin)):
+def get_draft(draft_id: int, current_user: UserInfo = Depends(require_analyst)):
     draft = draft_store.get_draft(draft_id)
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
     return draft
 
 
-class RenameDraftRequest(BaseModel):
-    draft_name: str = Field(min_length=1, max_length=200)
+class UpdateDraftRequest(BaseModel):
+    draft_name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    generated_content: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 @router.patch("/drafts/{draft_id}")
-def rename_draft(draft_id: int, req: RenameDraftRequest, current_user: UserInfo = Depends(require_admin)):
-    updated = draft_store.rename_draft(draft_id, req.draft_name.strip())
+def update_draft(draft_id: int, req: UpdateDraftRequest, current_user: UserInfo = Depends(require_analyst)):
+    """Rename and/or edit a draft's content (the RC3.3 module-aware editor's
+    autosave). Writes only to generated_content_drafts -- see
+    draft_store.update_content for the revision-on-change rule."""
+    if req.draft_name is None and req.generated_content is None and req.metadata is None:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    updated = draft_store.update_content(
+        draft_id,
+        draft_name=req.draft_name.strip() if req.draft_name else None,
+        generated_content=req.generated_content,
+        metadata=req.metadata,
+        editor_id=current_user.id,
+    )
     if not updated:
         raise HTTPException(status_code=404, detail="Draft not found")
     _write_audit_log(
-        get_supabase(), current_user, "draft_renamed", "generated_content_draft",
-        target_id=draft_id, target_label=req.draft_name,
+        get_supabase(), current_user, "draft_saved", "generated_content_draft",
+        target_id=draft_id, target_label=updated.get("draft_name"),
     )
     return updated
 
@@ -179,3 +196,132 @@ def delete_draft(draft_id: int, current_user: UserInfo = Depends(require_admin))
         get_supabase(), current_user, "draft_deleted", "generated_content_draft", target_id=draft_id,
     )
     return {"success": True}
+
+
+# ── REVIEW / APPROVAL / PUBLISH WORKFLOW (RC3.3) ─────────────────────
+
+@router.get("/drafts/{draft_id}/revisions")
+def get_draft_revisions(draft_id: int, current_user: UserInfo = Depends(require_analyst)):
+    if not draft_store.get_draft(draft_id):
+        raise HTTPException(status_code=404, detail="Draft not found")
+    return draft_store.list_revisions(draft_id)
+
+
+@router.post("/drafts/{draft_id}/submit-review")
+def submit_draft_for_review(draft_id: int, current_user: UserInfo = Depends(require_analyst)):
+    try:
+        updated = draft_store.submit_for_review(draft_id)
+    except draft_store.InvalidTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    _write_audit_log(
+        get_supabase(), current_user, "draft_reviewed", "generated_content_draft",
+        target_id=draft_id, detail={"transition": "draft->review"},
+    )
+    return updated
+
+
+@router.post("/drafts/{draft_id}/approve")
+def approve_draft(draft_id: int, current_user: UserInfo = Depends(require_admin)):
+    try:
+        updated = draft_store.approve(draft_id, current_user.id)
+    except draft_store.InvalidTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    _write_audit_log(
+        get_supabase(), current_user, "draft_approved", "generated_content_draft", target_id=draft_id,
+    )
+    return updated
+
+
+@router.post("/drafts/{draft_id}/reject")
+def reject_draft(draft_id: int, current_user: UserInfo = Depends(require_admin)):
+    """Sends a draft back one stage: review->draft, or approved->review."""
+    try:
+        updated = draft_store.reject(draft_id, current_user.id)
+    except draft_store.InvalidTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    _write_audit_log(
+        get_supabase(), current_user, "draft_reviewed", "generated_content_draft",
+        target_id=draft_id, detail={"transition": f"->{updated['status']}", "action": "reject"},
+    )
+    return updated
+
+
+@router.post("/drafts/{draft_id}/archive")
+def archive_draft(draft_id: int, current_user: UserInfo = Depends(require_admin)):
+    try:
+        updated = draft_store.archive(draft_id)
+    except draft_store.InvalidTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    _write_audit_log(
+        get_supabase(), current_user, "draft_archived", "generated_content_draft", target_id=draft_id,
+    )
+    return updated
+
+
+@router.get("/drafts/{draft_id}/publish-preview")
+def get_publish_preview(draft_id: int, current_user: UserInfo = Depends(require_owner)):
+    """Dry run for the Publish Preview dialog -- returns exactly which
+    production record(s) Publish would create, without writing anything."""
+    draft = draft_store.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if draft["status"] != "approved":
+        raise HTTPException(status_code=409, detail="Only approved drafts can be published")
+    try:
+        return draft_publisher.build_preview(draft)
+    except draft_publisher.NotPublishableError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/drafts/{draft_id}/publish")
+def publish_draft(draft_id: int, current_user: UserInfo = Depends(require_owner)):
+    """Copies an approved draft into production. The draft row is kept and
+    flipped to 'published' -- it is never deleted or moved."""
+    draft = draft_store.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if draft["status"] != "approved":
+        raise HTTPException(status_code=409, detail="Only approved drafts can be published")
+    try:
+        result = draft_publisher.publish(draft, current_user.id)
+    except draft_publisher.NotPublishableError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except (draft_publisher.DuplicateTitleError, draft_publisher.AlreadyPublishedError) as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    draft_store.mark_published(draft_id, current_user.id)
+    _write_audit_log(
+        get_supabase(), current_user, "draft_published", "generated_content_draft",
+        target_id=draft_id, detail=result,
+    )
+    return result
+
+
+@router.post("/drafts/{draft_id}/unpublish")
+def unpublish_draft(draft_id: int, current_user: UserInfo = Depends(require_owner)):
+    """Sets is_active=false on the production row this draft published --
+    no manual DB access required. Draft status stays 'published' (the
+    production row's own visibility is what changed, not the draft)."""
+    draft = draft_store.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if draft["status"] != "published":
+        raise HTTPException(status_code=409, detail="Only published drafts can be unpublished")
+    try:
+        result = draft_publisher.unpublish(draft)
+    except draft_publisher.NotPublishableError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    _write_audit_log(
+        get_supabase(), current_user, "draft_unpublished", "generated_content_draft",
+        target_id=draft_id, detail=result,
+    )
+    return result

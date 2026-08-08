@@ -44,12 +44,20 @@ export default function ContentStudioDashboard() {
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Content Studio</h1>
-          <Link
-            href="/admin/content-studio/library"
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700"
-          >
-            Open Library
-          </Link>
+          <div className="flex gap-2">
+            <Link
+              href="/admin/content-studio/drafts"
+              className="px-4 py-2 bg-white border text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50"
+            >
+              Review Drafts
+            </Link>
+            <Link
+              href="/admin/content-studio/library"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700"
+            >
+              Open Library
+            </Link>
+          </div>
         </div>
 
         {loading && <div className="text-gray-500">Loading...</div>}

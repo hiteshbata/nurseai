@@ -62,6 +62,13 @@ class RequireRoleTests(unittest.TestCase):
                     admin_module.require_admin, admin_module.require_owner):
             self.assertEqual(self._call(dep, "owner").id, "u1")
 
+    def test_admin_rejected_at_owner_floor(self):
+        """RC3.4: role assignment (POST /admin/users/role) sits behind
+        require_owner -- an admin must not clear this floor."""
+        with self.assertRaises(HTTPException) as ctx:
+            self._call(admin_module.require_owner, "admin")
+        self.assertEqual(ctx.exception.status_code, 403)
+
 
 class TargetIsStaffTests(unittest.TestCase):
     def test_support_and_up_is_staff(self):
@@ -76,8 +83,12 @@ class TargetIsStaffTests(unittest.TestCase):
 
 
 class RoleEscalationGuardTests(unittest.TestCase):
-    """admin_set_user_role: the endpoint floor is admin+, but within that,
-    a caller can never grant a role ranked above their own."""
+    """admin_set_user_role: RC3.4 moved the escalation guard from an
+    in-body rank comparison to the route's Depends(require_owner) floor
+    (see RequireRoleTests.test_admin_rejected_at_owner_floor) -- only an
+    owner ever reaches this function in production. What's left to check
+    at the body level is role validation and the last-owner guard; see
+    test_staff_roles.py for the fuller last-owner/audit-detail coverage."""
 
     def _grant(self, caller_role: str, target_role: str):
         supabase = _fake_supabase(caller_role)
@@ -87,24 +98,11 @@ class RoleEscalationGuardTests(unittest.TestCase):
              patch.object(admin_module, "_write_audit_log"):
             return admin_module.admin_set_user_role(req=req, current_user=caller)
 
-    def test_admin_can_grant_support(self):
-        result = self._grant("admin", "support")
-        self.assertEqual(result, {"success": True})
-
-    def test_admin_cannot_grant_owner(self):
-        with self.assertRaises(HTTPException) as ctx:
-            self._grant("admin", "owner")
-        self.assertEqual(ctx.exception.status_code, 403)
-
     def test_owner_can_grant_owner(self):
         result = self._grant("owner", "owner")
         self.assertEqual(result, {"success": True})
 
-    def test_admin_can_grant_admin_to_self_tier(self):
-        result = self._grant("admin", "admin")
-        self.assertEqual(result, {"success": True})
-
-    def test_unknown_role_rejected_before_escalation_check(self):
+    def test_unknown_role_rejected(self):
         with self.assertRaises(HTTPException) as ctx:
             self._grant("owner", "superadmin")
         self.assertEqual(ctx.exception.status_code, 400)

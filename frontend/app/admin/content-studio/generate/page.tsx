@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 
@@ -251,15 +252,25 @@ function DraftPreviewCard({
             data-testid="draft-name-input"
           />
         </div>
-        <button
-          onClick={onSave}
-          disabled={card.saving || card.saved}
-          data-testid="save-draft-button"
-          className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          {card.saving && <Spinner />}
-          {card.saved ? 'Saved' : card.saving ? 'Saving...' : 'Save Draft'}
-        </button>
+        {card.saved && card.savedId ? (
+          <Link
+            href={`/admin/content-studio/drafts/${card.savedId}`}
+            data-testid="edit-draft-link"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700"
+          >
+            Edit & Review &rarr;
+          </Link>
+        ) : (
+          <button
+            onClick={onSave}
+            disabled={card.saving}
+            data-testid="save-draft-button"
+            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {card.saving && <Spinner />}
+            {card.saving ? 'Saving...' : 'Save Draft'}
+          </button>
+        )}
       </div>
 
       {result.ai_title && (

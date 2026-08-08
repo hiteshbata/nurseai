@@ -83,6 +83,18 @@ export default function AdminUsersPage() {
     return 'bg-gray-100 text-gray-600'
   }
 
+  // Matches backend/app/routers/admin.py's ALLOWED_ROLES.
+  const ROLE_LABEL: Record<string, string> = { user: 'None', support: 'Support', analyst: 'Analyst', admin: 'Admin', owner: 'Owner' }
+  const roleBadge = (role: string) => {
+    const colors: Record<string, string> = {
+      owner: 'bg-amber-100 text-amber-800',
+      admin: 'bg-purple-100 text-purple-800',
+      analyst: 'bg-blue-100 text-blue-800',
+      support: 'bg-teal-100 text-teal-800',
+    }
+    return colors[role] || 'bg-gray-100 text-gray-600'
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-7xl mx-auto">
@@ -112,6 +124,7 @@ export default function AdminUsersPage() {
             <thead className="bg-gray-100">
               <tr>
                 <th className="text-left py-4 px-4">User</th>
+                <th className="text-left py-4 px-4">Role</th>
                 <th className="text-left py-4 px-4">Plan</th>
                 <th className="text-left py-4 px-4">Status</th>
                 <th className="text-left py-4 px-4">Sessions</th>
@@ -129,6 +142,11 @@ export default function AdminUsersPage() {
                   <td className="py-4 px-4">
                     <div className="font-semibold">{u.name || '(no name)'}</div>
                     <div className="text-sm text-gray-500">{u.email}</div>
+                  </td>
+                  <td className="py-4 px-4">
+                    <span className={`px-2 py-1 rounded text-xs font-semibold ${roleBadge(u.role)}`}>
+                      {ROLE_LABEL[u.role] || u.role}
+                    </span>
                   </td>
                   <td className="py-4 px-4">
                     <span className={`px-2 py-1 rounded text-xs font-semibold capitalize ${planBadge(u.plan)}`}>

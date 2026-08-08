@@ -310,8 +310,9 @@ test('AI Draft Generator: generate shows loading state, previews a draft, saves 
     await page.getByTestId('save-draft-button').click()
     const saveRes = await saveResponse
     expect(saveRes.status()).toBe(200)
-    await expect(page.getByTestId('save-draft-button')).toBeDisabled()
-    await expect(page.getByTestId('save-draft-button')).toHaveText('Saved')
+    // RC3.3: a saved draft's card swaps the Save button for a link into the
+    // review workflow editor (drafts/[id]) instead of a disabled "Saved" state.
+    await expect(page.getByTestId('edit-draft-link')).toBeVisible()
   }
 
   await page.getByTestId('discard-button').click()
