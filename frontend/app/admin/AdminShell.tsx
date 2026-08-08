@@ -40,6 +40,7 @@ const NAV_GROUPS = [
   {
     label: 'AI',
     items: [
+      { href: '/admin/content-studio/generate', label: 'AI Draft Generator' },
       { href: '/admin/ai-models', label: 'AI Models' },
     ],
   },
