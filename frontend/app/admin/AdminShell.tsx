@@ -21,6 +21,7 @@ const NAV_GROUPS = [
   {
     label: 'Content',
     items: [
+      { href: '/admin/content-studio', label: 'Content Studio' },
       { href: '/admin/scenarios', label: 'Scenarios' },
       { href: '/admin/reading', label: 'Reading' },
       { href: '/admin/writing', label: 'Writing' },
