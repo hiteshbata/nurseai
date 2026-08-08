@@ -125,10 +125,15 @@ through commits.
   production yet, listed here for the record. Closes **Adaptive Learning
   V1** across all four OET modules — see Release Candidates below and
   [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **2026-08-08 — Adaptive Dashboard V1 + RC2 QA**: cross-module dashboard
+  (module progress cards, Weak Skills list, Adaptive Recommendation card)
+  plus a new Playwright suite and manual QA checklist. Merged `develop` →
+  `main`, tagged `v1.1.0-rc2`. No schema change. See Release Candidates
+  below and [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
 
 ## Release Candidates
 
-**Status: V1 (informal, first use)**
+**Status: V1 (informal, second use)**
 
 An RC is an internal label for bundling a set of related, already
 CTO-approved sprints for merge and live-verification as one unit — not a
@@ -160,6 +165,28 @@ unverified sprint at a time.
 
   This closes the git-workflow portion of RC1. Live verification and
   founder approval remain open — see [BACKLOG.md](BACKLOG.md).
+
+- **RC2 — Adaptive Dashboard V1** (opened 2026-08-08, closed 2026-08-08,
+  tagged `v1.1.0-rc2`): cross-module dashboard (per-module progress cards,
+  cross-module Weak Skills list, Adaptive Recommendation card routing to
+  the weakest module) built on the same skill-graph spine RC1 shipped,
+  plus its own QA layer.
+  - [x] Adaptive Dashboard V1 (code-complete)
+  - [x] Playwright — 7 new RC2 dashboard scenarios (load, existing/new/
+    one-session learner, responsive layout, uncaught-exception guard, API
+    verification), passing locally alongside all 5 RC1 smoke tests
+    (`frontend/tests/e2e/dashboard.spec.ts`)
+  - [x] `docs/RC2_QA_CHECKLIST.md` — manual founder click-through list
+  - [x] `tsc --noEmit` clean
+  - [x] Merge `develop` → `main` (2026-08-08, `b683fde8`)
+  - [ ] Live verification — click-through of
+    [RC2_QA_CHECKLIST.md](RC2_QA_CHECKLIST.md) against real (preview or
+    production) traffic — do after this merge deploys
+  - [ ] Founder approval
+
+  Same open item RC1 has: git-workflow portion closed, live verification
+  and founder approval remain open. See
+  [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
 
 ## Rollback
 

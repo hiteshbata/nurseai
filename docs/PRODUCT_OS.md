@@ -61,12 +61,18 @@ proposition.
 sub-tests plus Mock Test are feature-complete and live. **Adaptive Learning
 V1 is now complete across all four modules** (Speaking, Reading, Listening,
 Writing — Sprints 1-4, all CTO-approved 2026-08-08) — see Completed Work
-below. **RC1 is open**, bundling these four sprints for production release;
-see [RELEASES.md](RELEASES.md) → Release Candidates. The remaining work
-before RC1 closes is live-verification of all four insights cards in
-production, not new feature work — see In Progress below and
-[BACKLOG.md](BACKLOG.md) → Now. Learner Brain Foundation (skill-graph schema
-groundwork) continues as separate, unrelated work. See
+below. **RC1 is open** (git-workflow portion closed), bundling these four
+sprints for production release; see [RELEASES.md](RELEASES.md) → Release
+Candidates. **RC2 — Adaptive Dashboard V1** (cross-module dashboard: per-
+module progress cards, Weak Skills list, Adaptive Recommendation card) has
+also shipped its git-workflow portion — merged to `main` and tagged
+`v1.1.0-rc2` 2026-08-08, plus a new Playwright suite
+(`frontend/tests/e2e/dashboard.spec.ts`) and
+[RC2_QA_CHECKLIST.md](RC2_QA_CHECKLIST.md). The remaining work before either
+RC closes is live-verification against production, not new feature work —
+see In Progress below and [BACKLOG.md](BACKLOG.md) → Now. **RC3 is not yet
+opened** — no sprint work is scoped for it. Learner Brain Foundation
+(skill-graph schema groundwork) continues as separate, unrelated work. See
 [ROADMAP.md](ROADMAP.md) for phase detail.
 
 ## Current Sprint
@@ -199,6 +205,12 @@ to production — see [RELEASES.md](RELEASES.md) → Release Candidates.
   code-complete, QA-gated, and CTO-approved; only Speaking has merged past
   `develop` so far. This is the blocking item before RC1 closes — see
   [BACKLOG.md](BACKLOG.md) → Now and the RC1 report.
+- **RC2 live-verification gate** — Adaptive Dashboard V1 is merged to
+  `main` and tagged `v1.1.0-rc2`, with a passing Playwright suite run
+  locally against a dev server; it has not yet been click-through verified
+  against a live preview or production deploy per
+  [RC2_QA_CHECKLIST.md](RC2_QA_CHECKLIST.md). This is the blocking item
+  before RC2 closes — see [RELEASES.md](RELEASES.md) → Release Candidates.
 
 ## Next Work
 

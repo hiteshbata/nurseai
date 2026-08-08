@@ -9,6 +9,81 @@ dashboard.
 
 ---
 
+## 2026-08-08 — RC2: Adaptive Dashboard V1 + QA
+
+Cross-module dashboard surfacing the same `user_skill_stats`/skill-graph
+spine Sprints 1-4 (Adaptive Learning V1) already write to, aggregated across
+all four modules instead of shown one-module-at-a-time on each results page.
+Replaces the old static `RecommendedCaseCard` on `/dashboard`.
+
+**Files changed**:
+- `backend/app/services/dashboard_analytics.py` (new) — `compute_trend`
+  (improving/stable/declining/insufficient_data off a 3-session-vs-prior-3
+  window), `get_skill_insights` (one pass over `get_weakness` per module,
+  reused for both per-module weakest/strongest and the cross-module Weak
+  Skills list), `pick_weakest_module`.
+- `backend/app/routers/progress.py` — `GET /progress/stats` now also
+  returns `module_averages` (per-module average/trend/last_activity/
+  strongest+weakest skill), `weak_skills` (cross-module, weakest-first),
+  and `next_best_action` (weakest attempted module, matched to a specific
+  weak skill when one exists).
+- `backend/app/routers/{listening,reading,writing}.py` — `GET
+  /{module}/{tests,scenarios}/recommend`, one recommended item for the
+  dashboard's Next Best Action card (Speaking's equivalent already
+  existed). Registered before the `/{id}` route in each file so
+  `"recommend"` isn't swallowed as an id.
+- `frontend/app/components/oet/ModuleProgressCard.tsx`,
+  `WeakSkillsList.tsx` (new) — per-module cards (average, trend, last
+  activity, strongest/weakest skill) and the cross-module weak-skills list.
+- `frontend/app/components/oet/AdaptiveRecommendationCard.tsx` (renamed
+  from `RecommendedCaseCard.tsx`) — fetches the matching `/recommend`
+  endpoint for `next_best_action.module` and links into that module.
+- `frontend/app/components/oet-dashboard.tsx`, `dashboard/page.tsx`,
+  `oet/types.ts` — wiring for the above.
+- `frontend/tests/e2e/dashboard.spec.ts` (new, RC2 QA) — 7 scenarios:
+  page load with no fatal/console errors, existing-learner full render,
+  new-learner empty state (mocked `/progress/stats`), one-session learner
+  (trend gracefully degrades to "Not enough data yet"), responsive layout
+  (desktop + mobile, no horizontal scroll), uncaught-exception guard, and
+  `/progress/stats` API verification.
+- `docs/RC2_QA_CHECKLIST.md` (new) — manual founder click-through list
+  covering all four modules, the dashboard, monitoring, and release
+  verification.
+
+**User-visible changes**: `/dashboard` now shows one card per module
+(average band, trend arrow, last activity, strongest/weakest skill), a
+cross-module Weak Skills list, and an Adaptive Recommendation card that
+routes to whichever module + item is currently weakest — instead of the
+prior static recommended-case card.
+
+**QA notes** (this entry's actual scope — the dashboard feature above was
+already code-complete going into this pass): two issues surfaced by the new
+Playwright suite, both in the test itself, not the product — concurrent
+Playwright workers logging into the same shared test account raced against
+Supabase Auth (`page.waitForURL` timing out); fixed by authenticating once
+in `beforeAll` and reusing `storageState` across a serial test run.
+Unscoped `getByText('Speaking')` false-matched the sidebar nav instead of
+the real module card; fixed by scoping assertions to `getByRole('main')`.
+No product-code defects found. `tsc --noEmit` clean; full Playwright suite
+(12 tests: 5 existing RC1 smoke + 7 new dashboard) passing locally.
+
+**Known limitations**:
+- Not yet live-verified against production/preview traffic — merged to
+  `main` and tagged `v1.1.0-rc2`, but the click-through in
+  [RC2_QA_CHECKLIST.md](RC2_QA_CHECKLIST.md) hasn't been run against a
+  live deploy yet (same gate RC1 is still waiting on — see
+  [RELEASES.md](RELEASES.md)).
+- `docs/DOMAIN_SPLIT_MIGRATION_PLAN.md` was sitting uncommitted alongside
+  this work but is unrelated (separate, not-yet-started initiative) — left
+  out of this commit on purpose.
+
+**Future follow-ups**:
+- Live-verify per [RC2_QA_CHECKLIST.md](RC2_QA_CHECKLIST.md).
+- AppShell renders two `<h1>` per authenticated page (top-bar page title +
+  each page's own heading, e.g. `DashboardHeader`'s greeting) — pre-existing
+  across every route, not introduced by this work; worth a future a11y pass
+  but out of scope for a dashboard-only QA sprint.
+
 ## 2026-08-08 — Adaptive Speaking V1
 
 **Feature name**: Adaptive Speaking V1 (Sprint 1, ADR-008 in
