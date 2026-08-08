@@ -18,14 +18,23 @@ const USE_APP_SHELL = true
 // dropping to the top bar via the avatar menu's "Help & Support" link is
 // consistent with how Privacy/Terms already behave from that same menu.
 const PUBLIC_PATHS = ['/', '/about', '/blog', '/privacy', '/terms', '/pricing', '/support']
-const PUBLIC_PREFIXES = ['/learn', '/docs', '/admin', '/tools']
+const PUBLIC_PREFIXES = ['/learn', '/docs', '/tools']
 
 export default function ConditionalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const isFullPage = pathname?.startsWith('/auth') || pathname?.startsWith('/onboarding')
+  // AdminShell (app/admin/AdminShell.tsx) is a fully self-contained shell --
+  // its own sidebar, its own nav, its own auth/role gate. Wrapping it in the
+  // marketing Navbar/Footer here meant every /admin page shipped a second,
+  // wrong-context nav (Navbar's own isPublicPage check doesn't know /admin
+  // is "public" the way this file does, so it rendered the signed-in app's
+  // nav links) plus a permanent marketing Footer at the bottom of every
+  // admin page. Treat /admin like the isFullPage routes instead: no chrome
+  // from this file at all.
+  const isAdminPage = pathname?.startsWith('/admin')
   const hideFooter = pathname?.startsWith('/practice/speaking')
 
-  if (isFullPage) {
+  if (isFullPage || isAdminPage) {
     return <main id="main-content">{children}</main>
   }
 

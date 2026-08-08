@@ -7,6 +7,7 @@ import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { OetDashboard } from '@/components/oet-dashboard'
 import { scoreToGrade } from '@/app/practice/speaking/shared'
+import { RouteSpinner } from '@/components/RouteSpinner'
 
 interface Stats {
   total_submissions: number
@@ -228,6 +229,14 @@ export default function DashboardPage() {
     empathy: criteriaAverages?.empathy ?? null,
     intelligibility: criteriaAverages?.intelligibility ?? null,
   }), [criteriaAverages])
+
+  // Mirrors the guard in profile/page.tsx and onboarding/page.tsx -- without
+  // this, OetDashboard mounts with placeholder data (userName='there', all
+  // stats zeroed) during the initial 'loading' tick, or right before the
+  // unauthenticated/anonymous redirect effect above fires.
+  if (status === 'loading' || status === 'unauthenticated' || session?.user?.is_anonymous) {
+    return <RouteSpinner message="Loading dashboard..." />
+  }
 
   return (
     <Suspense fallback={

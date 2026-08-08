@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, AxiosResponse } f
 import * as Sentry from '@sentry/nextjs'
 import { createElement } from 'react'
 import toast from 'react-hot-toast'
-import { supabase } from '@/lib/supabase'
+import { supabase, signOut } from '@/lib/supabase'
 import type { Plan } from './plans'
 
 const api: AxiosInstance = axios.create({
@@ -88,11 +88,13 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && error.config?.url) {
       const requestUrl: string = error.config.url
       const isPublicPath = ['/plans/'].some((p) => requestUrl.startsWith(p))
-      if (!isPublicPath) {
-        if (typeof window !== 'undefined') {
-          supabase.auth.signOut()
-          window.location.href = '/auth/login'
-        }
+      // Routes through the same signOut() every other logout path uses (see
+      // supabase.ts) instead of calling supabase.auth.signOut() directly --
+      // that raw call skips the loggingOut flag, so every mounted page's own
+      // "unauthenticated -> redirect" effect fired at the same time as this
+      // handler's own redirect, racing two navigations to the same place.
+      if (!isPublicPath && typeof window !== 'undefined') {
+        signOut('/auth/login')
       }
     }
 

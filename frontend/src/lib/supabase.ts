@@ -152,7 +152,15 @@ export async function updatePassword(newPassword: string) {
   if (error) throw error
 }
 
-export async function signOut() {
+// Single logout path for the whole app -- every caller (menu "Sign Out"
+// buttons, the api.ts 401 interceptor, post-password-reset, etc.) goes
+// through this instead of calling supabase.auth.signOut() directly. That
+// matters because the `loggingOut` flag above only suppresses the SIGNED_OUT
+// event for callers that go through here; a caller that bypasses this and
+// calls the raw client method fires SIGNED_OUT unsuppressed, which makes
+// every mounted page's own "unauthenticated -> redirect" effect fire at the
+// same time as that caller's redirect -- two navigations racing each other.
+export async function signOut(redirectTo?: string) {
   const client = getClient()
   if (client) {
     loggingOut = true
@@ -170,7 +178,7 @@ export async function signOut() {
     }
     if (accessToken) {
       try {
-        // Dynamic import: api.ts imports `supabase` from this file, so a
+        // Dynamic import: api.ts imports `signOut` from this file, so a
         // static import here would be circular.
         const { default: api } = await import('@/lib/api')
         await api.post('/auth/logout', {}, { headers: { Authorization: `Bearer ${accessToken}` } })
@@ -178,5 +186,11 @@ export async function signOut() {
         console.error('[supabase] server-side logout revoke failed (non-fatal):', e)
       }
     }
+  }
+  // Callers that need to stay put (e.g. showing a toast before a delayed
+  // router.push elsewhere) simply omit redirectTo -- this only navigates
+  // when asked to, so it doesn't change behavior for those call sites.
+  if (redirectTo && typeof window !== 'undefined') {
+    window.location.href = redirectTo
   }
 }

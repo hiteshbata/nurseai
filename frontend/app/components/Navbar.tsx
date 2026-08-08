@@ -327,7 +327,7 @@ export function Navbar() {
                   <button
                     ref={signOutMenuItemRef}
                     role="menuitem"
-                    onClick={async () => { setAvatarOpen(false); await signOut(); window.location.href = '/' }}
+                    onClick={async () => { setAvatarOpen(false); await signOut('/') }}
                     className="flex items-center gap-2 px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 w-full text-left"
                   >
                     <LogOut className="h-4 w-4" />

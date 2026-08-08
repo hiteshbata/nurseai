@@ -106,15 +106,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   }, [mobileNavOpen])
 
   useEffect(() => {
-    // Hide main site navbar on admin pages
-    const mainNav = document.querySelector('#main-navbar')
-    if (mainNav) (mainNav as HTMLElement).style.display = 'none'
-    return () => {
-      if (mainNav) (mainNav as HTMLElement).style.display = ''
-    }
-  }, [])
-
-  useEffect(() => {
     if (status === 'loading') return
     if (!session?.user) {
       router.push('/auth/login')
