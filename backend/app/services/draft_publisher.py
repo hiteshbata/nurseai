@@ -25,10 +25,13 @@ it never creates a second one. See publish()'s docstring for what a
 republish does and doesn't touch.
 """
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
 from app.core.supabase import get_supabase
+
+logger = logging.getLogger(__name__)
 
 _PUBLISH_TABLE = {
     "speaking": "scenarios",
@@ -189,8 +192,15 @@ def build_preview(draft: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _insert_questions(supabase, module: str, questions: List[Dict[str, Any]], link_col: str, link_id: int) -> List[Any]:
-    inserted_ids = []
+def _insert_questions(
+    supabase, module: str, questions: List[Dict[str, Any]], link_col: str, link_id: int,
+    collected: List[Any] = None,
+) -> List[Any]:
+    """Inserts one row per question. `collected`, if given, is appended to as
+    each insert succeeds -- so a caller that needs to know what actually
+    landed before a later item fails (see _replace_questions) still has that
+    list even though this function raises instead of returning on failure."""
+    inserted_ids = collected if collected is not None else []
     for q in questions:
         row = supabase.table("questions").insert({
             "module": module,
@@ -205,16 +215,35 @@ def _insert_questions(supabase, module: str, questions: List[Dict[str, Any]], li
 
 
 def _replace_questions(supabase, module: str, questions: List[Dict[str, Any]], link_col: str, link_id: int) -> int:
-    """Republish: swap in the edited question set without ever leaving the
-    row with zero questions if this fails partway. Insert the new set first;
-    only delete the old set once the new one is fully in place. If the
-    insert fails, the old questions are still untouched and intact -- a
-    retry-safe partial-failure state, not a data-loss one."""
-    new_ids = _insert_questions(supabase, module, questions, link_col, link_id)
-    query = supabase.table("questions").delete().eq(link_col, link_id)
-    if new_ids:
-        query = query.not_.in_("id", new_ids)
-    query.execute()
+    """Republish: swap in the edited question set without ever leaving a
+    mixed or duplicated set behind. The old set is never touched until the
+    complete new set is confirmed inserted. If anything fails -- a partial
+    insert, or the old-set delete itself -- whatever new rows did get
+    created are torn back down (by id, scoped to this link_id, never a bare
+    delete-by-id that could touch an unrelated question) and the old set is
+    left as the sole survivor. The original exception is always what
+    propagates; if the cleanup delete itself also fails, that's logged, not
+    raised in place of it -- a cleanup failure must never hide why the
+    replacement actually failed."""
+    new_ids: List[Any] = []
+    try:
+        _insert_questions(supabase, module, questions, link_col, link_id, collected=new_ids)
+        query = supabase.table("questions").delete().eq(link_col, link_id)
+        if new_ids:
+            query = query.not_.in_("id", new_ids)
+        query.execute()
+    except Exception:
+        if new_ids:
+            try:
+                supabase.table("questions").delete().eq(link_col, link_id).in_("id", new_ids).execute()
+            except Exception:
+                logger.exception(
+                    "Republish of %s=%s failed and cleanup of %d partially-inserted question "
+                    "row(s) also failed -- ids %s may be orphaned and need manual removal. "
+                    "The old question set was never touched and is still intact.",
+                    link_col, link_id, len(new_ids), new_ids,
+                )
+        raise
     return len(questions)
 
 

@@ -28,11 +28,13 @@ class _NotProxy:
 
 
 class FakeQuery:
-    def __init__(self, rows, table_name=None, enforce_source_draft_unique=False):
+    def __init__(self, rows, table_name=None, enforce_source_draft_unique=False, supabase=None):
         self._rows = rows
         self._table_name = table_name
         self._enforce_source_draft_unique = enforce_source_draft_unique
+        self._supabase = supabase
         self._filters = []
+        self._in_filters = []
         self._not_in_filters = []
         self._op = None
         self._payload = None
@@ -42,6 +44,10 @@ class FakeQuery:
 
     def eq(self, col, val):
         self._filters.append((col, val))
+        return self
+
+    def in_(self, col, values):
+        self._in_filters.append((col, set(values)))
         return self
 
     def ilike(self, col, val):
@@ -76,6 +82,7 @@ class FakeQuery:
         matched = [
             r for r in self._rows
             if all(r.get(c) == v for c, v in self._filters)
+            and all(r.get(c) in vals for c, vals in self._in_filters)
             and all(r.get(c) not in vals for c, vals in self._not_in_filters)
         ]
         if self._op == "update":
@@ -83,6 +90,15 @@ class FakeQuery:
                 r.update(self._payload)
             return FakeResult(matched)
         if self._op == "insert":
+            # Fault injection for _replace_questions tests: fail_insert_on_call[table]
+            # = the 1-indexed call number (across the whole test) that should raise,
+            # simulating a transient DB error partway through a batch of inserts.
+            if self._supabase is not None:
+                counts = self._supabase._insert_counts
+                counts[self._table_name] = counts.get(self._table_name, 0) + 1
+                fail_at = self._supabase.fail_insert_on_call.get(self._table_name)
+                if fail_at is not None and counts[self._table_name] == fail_at:
+                    raise Exception(f"simulated insert failure on {self._table_name} (call #{fail_at})")
             # Mirrors reading_passages_source_draft_uidx / listening_sections_source_draft_uidx
             # (20260808050000_draft_review_workflow.sql) -- a partial unique index on
             # source_draft_id, null-safe (legacy rows with no source_draft_id never conflict).
@@ -97,6 +113,12 @@ class FakeQuery:
             self._rows.append(row)
             return FakeResult([row])
         if self._op == "delete":
+            # Fault injection: fail_next_delete is a one-shot set of table names --
+            # the next delete() on that table raises once, then the trigger clears
+            # itself (so a cleanup retry against the same table can still succeed).
+            if self._supabase is not None and self._table_name in self._supabase.fail_next_delete:
+                self._supabase.fail_next_delete.discard(self._table_name)
+                raise Exception(f"simulated delete failure on {self._table_name}")
             for r in matched:
                 self._rows.remove(r)
             return FakeResult(matched)
@@ -111,11 +133,14 @@ class FakeSupabase:
 
     def __init__(self):
         self.tables = {}
+        self._insert_counts = {}
+        self.fail_insert_on_call = {}
+        self.fail_next_delete = set()
 
     def table(self, name):
         self.tables.setdefault(name, [])
         return FakeQuery(
-            self.tables[name], table_name=name,
+            self.tables[name], table_name=name, supabase=self,
             enforce_source_draft_unique=name in self.UNIQUE_SOURCE_DRAFT_TABLES,
         )
 
@@ -658,6 +683,131 @@ def test_speaking_full_republish_lifecycle_with_title_change(monkeypatch):
     row = fake.tables["scenarios"][0]
     assert row["title"] == "Anxious Patient V2 (renamed)"
     assert row["source_draft_id"] == 3
+
+
+# ── _replace_questions() failure safety ─────────────────────────────────
+# The final review found this wasn't atomic: a mid-loop insert failure, or
+# a failure of the old-set delete after the new set landed, could leave a
+# mixed or duplicated question set with no recovery. Each test seeds a
+# passage that already has a published row (existing_id findable via
+# source_draft_id) and an old question set, then republishes with fault
+# injection controlling exactly where the failure happens.
+
+def test_replace_questions_normal_swap_keeps_only_new(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    fake.tables["reading_passages"] = [{"id": 1, "title": "T", "source_draft_id": 9, "is_active": False}]
+    fake.tables["questions"] = [
+        {"id": 100, "passage_id": 1, "content": "old-1"},
+        {"id": 101, "passage_id": 1, "content": "old-2"},
+    ]
+    draft = _draft(id=9, module="reading", generated_content={
+        "title": "T", "part": "B", "body": "b",
+        "questions": [{"type": "mcq", "content": "new-1", "options": ["a", "b"], "correct_answer": "a"}],
+    })
+    result = draft_publisher.publish(draft, "owner-1")
+    assert result["action"] == "updated"
+    remaining = [q["content"] for q in fake.tables["questions"] if q["passage_id"] == 1]
+    assert remaining == ["new-1"]
+
+
+def test_replace_questions_fails_on_first_insert_leaves_old_intact(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    fake.tables["reading_passages"] = [{"id": 1, "title": "T", "source_draft_id": 9, "is_active": False}]
+    fake.tables["questions"] = [
+        {"id": 100, "passage_id": 1, "content": "old-1"},
+        {"id": 101, "passage_id": 1, "content": "old-2"},
+    ]
+    fake.fail_insert_on_call["questions"] = 1  # the very first new-question insert fails
+    draft = _draft(id=9, module="reading", generated_content={
+        "title": "T", "part": "B", "body": "b",
+        "questions": [{"type": "mcq", "content": "new-1", "options": ["a"], "correct_answer": "a"}],
+    })
+    try:
+        draft_publisher.publish(draft, "owner-1")
+        assert False, "expected the simulated insert failure to propagate"
+    except Exception as e:
+        assert "simulated insert failure" in str(e)
+    remaining = sorted(q["content"] for q in fake.tables["questions"] if q["passage_id"] == 1)
+    assert remaining == ["old-1", "old-2"]  # untouched -- no new rows landed at all
+
+
+def test_replace_questions_fails_halfway_cleans_up_partial_new_rows(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    fake.tables["reading_passages"] = [{"id": 1, "title": "T", "source_draft_id": 9, "is_active": False}]
+    fake.tables["questions"] = [
+        {"id": 100, "passage_id": 1, "content": "old-1"},
+        {"id": 101, "passage_id": 1, "content": "old-2"},
+    ]
+    fake.fail_insert_on_call["questions"] = 3  # A, B succeed; C fails
+    draft = _draft(id=9, module="reading", generated_content={
+        "title": "T", "part": "B", "body": "b",
+        "questions": [
+            {"type": "mcq", "content": "new-A", "options": ["a"], "correct_answer": "a"},
+            {"type": "mcq", "content": "new-B", "options": ["a"], "correct_answer": "a"},
+            {"type": "mcq", "content": "new-C", "options": ["a"], "correct_answer": "a"},
+        ],
+    })
+    try:
+        draft_publisher.publish(draft, "owner-1")
+        assert False, "expected the simulated insert failure to propagate"
+    except Exception as e:
+        assert "simulated insert failure" in str(e)
+    remaining = sorted(q["content"] for q in fake.tables["questions"] if q["passage_id"] == 1)
+    # Old set survives; A and B (the partial new inserts) were cleaned back out; C never landed.
+    assert remaining == ["old-1", "old-2"]
+
+
+def test_replace_questions_fails_deleting_old_cleans_up_new_rows(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    fake.tables["reading_passages"] = [{"id": 1, "title": "T", "source_draft_id": 9, "is_active": False}]
+    fake.tables["questions"] = [
+        {"id": 100, "passage_id": 1, "content": "old-1"},
+        {"id": 101, "passage_id": 1, "content": "old-2"},
+    ]
+    fake.fail_next_delete.add("questions")  # old-set delete fails, after the new set is fully inserted
+    draft = _draft(id=9, module="reading", generated_content={
+        "title": "T", "part": "B", "body": "b",
+        "questions": [{"type": "mcq", "content": "new-1", "options": ["a"], "correct_answer": "a"}],
+    })
+    try:
+        draft_publisher.publish(draft, "owner-1")
+        assert False, "expected the simulated delete failure to propagate"
+    except Exception as e:
+        assert "simulated delete failure" in str(e)
+    remaining = sorted(q["content"] for q in fake.tables["questions"] if q["passage_id"] == 1)
+    # new-1 was inserted, then torn back down by the cleanup delete; old set survives untouched.
+    assert remaining == ["old-1", "old-2"]
+
+
+def test_replace_questions_listening_fails_halfway_cleans_up_partial_new_rows(monkeypatch):
+    """Same failure mode, listening_sections/section_id -- confirms the fix
+    isn't reading-specific."""
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    fake.tables["listening_sections"] = [{"id": 1, "title": "T", "source_draft_id": 9, "is_active": False}]
+    fake.tables["questions"] = [
+        {"id": 100, "section_id": 1, "content": "old-1"},
+        {"id": 101, "section_id": 1, "content": "old-2"},
+    ]
+    fake.fail_insert_on_call["questions"] = 2
+    draft = _draft(id=9, module="listening", generated_content={
+        "title": "T", "transcript": [],
+        "questions": [
+            {"type": "mcq", "content": "new-A", "options": ["a"], "correct_answer": "a"},
+            {"type": "mcq", "content": "new-B", "options": ["a"], "correct_answer": "a"},
+        ],
+    })
+    try:
+        draft_publisher.publish(draft, "owner-1")
+        assert False, "expected the simulated insert failure to propagate"
+    except Exception as e:
+        assert "simulated insert failure" in str(e)
+    remaining = sorted(q["content"] for q in fake.tables["questions"] if q["section_id"] == 1)
+    assert remaining == ["old-1", "old-2"]
 
 
 if __name__ == "__main__":
