@@ -40,6 +40,7 @@ from app.services.mcq_grading import grade_exact_match, combine_graded_results, 
 from app.services.open_ended_grading import grade_open_ended_answers
 from app.services.explanations import generate_mcq_explanation
 from app.services.skill_graph import record_skill_observations, get_weakness
+from app.services.coaching_messages import RECOMMENDATION_REASON, ACTIONABLE_IMPROVEMENT, CONFIDENCE_MESSAGE
 from app.services.listening_audio import (
     generate_two_speaker_audio, cut_segment, deepgram_transcribe, timestamped_lines,
     TtsError, OPENAI_VOICES,
@@ -213,6 +214,129 @@ def get_test(test_id: int, current_user: UserInfo = Depends(get_current_user)):
     return _load_test_payload(test_id, include_inactive=False)
 
 
+def _recommend_listening_tests(current_user: UserInfo, user_db: Client, limit: int) -> list:
+    """Shared ranking, same shape as reading._recommend_reading_tests: unattempted
+    tests first (shuffled), then the user's lowest-scored attempted tests, weakest
+    first. Reuses list_tests for the candidate pool rather than re-querying it."""
+    import random
+
+    all_tests = list_tests(current_user)
+    if not all_tests:
+        raise HTTPException(status_code=404, detail="No listening tests available")
+
+    subs = user_db.table("submissions").select("feedback, score").eq(
+        "user_id", current_user.id
+    ).eq("module", "listening").execute()
+    attempted_scores: Dict[int, list] = {}
+    for s in subs.data:
+        try:
+            fb = json.loads(s["feedback"]) if isinstance(s["feedback"], str) else (s["feedback"] or {})
+        except (json.JSONDecodeError, TypeError):
+            continue
+        test_id = fb.get("test_id")
+        if test_id is not None:
+            attempted_scores.setdefault(test_id, []).append(s.get("score", 0))
+
+    tests_by_id = {t["id"]: t for t in all_tests}
+    unattempted = [t for t in all_tests if t["id"] not in attempted_scores]
+    random.shuffle(unattempted)
+    weakest_first = sorted(attempted_scores.items(), key=lambda kv: sum(kv[1]) / len(kv[1]))
+
+    recs = []
+    seen_ids = set()
+
+    for t in unattempted:
+        if len(recs) >= limit:
+            break
+        recs.append({"test_id": t["id"], "title": t["title"], "reason": "New - you haven't tried this test yet"})
+        seen_ids.add(t["id"])
+
+    for tid, scores in weakest_first:
+        if len(recs) >= limit:
+            break
+        if tid in seen_ids:
+            continue
+        pick = tests_by_id.get(tid)
+        if not pick:
+            continue
+        avg = sum(scores) / len(scores)
+        recs.append({
+            "test_id": pick["id"],
+            "title": pick["title"],
+            "reason": f"Needs practice - your average score for this test is {avg:.1f}/6",
+        })
+        seen_ids.add(tid)
+
+    if not recs:
+        for t in random.sample(all_tests, min(limit, len(all_tests))):
+            recs.append({"test_id": t["id"], "title": t["title"], "reason": "Try this test"})
+
+    return recs
+
+
+async def _build_listening_insights(
+    per_part: Dict[str, float],
+    current_user: UserInfo,
+    user_db: Client,
+) -> Optional[dict]:
+    """Rule-based V1 recommendation, same shape/pattern as
+    reading._build_reading_insights (Sprint 2) and speaking._build_speaking_insights
+    (Sprint 1, ADR-008), ported locally rather than shared.
+
+    Listening has no listening:skill:* sub-tags (only part-level A/B/C), so
+    insights key off part rather than a finer skill tag -- reusing what the
+    skill graph already records (listening.py submit_test) instead of inventing
+    a new tag namespace for this sprint.
+
+    # TODO: LISTENING_PART_LABELS is just "Part A/B/C" -- swap in friendlier
+    # learner-facing labels (e.g. what each part actually tests) once that
+    # copy exists; out of scope for this sprint.
+
+    Best-effort like record_skill_observations: the submission is already
+    saved by the time this runs, so a weakness-history or recommendation
+    query blipping must not turn an already-successful score into a 500."""
+    if not per_part:
+        return None
+    try:
+        strongest_tag, strongest_score = max(per_part.items(), key=lambda kv: kv[1])
+        strongest_label = LISTENING_PART_LABELS.get(strongest_tag, strongest_tag)
+
+        history = await get_weakness(user_db, current_user.id, "listening:", lambda s: LISTENING_PART_LABELS.get(s, s))
+        if history:
+            weakest = history[0]
+            weakest_tag = weakest["skill"]
+            weakest_label = weakest["label"]
+            weakest_score = weakest["band"]
+            basis = "history"
+            template_args = {"label": weakest_label, "attempts": weakest["attempts"]}
+        else:
+            weakest_tag, weakest_score = min(per_part.items(), key=lambda kv: kv[1])
+            weakest_label = LISTENING_PART_LABELS.get(weakest_tag, weakest_tag)
+            basis = "session"
+            template_args = {"label": weakest_label, "attempts": 1}
+
+        next_best_action = None
+        try:
+            recs = _recommend_listening_tests(current_user, user_db, 1)
+            if recs:
+                next_best_action = recs[0]
+        except HTTPException:
+            pass  # no tests available -- insights still useful without a pick
+
+        return {
+            "strongest_skill": {"tag": strongest_tag, "label": strongest_label, "score": strongest_score},
+            "weakest_skill": {"tag": weakest_tag, "label": weakest_label, "score": weakest_score},
+            "recommendation_reason": RECOMMENDATION_REASON[basis].format(**template_args),
+            "actionable_improvement": ACTIONABLE_IMPROVEMENT[basis].format(**template_args),
+            "confidence_message": CONFIDENCE_MESSAGE[basis].format(**template_args),
+            "next_best_action": next_best_action,
+            "based_on": basis,
+        }
+    except Exception as e:
+        logger.warning("[LISTENING_INSIGHTS_FAILED] user_id=%s error=%s", current_user.id, str(e)[:300])
+        return None
+
+
 class ListeningAnswer(BaseModel):
     questionId: int
     selectedOption: Optional[str] = None
@@ -323,6 +447,8 @@ async def submit_test(
         }).execute
     )
 
+    insights = await _build_listening_insights(per_part, current_user, user_db)
+
     return {
         "score": combined["band"],
         "correct": combined["correct"],
@@ -330,6 +456,7 @@ async def submit_test(
         "results": combined["results"],
         "per_part": per_part,
         "transcripts": {s["id"]: s.get("transcript") for s in sections.data},
+        "insights": insights,
     }
 
 

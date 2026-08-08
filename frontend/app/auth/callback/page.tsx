@@ -35,6 +35,7 @@ export default function AuthCallbackPage() {
         trackEvent('signup_completed', { method: 'google' })
         trackMetaEvent('CompleteRegistration', { registration_method: 'oauth' }, { email: session.user.email })
       } else {
+        trackEvent('login_completed', { method: 'oauth' })
         trackMetaEvent('UserLoggedIn', { method: 'oauth' }, { email: session.user.email })
       }
       try {

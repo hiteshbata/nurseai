@@ -32,6 +32,8 @@ from app.services.open_ended_grading import grade_open_ended_answers
 from app.services.explanations import generate_reading_explanation_with_evidence
 from app.services.skill_graph import record_skill_observations, get_weakness
 from app.services.reading_skills import classify_reading_skill, SKILL_LABELS
+from app.services.observation_service import validate_and_normalize
+from app.services.coaching_messages import RECOMMENDATION_REASON, ACTIONABLE_IMPROVEMENT, CONFIDENCE_MESSAGE
 from app.services.plan_gating import has_reading_access, has_free_module_attempt, get_plan_from_profile
 
 logger = logging.getLogger(__name__)
@@ -297,10 +299,10 @@ async def submit_reading(
             qid: classify_reading_skill(q["content"], q.get("type") or "mcq", part)
             for qid, q in questions_by_id.items()
         }
-        await record_skill_observations(current_user.id, {
+        await record_skill_observations(current_user.id, validate_and_normalize("reading", {
             f"reading:{part}": combined["band"],
             **_skill_observation_bands(combined["results"], skill_by_qid),
-        })
+        }))
 
     await run_sync(
         user_db.table("submissions").insert({
@@ -398,6 +400,69 @@ def list_reading_tests(current_user: UserInfo = Depends(get_current_user)):
     return [{"id": t["id"], "title": t["title"], "passage_count": counts.get(t["id"], 0)} for t in tests if counts.get(t["id"], 0) > 0]
 
 
+def _recommend_reading_tests(current_user: UserInfo, user_db: Client, limit: int) -> list:
+    """Shared ranking, same shape as speaking._recommend_scenarios: unattempted
+    tests first (shuffled, so repeat visits don't always see the same one),
+    then the user's lowest-scored attempted tests, weakest first. Reuses
+    list_reading_tests for the candidate pool rather than re-querying it.
+    test_id/score aren't columns on submissions -- both live in feedback JSON,
+    same as /reading/tests/completed-ids."""
+    import random
+
+    all_tests = list_reading_tests(current_user)
+    if not all_tests:
+        raise HTTPException(status_code=404, detail="No reading tests available")
+
+    subs = user_db.table("submissions").select("feedback, score").eq(
+        "user_id", current_user.id
+    ).eq("module", "reading").execute()
+    attempted_scores: Dict[int, list] = {}
+    for s in subs.data:
+        try:
+            fb = json.loads(s["feedback"]) if isinstance(s["feedback"], str) else (s["feedback"] or {})
+        except (json.JSONDecodeError, TypeError):
+            continue
+        test_id = fb.get("test_id")
+        if test_id is not None:
+            attempted_scores.setdefault(test_id, []).append(s.get("score", 0))
+
+    tests_by_id = {t["id"]: t for t in all_tests}
+    unattempted = [t for t in all_tests if t["id"] not in attempted_scores]
+    random.shuffle(unattempted)
+    weakest_first = sorted(attempted_scores.items(), key=lambda kv: sum(kv[1]) / len(kv[1]))
+
+    recs = []
+    seen_ids = set()
+
+    for t in unattempted:
+        if len(recs) >= limit:
+            break
+        recs.append({"test_id": t["id"], "title": t["title"], "reason": "New - you haven't tried this test yet"})
+        seen_ids.add(t["id"])
+
+    for tid, scores in weakest_first:
+        if len(recs) >= limit:
+            break
+        if tid in seen_ids:
+            continue
+        pick = tests_by_id.get(tid)
+        if not pick:
+            continue
+        avg = sum(scores) / len(scores)
+        recs.append({
+            "test_id": pick["id"],
+            "title": pick["title"],
+            "reason": f"Needs practice - your average score for this test is {avg:.1f}/6",
+        })
+        seen_ids.add(tid)
+
+    if not recs:
+        for t in random.sample(all_tests, min(limit, len(all_tests))):
+            recs.append({"test_id": t["id"], "title": t["title"], "reason": "Try this test"})
+
+    return recs
+
+
 @router.get("/tests/completed-ids")
 async def list_completed_test_ids(
     current_user: UserInfo = Depends(get_current_user),
@@ -432,6 +497,80 @@ def get_reading_test(test_id: int, current_user: UserInfo = Depends(get_current_
 class ReadingTestSubmitRequest(BaseModel):
     answers: List[ReadingAnswer]
     elapsed_seconds: Optional[int] = None
+
+
+def _reading_skill_label(tag: str) -> str:
+    """"reading:skill:inference" -> reading_skills.SKILL_LABELS's existing
+    learner-facing text (same labels /reading/weakness already shows), falling
+    back to a title-cased tag. Reuses the existing label copy rather than
+    inventing new coaching wording for the same skill."""
+    skill = tag.rsplit(":", 1)[-1]
+    return SKILL_LABELS.get(skill, skill.replace("-", " ").title())
+
+
+async def _build_reading_insights(
+    skill_scores: Dict[str, float],
+    current_user: UserInfo,
+    user_db: Client,
+) -> Optional[dict]:
+    """Rule-based V1 recommendation, same shape as
+    speaking._build_speaking_insights (Sprint 1, ADR-008), ported locally
+    rather than shared -- a common service is planned once Speaking, Reading,
+    Listening and Writing each have one of these (extract then, not now).
+
+    Reading recommendations are currently content-level rather than
+    skill-aware because the existing content library does not yet contain
+    normalized skill metadata. This is an intentional Phase 1 decision.
+    Future Content Normalization will enable true skill-aware routing
+    without changing the public API (next_best_action is a {test_id, title,
+    reason} shape regardless of how it's picked). Weakest skill is still
+    reported here -- via the same get_weakness this module's own /weakness
+    endpoint already uses -- so the learner sees an accurate weak spot even
+    though today's next_best_action can't yet be filtered to target it.
+
+    Best-effort like record_skill_observations: the submission is already
+    saved by the time this runs, so a weakness-history or recommendation
+    query blipping must not turn an already-successful score into a 500."""
+    if not skill_scores:
+        return None
+    try:
+        strongest_tag, strongest_score = max(skill_scores.items(), key=lambda kv: kv[1])
+        strongest_label = _reading_skill_label(strongest_tag)
+
+        history = await get_weakness(user_db, current_user.id, "reading:skill:", lambda s: SKILL_LABELS.get(s, s))
+        if history:
+            weakest = history[0]
+            weakest_tag = f"reading:skill:{weakest['skill']}"
+            weakest_label = weakest["label"]
+            weakest_score = weakest["band"]
+            basis = "history"
+            template_args = {"label": weakest_label, "attempts": weakest["attempts"]}
+        else:
+            weakest_tag, weakest_score = min(skill_scores.items(), key=lambda kv: kv[1])
+            weakest_label = _reading_skill_label(weakest_tag)
+            basis = "session"
+            template_args = {"label": weakest_label, "attempts": 1}
+
+        next_best_action = None
+        try:
+            recs = _recommend_reading_tests(current_user, user_db, 1)
+            if recs:
+                next_best_action = recs[0]
+        except HTTPException:
+            pass  # no tests available -- insights still useful without a pick
+
+        return {
+            "strongest_skill": {"tag": strongest_tag, "label": strongest_label, "score": strongest_score},
+            "weakest_skill": {"tag": weakest_tag, "label": weakest_label, "score": weakest_score},
+            "recommendation_reason": RECOMMENDATION_REASON[basis].format(**template_args),
+            "actionable_improvement": ACTIONABLE_IMPROVEMENT[basis].format(**template_args),
+            "confidence_message": CONFIDENCE_MESSAGE[basis].format(**template_args),
+            "next_best_action": next_best_action,
+            "based_on": basis,
+        }
+    except Exception as e:
+        logger.warning("[READING_INSIGHTS_FAILED] user_id=%s error=%s", current_user.id, str(e)[:300])
+        return None
 
 
 @router.post("/tests/{test_id}/submit")
@@ -507,15 +646,17 @@ async def submit_reading_test(
         part: round((c["correct"] / c["graded"]) * 6, 2) if c["graded"] else 0.0
         for part, c in per_part_counts.items()
     }
+    session_skill_bands: Dict[str, float] = {}
     if per_part:
         skill_by_qid = {
             qid: classify_reading_skill(q["content"], q.get("type") or "mcq", part_by_qid.get(qid) or "?")
             for qid, q in questions_by_id.items()
         }
-        await record_skill_observations(current_user.id, {
+        session_skill_bands = _skill_observation_bands(combined["results"], skill_by_qid)
+        await record_skill_observations(current_user.id, validate_and_normalize("reading", {
             **{f"reading:{part}": band for part, band in per_part.items()},
-            **_skill_observation_bands(combined["results"], skill_by_qid),
-        })
+            **session_skill_bands,
+        }))
 
     await run_sync(
         user_db.table("submissions").insert({
@@ -536,12 +677,15 @@ async def submit_reading_test(
         }).execute
     )
 
+    insights = await _build_reading_insights(session_skill_bands, current_user, user_db)
+
     return {
         "score": combined["band"],
         "correct": combined["correct"],
         "total": combined["graded"],
         "results": combined["results"],
         "per_part": per_part,
+        "insights": insights,
     }
 
 

@@ -9,9 +9,11 @@ from supabase import Client
 from app.routers.admin import require_admin
 from app.routers.mock import has_mock_section_access
 from app.core.feature_flags import require_feature
-from app.services.ai_scoring import score_writing, _call_ai
+from app.services.ai_scoring import score_writing, _call_ai, WRITING_CRITERIA_MAX
 from app.services.plan_gating import has_writing_access, get_plan_from_profile
 from app.services.skill_graph import record_skill_observations, get_weakness
+from app.services.observation_service import validate_and_normalize
+from app.services.coaching_messages import RECOMMENDATION_REASON, ACTIONABLE_IMPROVEMENT, CONFIDENCE_MESSAGE
 from app.core.redis_client import get_redis
 import asyncio
 import base64
@@ -46,6 +48,37 @@ WRITING_PLAN_GATE_ENABLED = True
 # A typed OET letter runs a few hundred words -- 20k chars is generous
 # headroom while still bounding worst-case prompt-token cost.
 MAX_WRITING_CONTENT_CHARS = 20_000
+
+# Learner-facing labels for the six OET Writing criteria -- same copy as
+# WRITING_CRITERIA in frontend/app/components/SessionFeedback.tsx, so the
+# insights card names a criterion the same way the score breakdown above it does.
+WRITING_SKILL_LABELS = {
+    "purpose": "Purpose",
+    "content": "Content",
+    "conciseness": "Conciseness & Clarity",
+    "genre_style": "Genre & Style",
+    "organization": "Organisation & Layout",
+    "language": "Language",
+}
+
+
+def _writing_skill_label(tag: str) -> str:
+    criterion = tag.rsplit(":", 1)[-1]
+    return WRITING_SKILL_LABELS.get(criterion, criterion.replace("_", " ").title())
+
+
+def normalize_writing_score(raw_score: float, max_score: int) -> float:
+    """Rescale a writing criterion's raw score (0-3 for purpose, 0-7 for the
+    other five -- see WRITING_CRITERIA_MAX) onto the shared 0-6 OET band scale
+    ObservationService expects. Scaling by ratio preserves each criterion's
+    percentile-of-max standing, so a criterion at e.g. 90% of its own max lands
+    at the same ~5.4 band a native 0-6 Speaking/Reading/Listening criterion
+    would -- keeping EMA blending and weakness-ranking comparable across
+    modules. Local to Writing only; ObservationService and score_writing's
+    rubric are unchanged."""
+    if max_score <= 0:
+        return 0.0
+    return round((raw_score / max_score) * 6, 2)
 
 
 class WritingSubmitRequest(BaseModel):
@@ -101,9 +134,10 @@ async def _require_writing_scenario(supabase, user_id: str, scenario_id: int) ->
     return scenario_data.data[0], plan
 
 
-async def _score_and_save(supabase, user_db, user_id: str, scenario_id: int, content: str, nurse_card: dict, scenario_title: str, case_notes: str = "") -> dict:
+async def _score_and_save(supabase, user_db, user_id: str, scenario_id: int, content: str, nurse_card: dict, scenario_title: str, case_notes: str = "") -> tuple[dict, Dict[str, float]]:
     """Score writing content and persist the submission. Used by /submit (typed, or
-    text confirmed after photo OCR)."""
+    text confirmed after photo OCR). Returns (feedback, normalized_criterion_scores) --
+    the latter for the caller to build insights from without re-deriving it."""
     feedback = await score_writing(
         content=content,
         nurse_card=nurse_card,
@@ -129,14 +163,15 @@ async def _score_and_save(supabase, user_db, user_id: str, scenario_id: int, con
         }).execute
     )
 
-    criterion_scores = {
-        f"writing:{criterion}": data["score"]
+    raw_criterion_scores = {
+        f"writing:{criterion}": normalize_writing_score(data["score"], WRITING_CRITERIA_MAX[criterion])
         for criterion, data in feedback.get("scores", {}).items()
-        if isinstance(data, dict) and isinstance(data.get("score"), (int, float))
+        if isinstance(data, dict) and isinstance(data.get("score"), (int, float)) and criterion in WRITING_CRITERIA_MAX
     }
+    criterion_scores = validate_and_normalize("writing", raw_criterion_scores)
     await record_skill_observations(user_id, criterion_scores)
 
-    return feedback
+    return feedback, criterion_scores
 
 
 @router.get("/scenarios")
@@ -196,6 +231,129 @@ def _is_duplicate_submit(user_id: str, scenario_id: int, content: str) -> bool:
     return False
 
 
+def _recommend_writing_scenarios(current_user: UserInfo, user_db: Client, limit: int) -> list:
+    """Shared ranking, same algorithm as speaking._recommend_scenarios: unattempted
+    scenarios first (shuffled, so repeat visits don't always see the same one), then
+    the user's lowest-scored attempted scenarios, weakest first."""
+    import random
+
+    supabase = get_supabase()
+    all_scenarios = supabase.table("scenarios").select(
+        "id, title, setting, difficulty, nurse_card"
+    ).eq("module", "writing").eq("is_active", True).execute()
+    if not all_scenarios.data:
+        raise HTTPException(status_code=404, detail="No scenarios available")
+
+    feedback_data = user_db.table("submissions").select(
+        "scenario_id, score"
+    ).eq("user_id", current_user.id).eq("module", "writing").execute()
+    avg_scores: Dict[int, list] = {}
+    for s in feedback_data.data:
+        qid = s.get("scenario_id")
+        if qid:
+            avg_scores.setdefault(qid, []).append(s.get("score", 0))
+
+    unattempted = [s for s in all_scenarios.data if s["id"] not in avg_scores]
+    random.shuffle(unattempted)
+    weakest_first = sorted(avg_scores.items(), key=lambda kv: sum(kv[1]) / len(kv[1]))
+    scenarios_by_id = {s["id"]: s for s in all_scenarios.data}
+
+    recs = []
+    seen_ids = set()
+
+    for s in unattempted:
+        if len(recs) >= limit:
+            break
+        recs.append({
+            "scenario_id": s["id"], "title": s["title"], "setting": s["setting"],
+            "difficulty": s["difficulty"], "reason": "New - you haven't tried this scenario yet",
+        })
+        seen_ids.add(s["id"])
+
+    for qid, scores in weakest_first:
+        if len(recs) >= limit:
+            break
+        if qid in seen_ids:
+            continue
+        pick = scenarios_by_id.get(qid)
+        if not pick:
+            continue
+        avg = sum(scores) / len(scores)
+        recs.append({
+            "scenario_id": pick["id"], "title": pick["title"], "setting": pick["setting"],
+            "difficulty": pick["difficulty"],
+            "reason": f"Needs practice - your average score for this scenario is {avg:.1f}/6",
+        })
+        seen_ids.add(qid)
+
+    if not recs:
+        for s in random.sample(all_scenarios.data, min(limit, len(all_scenarios.data))):
+            recs.append({
+                "scenario_id": s["id"], "title": s["title"], "setting": s["setting"],
+                "difficulty": s["difficulty"], "reason": "Try this scenario",
+            })
+
+    return recs
+
+
+async def _build_writing_insights(
+    criterion_scores: Dict[str, float],
+    current_user: UserInfo,
+    user_db: Client,
+) -> Optional[dict]:
+    """Rule-based V1 recommendation, same shape/control-flow as
+    reading._build_reading_insights and speaking._build_speaking_insights
+    (Sprint 4, ported locally per the same not-yet-shared-service note as
+    those two). criterion_scores are already writing:<criterion> tags on the
+    shared 0-6 band (see normalize_writing_score), so get_weakness and the
+    coaching templates need no writing-specific handling.
+
+    Best-effort like record_skill_observations: the submission is already
+    scored and saved by the time this runs, so a weakness-history or
+    recommendation query blipping must not turn an already-successful score
+    into a 500."""
+    if not criterion_scores:
+        return None
+    try:
+        strongest_tag, strongest_score = max(criterion_scores.items(), key=lambda kv: kv[1])
+        strongest_label = _writing_skill_label(strongest_tag)
+
+        history = await get_weakness(user_db, current_user.id, "writing:", _writing_skill_label)
+        if history:
+            weakest = history[0]
+            weakest_tag = f"writing:{weakest['skill']}"
+            weakest_label = weakest["label"]
+            weakest_score = weakest["band"]
+            basis = "history"
+            template_args = {"label": weakest_label, "attempts": weakest["attempts"]}
+        else:
+            weakest_tag, weakest_score = min(criterion_scores.items(), key=lambda kv: kv[1])
+            weakest_label = _writing_skill_label(weakest_tag)
+            basis = "session"
+            template_args = {"label": weakest_label, "attempts": 1}
+
+        next_best_action = None
+        try:
+            recs = await run_sync(_recommend_writing_scenarios, current_user, user_db, 1)
+            if recs:
+                next_best_action = recs[0]
+        except HTTPException:
+            pass  # no scenarios available -- insights still useful without a pick
+
+        return {
+            "strongest_skill": {"tag": strongest_tag, "label": strongest_label, "score": strongest_score},
+            "weakest_skill": {"tag": weakest_tag, "label": weakest_label, "score": weakest_score},
+            "recommendation_reason": RECOMMENDATION_REASON[basis].format(**template_args),
+            "actionable_improvement": ACTIONABLE_IMPROVEMENT[basis].format(**template_args),
+            "confidence_message": CONFIDENCE_MESSAGE[basis].format(**template_args),
+            "next_best_action": next_best_action,
+            "based_on": basis,
+        }
+    except Exception as e:
+        logger.warning("[WRITING_INSIGHTS_FAILED] user_id=%s error=%s", current_user.id, str(e)[:300])
+        return None
+
+
 @router.post("/submit")
 async def submit_writing(
     request: WritingSubmitRequest,
@@ -233,13 +391,14 @@ async def submit_writing(
             "message": "Upgrade to Pro or Elite to see your Writing score and feedback.",
         }
 
-    feedback = await _score_and_save(
+    feedback, criterion_scores = await _score_and_save(
         supabase, user_db, current_user.id, request.scenario_id,
         request.content, scenario.get("nurse_card", {}), scenario.get("title", ""),
         case_notes=scenario.get("setting", ""),
     )
+    insights = await _build_writing_insights(criterion_scores, current_user, user_db)
 
-    return {"success": True, "feedback": feedback}
+    return {"success": True, "feedback": feedback, "insights": insights}
 
 
 async def _read_ocr_page(idx: int, img_b64: str) -> str:

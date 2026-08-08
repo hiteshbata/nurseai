@@ -60,6 +60,16 @@ Real, wanted, not urgent. Depends on Phase 3/4 work landing first.
   `user_skill_stats` directly, no `skill_observations` dependency.
 - AI Content Factory (templated generation at volume) — see
   [CONTENT_STRATEGY.md](CONTENT_STRATEGY.md).
+- Content metadata migration (skill tags, learning objectives, OET
+  criteria, estimated duration, `ai_generated`/`human_reviewed` flags) and
+  difficulty/specialty normalization proposed in
+  [CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md) (Sprint 1.5, 2026-08-08) —
+  proposal stage, needs review/approval before it's scheduled. Runs as
+  parallel work alongside Adaptive Reading V1, which proceeds on the
+  existing content library — not a blocker for it.
+- Beginner-tier Reading and Listening content — currently zero items at
+  that difficulty in either module (see
+  [CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md) §1).
 - WhatsApp integration — paused pending provider choice and use-case
   priority (reminders? lead nurture? support?). No architecture decided.
 - AI cost/margin dashboard beyond what the admin panel already shows

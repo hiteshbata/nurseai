@@ -9,13 +9,26 @@ this file must match reality (see Definition of Done in
 
 ## Development branch
 
-**Status: V1**
+**Status: V2**
 
-`main` is the only long-lived branch. Feature branches are short-lived and
-merged directly into `main` (e.g. `fix/voiceorb-a11y`). There is no
-persistent `develop` or `staging` branch today — this is a solo/small-team
-project, not a 20-engineer org, and a long-lived integration branch would
-be overhead with no second team to protect from.
+Three-tier flow: `feature/*` → `develop` → `main`.
+
+- **`feature/*`** — one branch per unit of work (e.g. `fix/voiceorb-a11y`).
+  Short-lived, deleted after merge. Branches off `develop`, merges back
+  into `develop`.
+- **`develop`** — the integration branch. Where feature branches land and
+  get combined before anything reaches production. Lets several things
+  in flight get reviewed/combined without each one individually touching
+  `main`.
+- **`main`** — production. Vercel/Render auto-deploy on merge to `main`
+  (see Production below) — merging here ships to real users. Only
+  `develop` merges into `main`, not individual feature branches directly.
+
+Superseded V1 (`main` as the only long-lived branch, feature branches
+merged straight into it) once `develop` was introduced 2026-08-08 — see
+[docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md). The V1 rationale
+(solo/small-team, no long-lived branch to protect from) still holds for
+why there's no further staging tier beyond these three.
 
 ## QA
 
@@ -85,6 +98,64 @@ through commits.
   after a full QA gate (functional/regression/security/performance/
   accessibility/mobile/UX/code-quality/tech-debt review). No schema change.
   See [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **2026-08-08 — Adaptive Reading V1** (Sprint 2): same rule-based coaching
+  insights pattern, ported locally to the Reading test results page.
+  CTO-approved after backend tests + frontend typecheck/lint/build. No
+  schema change. Committed to `develop`, not yet merged to `main` — not a
+  release to production yet, listed here for the record. See
+  [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **2026-08-08 — Adaptive Listening V1** (Sprint 3): same rule-based
+  coaching insights pattern, ported locally to the Listening test results
+  page, keyed off existing part-level tags. CTO-approved after backend
+  self-check + frontend typecheck/build. No schema change. Committed to
+  `develop`, not yet merged to `main` — not a release to production yet,
+  listed here for the record. See
+  [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **2026-08-08 — Adaptive Writing V1** (Sprint 4): same rule-based coaching
+  insights pattern, ported locally to the Writing results page. Criterion
+  scores rescaled from their native OET ranges (Purpose /3, the other five
+  /7) onto the shared 0-6 band via a new writing-local
+  `normalize_writing_score` helper, kept out of `ObservationService` per
+  CTO instruction. CTO-approved after 11 new backend tests, a full backend
+  regression run, and a clean frontend typecheck. No schema change.
+  Committed to `develop`, not yet merged to `main` — not a release to
+  production yet, listed here for the record. Closes **Adaptive Learning
+  V1** across all four OET modules — see Release Candidates below and
+  [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+
+## Release Candidates
+
+**Status: V1 (informal, first use)**
+
+An RC is an internal label for bundling a set of related, already
+CTO-approved sprints for merge and live-verification as one unit — not a
+git tag, and not a version number shipped to users (see Versioning
+strategy above). It exists so a batch of related work lands and gets
+verified together, rather than trickling to `main` one QA-approved-but-
+unverified sprint at a time.
+
+- **RC1 — Adaptive Learning V1** (opened 2026-08-08): bundles Sprint 1
+  (Adaptive Speaking), Sprint 2 (Adaptive Reading), Sprint 3 (Adaptive
+  Listening), Sprint 4 (Adaptive Writing). All four are code-complete,
+  QA-gated, and CTO-approved.
+  - [x] Adaptive Learning (all four modules, code-complete)
+  - [x] Monitoring — Sentry environment tagging (dev/rc1/production, one
+    project), backend dev-mode gate mirroring the frontend
+  - [x] Analytics — PostHog environment tagging (one project, no per-env
+    key split), missing `login_completed`/reading+listening `score_viewed`
+    events added
+  - [x] Playwright — 5 RC1 smoke tests (landing CSP, `/health`, pricing,
+    login, signup) written and passing locally (`npm run test:e2e`);
+    `/health` needs a live backend to exercise, untested against one so far
+  - [ ] Live verification — click-through of all four insights cards
+    plus the monitoring/analytics changes above against real (rc1 or
+    production) traffic (see Definition of Done in
+    [PRODUCT_OS.md](PRODUCT_OS.md))
+  - [ ] Merge `develop` → `main` for Reading, Listening, and Writing
+    (Speaking's insights card is the only one merged past `develop` so far)
+  - [ ] Founder approval
+
+  No new Adaptive Learning feature work is in scope while RC1 is open.
 
 ## Rollback
 

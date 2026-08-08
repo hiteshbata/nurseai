@@ -6,6 +6,12 @@ scripts, writing prompts) gets created, reviewed, and scaled. Distinct from
 Website) — this covers the practice content that powers the four OET
 modules.
 
+For the taxonomy, metadata standard, difficulty model, and quality
+checklist that content should carry, see
+[CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md) (Sprint 1.5, proposal stage
+as of 2026-08-08 — not yet implemented). This document covers the
+generation/review *process*; that one covers the content *model*.
+
 ---
 
 ## Current content strategy
@@ -66,7 +72,9 @@ uses (`skill_graph.py`'s `skill_tag` values, e.g. `"reading:B"`,
 learner to specific content, not just point them at a module. Hard
 dependency: the skill-tag taxonomy needs to be stable (Phase 3 landed)
 before tagging content against it is worth doing — tagging against a
-taxonomy that's still shifting means re-tagging later.
+taxonomy that's still shifting means re-tagging later. The metadata field
+this maps to is designed (not yet applied) in
+[CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md) §3.
 
 ## Human review workflow
 

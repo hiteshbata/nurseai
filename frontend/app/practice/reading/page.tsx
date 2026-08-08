@@ -5,6 +5,7 @@ import { useSupabaseSession } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import api, { isUpgradeRequiredError } from '@/lib/api'
+import { trackEvent } from '@/lib/analytics'
 import { trackMetaEvent } from '@/lib/meta-pixel'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
@@ -216,6 +217,11 @@ export default function ReadingPracticePage() {
       })
       setResult(res.data)
       setPhase('result')
+      trackEvent('score_viewed', {
+        module: 'reading',
+        passage_id: passage.id,
+        overall_score: res.data?.score,
+      })
     } catch (error) {
       if (!isUpgradeRequiredError(error)) toast.error('Failed to submit answers')
     } finally {

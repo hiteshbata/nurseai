@@ -13,7 +13,8 @@ Document set: [ROADMAP.md](ROADMAP.md) · [SPRINTS.md](SPRINTS.md) ·
 [BACKLOG.md](BACKLOG.md) · [DECISIONS.md](DECISIONS.md) ·
 [ARCHITECTURE.md](ARCHITECTURE.md) · [MODULES.md](MODULES.md) ·
 [AI_SYSTEM.md](AI_SYSTEM.md) · [DATABASE.md](DATABASE.md) ·
-[CONTENT_STRATEGY.md](CONTENT_STRATEGY.md) · [RELEASES.md](RELEASES.md)
+[CONTENT_STRATEGY.md](CONTENT_STRATEGY.md) ·
+[CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md) · [RELEASES.md](RELEASES.md)
 
 ---
 
@@ -57,18 +58,51 @@ proposition.
 ## Current Phase
 
 **Phase 0 — Post-launch hardening + Learner Brain foundation.** All four OET
-sub-tests plus Mock Test are feature-complete and live. Current work is
-security/reliability hardening (see completed items below) plus laying the
-groundwork for cross-module personalization (skill graph, observation
-history). See [ROADMAP.md](ROADMAP.md) for phase detail.
+sub-tests plus Mock Test are feature-complete and live. **Adaptive Learning
+V1 is now complete across all four modules** (Speaking, Reading, Listening,
+Writing — Sprints 1-4, all CTO-approved 2026-08-08) — see Completed Work
+below. **RC1 is open**, bundling these four sprints for production release;
+see [RELEASES.md](RELEASES.md) → Release Candidates. The remaining work
+before RC1 closes is live-verification of all four insights cards in
+production, not new feature work — see In Progress below and
+[BACKLOG.md](BACKLOG.md) → Now. Learner Brain Foundation (skill-graph schema
+groundwork) continues as separate, unrelated work. See
+[ROADMAP.md](ROADMAP.md) for phase detail.
 
 ## Current Sprint
 
-See [SPRINTS.md](SPRINTS.md) for the live sprint board. As of 2026-08-08:
+See [SPRINTS.md](SPRINTS.md) for the live sprint board (note: the board was
+not kept current for Sprints 2-4 — see Known Issues in the RC1 report;
+[IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md) has the authoritative record
+for each). As of 2026-08-08: **Sprint 4 (Adaptive Writing V1) closed**,
+CTO-approved — same rule-based insights pattern as Sprints 1-3, ported
+locally into `writing.py`. Writing's six criteria score on non-uniform
+official OET ranges (Purpose 0-3, the other five 0-7); a new private
+`normalize_writing_score` helper in `writing.py` rescales each onto the
+shared 0-6 band before `validate_and_normalize`, kept local per CTO
+instruction rather than pushed into `ObservationService`. **This closes
+Adaptive Learning V1**: all four OET modules (Speaking, Reading, Listening,
+Writing) now surface a "Today's {Module} Insights" card off the shared
+`user_skill_stats` / `get_weakness` / `coaching_messages` spine. **RC1 is
+open** to bundle Sprints 1-4 for production release — see
+[RELEASES.md](RELEASES.md). No new Adaptive Learning feature work is in
+scope until RC1 closes. The only sprint still actively in progress is
 **Learner Brain Foundation** — tag skill-graph rows by product
 (`user_skill_stats.product`), add append-only observation history
-(`skill_observations`). Migrations written, not yet applied. Sprint 1
-(Adaptive Speaking V1) closed this same day — see Completed Work below.
+(`skill_observations`). Migrations written, not yet applied; unrelated to
+and not blocking RC1. Sprint 1 (Adaptive Speaking V1) and Sprint 1.5
+(Content Foundation design, documentation-only — see
+[CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md)) closed 2026-08-08 — see
+Completed Work below. Sprint 2 (Adaptive Reading V1) also closed 2026-08-08,
+CTO-approved: same rule-based insights pattern as Sprint 1, ported locally
+into `reading.py` rather than shared. Recommendations are content-level
+(unattempted → weakest-attempted → random), not yet skill-aware — the
+content library still has no per-item skill metadata (the gap Sprint 1.5
+named); Content Normalization enables skill-aware routing later without
+changing the response shape. Sprint 3 (Adaptive Listening V1) also closed
+2026-08-08, CTO-approved: same pattern again, ported locally into
+`listening.py`, keyed off the existing part-level `listening:{A,B,C}` tags
+rather than a new skill-tag namespace.
 
 ## Current Milestone
 
@@ -103,6 +137,55 @@ health checks, and audit-logged rollback. See
   recommended next scenario. Ships entirely on `user_skill_stats` as
   already deployed, no schema change. See
   [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **Sprint 1.5 — Content Foundation design** (complete 2026-08-08,
+  documentation-only, no code/schema change): content audit across all
+  four live modules, a six-area taxonomy (Speaking/Reading/Listening/
+  Writing/Vocabulary/Grammar), a metadata standard, a 5-tier Beginner→Exam
+  Ready difficulty model, a pre-publish quality checklist, and the
+  Draft→Review→Approval→Publish content workflow. See
+  [CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md) — proposal stage, awaiting
+  review before any schema/migration work starts.
+- **Sprint 2 — Adaptive Reading V1** (complete + CTO-approved 2026-08-08):
+  same rule-based, same-session coaching pattern as Sprint 1 (strongest/
+  weakest reading skill, recommendation reason, actionable improvement,
+  confidence message, recommended next test) on the Reading test results
+  page. Ported locally into `reading.py` rather than extracted into a
+  shared service — extraction deferred until Speaking, Reading, Listening
+  and Writing each have one. Recommendation is content-level (unattempted →
+  weakest-attempted → random), not skill-filtered — an intentional Phase 1
+  decision pending Content Normalization (see
+  [CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md)). No schema change. See
+  [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **Sprint 3 — Adaptive Listening V1** (complete + CTO-approved
+  2026-08-08): same rule-based, same-session coaching pattern as Sprints 1
+  and 2 (strongest/weakest part, recommendation reason, actionable
+  improvement, confidence message, recommended next test) on the Listening
+  test results page. Keyed off the existing part-level `listening:{A,B,C}`
+  tags — no new `listening:skill:*` namespace introduced. Part labels kept
+  as "Part A/B/C" (no friendlier mapping existed to reuse; a `TODO` marks
+  the gap for future copy work). Ported locally into `listening.py`, same
+  as Reading. No schema change. See
+  [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **Sprint 4 — Adaptive Writing V1** (complete + CTO-approved 2026-08-08):
+  same rule-based, same-session coaching pattern as Sprints 1-3 (strongest/
+  weakest writing criterion, recommendation reason, actionable improvement,
+  confidence message, recommended next scenario) on the Writing results
+  page. Writing's six criteria score on non-uniform official OET ranges
+  (Purpose 0-3; Content, Conciseness, Genre & Style, Organisation, Language
+  each 0-7) rather than the uniform 0-6 band Speaking/Reading/Listening's
+  criteria already use — a new private `normalize_writing_score(raw, max)`
+  helper in `writing.py` rescales each criterion onto the shared 0-6 band
+  before `validate_and_normalize`, kept local to Writing per explicit CTO
+  instruction (`ObservationService` and the scoring rubric are unchanged).
+  `_recommend_writing_scenarios` follows Speaking's `run_sync`-wrapped
+  pattern rather than Reading/Listening's unwrapped blocking call. No
+  schema change. **This closes Adaptive Learning V1** — see
+  [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+
+**Adaptive Learning V1 — complete** (Sprints 1-4, all CTO-approved
+2026-08-08): all four OET modules now surface post-session coaching
+insights off the same shared spine. **RC1 opened** to release this bundle
+to production — see [RELEASES.md](RELEASES.md) → Release Candidates.
 
 ## In Progress
 
@@ -110,9 +193,12 @@ health checks, and audit-logged rollback. See
 - Frontend audit follow-through (29 findings from 2026-07-31 audit; 5 P0 /
   8 P1 / 11 P2 / 5 P3, tracked in the founder's vault, not yet triaged into
   this backlog — see [BACKLOG.md](BACKLOG.md) Now).
-- Production live-verification of Adaptive Speaking V1's insights card
-  (code/QA complete and CTO-approved; the click-through against real
-  production traffic is still open — see [BACKLOG.md](BACKLOG.md) Now).
+- **RC1 live-verification gate** — none of the four Adaptive Learning
+  insights cards (Speaking, Reading, Listening, Writing) have been
+  click-through verified against real production traffic yet. All four are
+  code-complete, QA-gated, and CTO-approved; only Speaking has merged past
+  `develop` so far. This is the blocking item before RC1 closes — see
+  [BACKLOG.md](BACKLOG.md) → Now and the RC1 report.
 
 ## Next Work
 

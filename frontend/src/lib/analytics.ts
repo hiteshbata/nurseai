@@ -23,6 +23,11 @@ export function initAnalytics() {
     capture_pageview: true,
     persistence: 'localStorage+cookie',
   })
+  // One PostHog project for every deployment target -- this is what tells
+  // rc1/local apart from production in it, on every event/session from here on.
+  posthog.register({
+    environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
+  })
   initialized = true
 
   if (pendingIdentify) {

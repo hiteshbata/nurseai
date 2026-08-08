@@ -20,7 +20,10 @@ logging.basicConfig(
     handlers=[_log_handler],
 )
 
-if settings.SENTRY_DSN:
+# Mirrors the frontend's dev skip (frontend/app/providers.tsx) -- default
+# SENTRY_ENVIRONMENT stays "production" so an unset var never silently
+# disables prod reporting; local .env sets it to "development" to opt out.
+if settings.SENTRY_DSN and settings.SENTRY_ENVIRONMENT != "development":
     import sentry_sdk
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
