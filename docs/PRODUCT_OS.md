@@ -77,7 +77,10 @@ as Sprint 1, ported locally into `reading.py` rather than shared.
 Recommendations are content-level (unattempted → weakest-attempted →
 random), not yet skill-aware — the content library still has no per-item
 skill metadata (the gap Sprint 1.5 named); Content Normalization enables
-skill-aware routing later without changing the response shape.
+skill-aware routing later without changing the response shape. Sprint 3
+(Adaptive Listening V1) also closed 2026-08-08, CTO-approved: same
+pattern again, ported locally into `listening.py`, keyed off the existing
+part-level `listening:{A,B,C}` tags rather than a new skill-tag namespace.
 
 ## Current Milestone
 
@@ -131,6 +134,16 @@ health checks, and audit-logged rollback. See
   decision pending Content Normalization (see
   [CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md)). No schema change. See
   [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **Sprint 3 — Adaptive Listening V1** (complete + CTO-approved
+  2026-08-08): same rule-based, same-session coaching pattern as Sprints 1
+  and 2 (strongest/weakest part, recommendation reason, actionable
+  improvement, confidence message, recommended next test) on the Listening
+  test results page. Keyed off the existing part-level `listening:{A,B,C}`
+  tags — no new `listening:skill:*` namespace introduced. Part labels kept
+  as "Part A/B/C" (no friendlier mapping existed to reuse; a `TODO` marks
+  the gap for future copy work). Ported locally into `listening.py`, same
+  as Reading. No schema change. See
+  [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
 
 ## In Progress
 
@@ -142,6 +155,10 @@ health checks, and audit-logged rollback. See
   (code/QA complete and CTO-approved; the click-through against real
   production traffic is still open — see [BACKLOG.md](BACKLOG.md) Now).
 - Production live-verification of Adaptive Reading V1's insights card
+  (code/QA complete and CTO-approved 2026-08-08; not yet merged to `main`
+  or click-through verified against production — see
+  [BACKLOG.md](BACKLOG.md) Now).
+- Production live-verification of Adaptive Listening V1's insights card
   (code/QA complete and CTO-approved 2026-08-08; not yet merged to `main`
   or click-through verified against production — see
   [BACKLOG.md](BACKLOG.md) Now).

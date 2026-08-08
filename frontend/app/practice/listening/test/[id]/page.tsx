@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useSupabaseSession } from '@/lib/supabase'
 import api, { isUpgradeRequiredError } from '@/lib/api'
 import toast from 'react-hot-toast'
+import { Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { UpgradeRequired } from '@/components/UpgradeRequired'
@@ -59,6 +60,29 @@ interface SubmitResult {
   results: QuestionResult[]
   per_part: Record<string, number>
   transcripts: Record<string, Turn[] | string | null>
+  insights?: Insights | null
+}
+
+interface SkillScore {
+  tag: string
+  label: string
+  score: number
+}
+
+interface NextBestAction {
+  test_id: number
+  title: string
+  reason: string
+}
+
+interface Insights {
+  strongest_skill: SkillScore
+  weakest_skill: SkillScore
+  recommendation_reason: string
+  actionable_improvement: string
+  confidence_message: string
+  next_best_action: NextBestAction | null
+  based_on: 'history' | 'session'
 }
 
 const PARTS = ['A', 'B', 'C'] as const
@@ -296,6 +320,48 @@ export default function ListeningTestSessionPage() {
               ))}
             </div>
           </Card>
+
+          {result.insights && (
+            <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-6 mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="size-4 text-indigo-500" aria-hidden="true" />
+                <h3 className="text-base font-bold text-[#0F2356]">Today&apos;s Listening Insights</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Strongest</p>
+                  <p className="text-sm font-semibold text-emerald-700">
+                    {result.insights.strongest_skill.label} ({result.insights.strongest_skill.score}/6)
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Weakest</p>
+                  <p className="text-sm font-semibold text-amber-700">
+                    {result.insights.weakest_skill.label} ({result.insights.weakest_skill.score}/6)
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-gray-700 leading-relaxed mb-3">{result.insights.recommendation_reason}</p>
+              <div className="rounded-xl bg-white border border-indigo-100 px-4 py-3 mb-3">
+                <p className="text-xs text-indigo-500 font-semibold uppercase tracking-wide mb-1">Try This Next</p>
+                <p className="text-sm text-gray-700 leading-relaxed">{result.insights.actionable_improvement}</p>
+              </div>
+              <p className="text-xs text-gray-500 italic mb-4">{result.insights.confidence_message}</p>
+              {result.insights.next_best_action && (
+                <a
+                  href={`/practice/listening/test/${result.insights.next_best_action.test_id}`}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-white border border-indigo-200 px-4 py-3 hover:border-indigo-400 transition"
+                >
+                  <div>
+                    <p className="text-xs text-indigo-500 font-semibold uppercase tracking-wide">Recommended Next</p>
+                    <p className="text-sm font-semibold text-[#0F2356]">{result.insights.next_best_action.title}</p>
+                    <p className="text-xs text-gray-500">{result.insights.next_best_action.reason}</p>
+                  </div>
+                  <span className="text-indigo-500 text-sm font-semibold shrink-0">Start →</span>
+                </a>
+              )}
+            </div>
+          )}
 
           {presentParts.map((part) => (
             <div key={part} className="mb-6">

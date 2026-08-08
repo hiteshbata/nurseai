@@ -173,3 +173,75 @@ no insights there, out of scope for V1).
 - Cross-module weakness routing (recommend a Reading/Listening/Writing
   scenario, not just another Speaking one) once Phase 3 (Learner Brain)
   lands — deliberately out of scope here, see ADR-008.
+
+---
+
+## 2026-08-08 — Adaptive Listening V1
+
+**Feature name**: Adaptive Listening V1 (Sprint 3)
+
+**Business goal**: Same "what should I practice next" answer Sprint 1
+(Speaking) and Sprint 2 (Reading) gave, now on the Listening test results
+page — no new tables, endpoints, services, or abstractions.
+
+**What changed**: `/listening/tests/{id}/submit` now returns an `insights`
+object built from the just-graded session's per-part bands
+(`listening:{A,B,C}`, already recorded by this endpoint pre-Sprint-3) plus
+the learner's existing `user_skill_stats` history: strongest part this
+session, weakest part (prefers historical pattern via the existing
+`get_weakness` when one exists, else this session's own lowest-scoring
+part), a recommendation reason, one actionable improvement, a confidence
+message, and a recommended next test (`_recommend_listening_tests`:
+unattempted tests first, then the learner's lowest-scored attempted tests,
+weakest first). The Listening test results page renders this as a "Today's
+Listening Insights" card. Runs entirely on `user_skill_stats` as already
+deployed — no new table, no migration.
+
+**Files changed**:
+- `backend/app/routers/listening.py` — `_recommend_listening_tests`,
+  `_build_listening_insights`, wired into `submit_test`.
+- `frontend/app/practice/listening/test/[id]/page.tsx` — "Today's Listening
+  Insights" card, same layout as Speaking's and Reading's.
+
+**User-visible changes**: After finishing a full Listening test, the
+results page shows a new card: strongest/weakest part with band scores,
+why the weakest part was picked, one specific thing to practice next, a
+confidence note, and a link to a recommended next test. No change to
+existing scoring, per-part bands, or transcript reveal.
+
+**Technical decisions**:
+- **Part-level insight, not a new skill-tag namespace.** Listening has no
+  `listening:skill:*` sub-tags (unlike Reading's `reading:skill:*`) — only
+  the part-level `listening:{A,B,C}` tags this endpoint already recorded
+  before this sprint. Insights key off those directly rather than
+  inventing finer-grained tags, per CTO direction to introduce new skill
+  tags "only if absolutely necessary" — it wasn't.
+- **Labels kept as "Part A/B/C" — no new label mapping.** No friendlier
+  learner-facing part labels exist anywhere in the codebase today. Per CTO
+  direction, did not invent one for this sprint; left a `TODO` in
+  `_build_listening_insights` for future copy polish once that mapping
+  exists elsewhere.
+- **`validate_and_normalize` gap on `listening.py`'s
+  `record_skill_observations` call left untouched**, per explicit CTO
+  instruction this sprint — tracked as existing debt, not this sprint's to
+  fix.
+- **No shared `next_best_action` service, no new endpoint** — same reasons
+  as Sprint 2: local port, avoids shaping an abstraction before Writing (the
+  fourth caller) also has one.
+
+**Known limitations**:
+- Same content-level (not skill-filtered) recommendation limitation as
+  Reading — `_recommend_listening_tests` doesn't filter by which part a
+  test would exercise.
+- Not yet merged to `main` or live-verified against production traffic —
+  code-complete, QA-reviewed (backend self-check, frontend
+  typecheck/build), and CTO-approved, committed to `develop` only as of
+  this entry.
+
+**Future follow-ups**:
+- Live-verify the insights card in production.
+- Friendlier Listening part labels, once that copy exists (see `TODO` in
+  `_build_listening_insights`).
+- Same `validate_and_normalize` and cross-module weakness routing
+  follow-ups noted under Sprint 2 — Listening is now a third data point for
+  when to extract the shared insights service.

@@ -104,6 +104,13 @@ through commits.
   schema change. Committed to `develop`, not yet merged to `main` — not a
   release to production yet, listed here for the record. See
   [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **2026-08-08 — Adaptive Listening V1** (Sprint 3): same rule-based
+  coaching insights pattern, ported locally to the Listening test results
+  page, keyed off existing part-level tags. CTO-approved after backend
+  self-check + frontend typecheck/build. No schema change. Committed to
+  `develop`, not yet merged to `main` — not a release to production yet,
+  listed here for the record. See
+  [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
 
 ## Rollback
 
