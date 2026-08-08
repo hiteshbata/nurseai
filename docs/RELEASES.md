@@ -130,10 +130,20 @@ through commits.
   plus a new Playwright suite and manual QA checklist. Merged `develop` →
   `main`, tagged `v1.1.0-rc2`. No schema change. See Release Candidates
   below and [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+- **2026-08-08 — Content Studio Foundation (RC3.1)**: admin-only read-only
+  dashboard/library/detail pages for the future AI Content Studio
+  (`d32c5327`) — Published/Unpublished counts per module, searchable
+  library with filters, stable derived Content IDs, Grammar/Vocabulary as
+  static "Coming Soon". No AI generation, no publishing/review workflow,
+  no schema change — foundation only, per CTO scope. Includes a new
+  8-scenario Playwright suite, passing live against production. Merged
+  `develop` → `main`. Not tagged — RC3 stays open pending its remaining
+  sub-sprints (Content Production, Review Workflow). See Release
+  Candidates below and [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
 
 ## Release Candidates
 
-**Status: V1 (informal, second use)**
+**Status: V1 (informal, third use)**
 
 An RC is an internal label for bundling a set of related, already
 CTO-approved sprints for merge and live-verification as one unit — not a
@@ -187,6 +197,23 @@ unverified sprint at a time.
   Same open item RC1 has: git-workflow portion closed, live verification
   and founder approval remain open. See
   [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+
+- **RC3 — AI Content Studio** (opened 2026-08-08, not closed): unlike RC1/
+  RC2, this RC bundles multiple sequential sub-sprints rather than one —
+  Content Production and Review Workflow are real future work, not
+  hypothetical, so RC3 stays open (and untagged) until all of them land,
+  not just the first.
+  - [x] **RC3.1 — Content Studio Foundation** (code-complete, QA-gated):
+    admin-only dashboard/library/detail pages, read-only, no schema
+    change. Merged `develop` → `main` (`d32c5327`).
+  - [ ] RC3.2 — Content Production (not started, explicitly out of scope
+    for RC3.1 per CTO instruction)
+  - [ ] RC3.3 — Review Workflow, Publishing, and the `status`/`version`
+    schema change RC3.1 deliberately deferred (not started)
+  - [ ] Live verification
+  - [ ] Founder approval
+  - [ ] Tag — deferred until RC3 closes (see Versioning strategy above);
+    RC3.1 alone does not warrant `v1.2.0-rc3`.
 
 ## Rollback
 

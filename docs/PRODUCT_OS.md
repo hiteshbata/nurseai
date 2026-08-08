@@ -70,10 +70,16 @@ also shipped its git-workflow portion — merged to `main` and tagged
 (`frontend/tests/e2e/dashboard.spec.ts`) and
 [RC2_QA_CHECKLIST.md](RC2_QA_CHECKLIST.md). The remaining work before either
 RC closes is live-verification against production, not new feature work —
-see In Progress below and [BACKLOG.md](BACKLOG.md) → Now. **RC3 is not yet
-opened** — no sprint work is scoped for it. Learner Brain Foundation
-(skill-graph schema groundwork) continues as separate, unrelated work. See
-[ROADMAP.md](ROADMAP.md) for phase detail.
+see In Progress below and [BACKLOG.md](BACKLOG.md) → Now. **RC3 — AI
+Content Studio is open**: RC3.1 (Content Studio Foundation — admin-only
+dashboard/library/detail pages, no schema change, no AI generation, no
+review/publishing workflow) shipped its git-workflow portion 2026-08-08,
+merged to `main`, not tagged. RC3.2 (Content Production) and RC3.3 (Review
+Workflow + the `status`/`version` schema change RC3.1 deliberately
+deferred) are scoped but not started — RC3 stays open until they land, not
+just RC3.1; see [RELEASES.md](RELEASES.md) → Release Candidates. Learner
+Brain Foundation (skill-graph schema groundwork) continues as separate,
+unrelated work. See [ROADMAP.md](ROADMAP.md) for phase detail.
 
 ## Current Sprint
 
@@ -211,6 +217,12 @@ to production — see [RELEASES.md](RELEASES.md) → Release Candidates.
   against a live preview or production deploy per
   [RC2_QA_CHECKLIST.md](RC2_QA_CHECKLIST.md). This is the blocking item
   before RC2 closes — see [RELEASES.md](RELEASES.md) → Release Candidates.
+- **RC3.1 live-verification gate** — Content Studio Foundation is merged
+  to `main`, with a passing Playwright suite run live against production
+  data; it has not yet been click-through verified by the founder. RC3
+  overall also has RC3.2 (Content Production) and RC3.3 (Review Workflow)
+  still unscheduled — those, not this gate alone, are why RC3 stays open.
+  See [RELEASES.md](RELEASES.md) → Release Candidates.
 
 ## Next Work
 
