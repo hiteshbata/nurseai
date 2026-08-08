@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { Search, X } from 'lucide-react'
+import { Search, X, Sparkles } from 'lucide-react'
 import { DifficultyBadge, normalizeDifficulty } from '@/components/ui/DifficultyBadge'
 import { CompletedBadge } from '@/components/ui/CompletedBadge'
 import { WeakSpots } from '@/components/practice/WeakSpots'
@@ -45,6 +45,28 @@ interface Feedback {
   top_strengths: string[]
   top_improvements: string[]
   corrected_version: string
+}
+
+interface SkillScore {
+  tag: string
+  label: string
+  score: number
+}
+
+interface NextBestAction {
+  scenario_id: number
+  title: string
+  reason: string
+}
+
+interface Insights {
+  strongest_skill: SkillScore
+  weakest_skill: SkillScore
+  recommendation_reason: string
+  actionable_improvement: string
+  confidence_message: string
+  next_best_action: NextBestAction | null
+  based_on: 'history' | 'session'
 }
 
 // Shared with the saved-session view (/sessions/[id]) so the rubric can't drift
@@ -92,6 +114,7 @@ export default function WritingPracticePage() {
   const [upgradeRequired, setUpgradeRequired] = useState(false)
   const [writingText, setWritingText] = useState('')
   const [feedback, setFeedback] = useState<Feedback | null>(null)
+  const [insights, setInsights] = useState<Insights | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [inputMode, setInputMode] = useState<'type' | 'upload'>('type')
   const [photos, setPhotos] = useState<{ file: File; url: string; ocrd?: boolean }[]>([])
@@ -218,6 +241,7 @@ export default function WritingPracticePage() {
     setSelectedScenario(scenario)
     resetInput()
     setFeedback(null)
+    setInsights(null)
     setPhase('write')
   }
 
@@ -225,6 +249,7 @@ export default function WritingPracticePage() {
     setSelectedScenario(null)
     resetInput()
     setFeedback(null)
+    setInsights(null)
     setPhase('select')
   }
 
@@ -372,6 +397,7 @@ export default function WritingPracticePage() {
       }
 
       setFeedback(response.data.feedback)
+      setInsights(response.data.insights || null)
       setPhase('result')
       if (response.data.feedback?.scoring_failed) {
         toast.error('Scoring is temporarily unavailable — please try again shortly.')
@@ -784,6 +810,51 @@ export default function WritingPracticePage() {
               </div>
             )}
           </Card>
+
+          {insights && (
+            <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-6 mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="size-4 text-indigo-500" aria-hidden="true" />
+                <h3 className="text-base font-bold text-[#0F2356]">Today&apos;s Writing Insights</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Strongest</p>
+                  <p className="text-sm font-semibold text-emerald-700">
+                    {insights.strongest_skill.label} ({insights.strongest_skill.score}/6)
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Weakest</p>
+                  <p className="text-sm font-semibold text-amber-700">
+                    {insights.weakest_skill.label} ({insights.weakest_skill.score}/6)
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-gray-700 leading-relaxed mb-3">{insights.recommendation_reason}</p>
+              <div className="rounded-xl bg-white border border-indigo-100 px-4 py-3 mb-3">
+                <p className="text-xs text-indigo-500 font-semibold uppercase tracking-wide mb-1">Try This Next</p>
+                <p className="text-sm text-gray-700 leading-relaxed">{insights.actionable_improvement}</p>
+              </div>
+              <p className="text-xs text-gray-500 italic mb-4">{insights.confidence_message}</p>
+              {insights.next_best_action && (
+                <button
+                  onClick={() => {
+                    const scenario = scenarios.find((s) => s.id === insights.next_best_action!.scenario_id)
+                    if (scenario) handleSelectScenario(scenario)
+                  }}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl bg-white border border-indigo-200 px-4 py-3 hover:border-indigo-400 transition text-left"
+                >
+                  <div>
+                    <p className="text-xs text-indigo-500 font-semibold uppercase tracking-wide">Recommended Next</p>
+                    <p className="text-sm font-semibold text-[#0F2356]">{insights.next_best_action.title}</p>
+                    <p className="text-xs text-gray-500">{insights.next_best_action.reason}</p>
+                  </div>
+                  <span className="text-indigo-500 text-sm font-semibold shrink-0">Start →</span>
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-4">
             <Button className="flex-1" onClick={handleBackToScenarios}>

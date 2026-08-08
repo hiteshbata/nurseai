@@ -8,6 +8,13 @@ test('signup flow reaches onboarding', async ({ page }) => {
   const email = `rc1-smoke-${Date.now()}@speakoet-test.com`
 
   await page.goto('/auth/register')
+  // goto() resolving only guarantees the browser's load event fired, not that
+  // React has hydrated yet -- on a cold dev server the two can be seconds
+  // apart. Clicking before hydration attaches handleSubmit's preventDefault()
+  // falls through to a native HTML form GET, submitting the password in the
+  // URL instead of running the app's signup flow. Wait for the page to go
+  // idle first so the click lands on a hydrated form.
+  await page.waitForLoadState('networkidle')
   await page.locator('#name').fill('RC1 Smoke Test')
   await page.locator('#email').fill(email)
   await page.locator('#password').fill('Rc1SmokeTest!23')

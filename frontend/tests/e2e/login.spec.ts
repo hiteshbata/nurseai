@@ -13,5 +13,10 @@ test('login flow redirects to dashboard', async ({ page }) => {
   await page.locator('#password').fill(password!)
   await page.getByRole('button', { name: 'Sign In' }).click()
 
-  await page.waitForURL(/\/dashboard|\/onboarding/, { timeout: 15_000 })
+  // 15s wasn't enough on a cold dev server: auth (~1s) + the /onboarding/status
+  // check (~1.6s) leave headroom, but if this account lands on /onboarding --
+  // a route this test run hasn't visited yet -- Turbopack's on-demand compile
+  // of it can itself take 10s+, observed directly as a mid-navigation
+  // "[Fast Refresh] rebuilding" in the trace that outlasted the old timeout.
+  await page.waitForURL(/\/dashboard|\/onboarding/, { timeout: 30_000 })
 })

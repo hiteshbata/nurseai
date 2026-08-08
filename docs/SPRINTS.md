@@ -95,6 +95,42 @@ change, no AI call, no new dependency).
 
 ---
 
+## Sprint 1.5: Content Foundation design (complete)
+
+**Goal**: Documentation-only sprint — design the content taxonomy/metadata/
+difficulty standard for future content improvements. No code, no schema, no
+DB change; explicitly not a build sprint.
+
+**Milestones**:
+- [x] Content audit against production Supabase: item counts, difficulty
+      distribution, and specialty-tag consistency per module.
+- [x] Six-area content taxonomy (Speaking, Reading, Listening, Writing,
+      Vocabulary, Grammar).
+- [x] Metadata standard (skill tags, difficulty, topic, specialty, learning
+      objectives, OET criteria, estimated duration, `ai_generated`,
+      `human_reviewed`) mapped against existing columns vs. proposed new
+      ones.
+- [x] 5-tier Beginner→Exam Ready difficulty model, with a mapping note for
+      today's inconsistent `easy`/`medium`/`hard`/`intermediate`/`advanced`
+      values.
+- [x] Pre-publish content quality checklist.
+- [x] Draft→Review→Approval→Publish AI content workflow, mapped onto the
+      existing AI Model Registry purposes and founder-review process.
+
+**Status**: Complete. See [CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md) for
+the full proposal. This is a design document, not a locked decision — no
+ADR was written, no migration exists. The Content Foundation provides
+standards for future content improvements. Adaptive Reading V1 proceeds
+using the existing content library, while metadata normalization and
+content enhancement continue as parallel work.
+
+**Estimated effort**: Small (documentation only; no code, no migration, no
+DB write).
+
+**Blocked items**: none.
+
+---
+
 ## Sprint: AI Model Registry (complete)
 
 **Goal**: Replace every hardcoded AI model ID in the backend with a

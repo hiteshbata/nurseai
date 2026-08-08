@@ -245,3 +245,119 @@ existing scoring, per-part bands, or transcript reveal.
 - Same `validate_and_normalize` and cross-module weakness routing
   follow-ups noted under Sprint 2 — Listening is now a third data point for
   when to extract the shared insights service.
+
+---
+
+## 2026-08-08 — Adaptive Writing V1
+
+**Feature name**: Adaptive Writing V1 (Sprint 4)
+
+**Business goal**: Same "what should I practice next" answer Sprints 1-3
+gave Speaking/Reading/Listening learners, now on the Writing results page —
+closing Adaptive Learning V1 across all four OET modules. No new tables,
+endpoints, services, or abstractions.
+
+**What changed**: `/writing/submit` now returns an `insights` object built
+from the just-scored session's six OET criterion scores (`writing:{criterion}`)
+plus the learner's existing `user_skill_stats` history: strongest criterion
+this session, weakest criterion (prefers historical pattern via the
+existing `get_weakness` when one exists, else this session's own
+lowest-scoring criterion), a recommendation reason, one actionable
+improvement, a confidence message, and a recommended next scenario
+(`_recommend_writing_scenarios`: unattempted scenarios first, then the
+learner's lowest-scored attempted scenarios, weakest first — same algorithm
+as Speaking's `_recommend_scenarios`, including its correct
+`run_sync`-wrapped blocking-call pattern, not Reading/Listening's unwrapped
+one). The Writing results page renders this as a "Today's Writing Insights"
+card. Runs entirely on `user_skill_stats` as already deployed — no new
+table, no migration.
+
+Writing's six criteria score on non-uniform official OET ranges (Purpose
+0-3; Content, Conciseness, Genre & Style, Organisation, Language each 0-7)
+rather than the uniform 0-6 band Speaking/Reading/Listening's criteria
+already use. CTO-approved normalization: a new private
+`normalize_writing_score(raw_score, max_score)` helper rescales each
+criterion by `round(raw/max*6, 2)` before `validate_and_normalize` —
+preserving each criterion's percentile-of-max standing so EMA blending and
+weakness-ranking stay comparable across all four modules. Kept local to
+`writing.py` per explicit CTO instruction — `ObservationService` and
+`score_writing`'s rubric are unchanged.
+
+**Files changed**:
+- `backend/app/routers/writing.py` — `normalize_writing_score`,
+  `WRITING_SKILL_LABELS`/`_writing_skill_label`,
+  `_recommend_writing_scenarios`, `_build_writing_insights`, wired into
+  `submit_writing`; `_score_and_save` now returns `(feedback,
+  criterion_scores)` instead of just `feedback` so the caller can build
+  insights without re-deriving normalized scores; its
+  `record_skill_observations` call now passes through the existing
+  `validate_and_normalize("writing", …)` first (previously the one gap
+  alongside Listening — now closed).
+- `frontend/app/practice/writing/page.tsx` — `Insights`/`SkillScore`/
+  `NextBestAction` interfaces, `insights` state, "Today's Writing Insights"
+  card (same layout as Speaking/Reading/Listening's). "Recommended Next"
+  renders as a `<button>` calling the existing `handleSelectScenario`, not
+  an `<a href>` like Reading/Listening — Writing has no per-scenario route
+  (scenario selection has always worked this way via the scenario-picker
+  cards), so this isn't a new pattern, it matches Writing's own existing
+  convention.
+- `backend/tests/test_writing_insights.py` (new) —
+  `normalize_writing_score`, `_writing_skill_label`,
+  `_build_writing_insights` (history vs. session fallback, graceful
+  degradation on no-scenarios and on unexpected errors).
+
+**User-visible changes**: After finishing a scored Writing submission, the
+results page shows a new card: strongest/weakest criterion with band
+scores, why the weakest criterion was picked, one specific thing to
+practice next, a confidence note, and a link to a recommended next
+scenario. No change to the existing grade, per-criterion score bars,
+strengths/improvements lists, or corrected-version display. The free-tier
+"locked" mock branch (score hidden behind a paywall) is unaffected — it
+returns before scoring runs, same as before.
+
+**Technical decisions**:
+- **Normalization kept local, not pushed into `ObservationService`.** CTO
+  explicitly rejected redesigning `ObservationService` or Writing's scoring
+  rubric to accommodate non-uniform criterion ranges — `normalize_writing_score`
+  is a private `writing.py` function, used nowhere else.
+- **`_recommend_writing_scenarios` uses Speaking's `run_sync`-wrapped
+  pattern, not Reading/Listening's.** Reading and Listening's equivalent
+  functions make a blocking Supabase call directly inside an `async def`
+  (pre-existing, untouched debt — out of scope per this sprint's
+  non-goals). Writing's new function follows Speaking's correct pattern
+  instead of copying that bug a third time.
+- **No shared `next_best_action` service, no new endpoint** — same
+  reasoning as Sprints 2-3: this was the fourth and final local port, the
+  point at which the shared-insights-service extraction (deferred since
+  Sprint 1) becomes viable — but extraction itself was not this sprint's
+  scope.
+- **Labels reuse the frontend's existing `WRITING_CRITERIA` copy** (Purpose,
+  Content, Conciseness & Clarity, Genre & Style, Organisation & Layout,
+  Language) via a new backend-side `WRITING_SKILL_LABELS` dict, so the
+  insights card names a criterion the same way the score breakdown above it
+  already does — no new coaching vocabulary invented.
+
+**Known limitations**:
+- Same content-level (not skill-filtered) recommendation limitation as
+  Reading/Listening — `_recommend_writing_scenarios` doesn't filter by
+  which criterion a scenario would exercise.
+- Not yet merged to `main` or live-verified against production traffic —
+  code-complete, QA-reviewed (11 new backend tests, full backend suite
+  regression-checked, frontend typecheck clean), and CTO-approved,
+  committed to `develop` only as of this entry.
+- Pre-existing, unrelated test failures observed in the same run
+  (`test_writing_ocr.py`, `test_ai_scoring_temperature.py`,
+  `test_google_model_routing.py`) — confirmed present on unmodified
+  `develop` via `git stash` comparison; environmental (missing provider API
+  keys in the sandbox), not caused by this sprint.
+
+**Future follow-ups**:
+- Live-verify the insights card in production (RC1 gate — see
+  [RELEASES.md](RELEASES.md)).
+- This is the fourth local port of the same pattern (Speaking, Reading,
+  Listening, Writing) — extract a shared insights/recommendation service
+  now that all four exist, per the extraction condition named in Sprints
+  1-3's docs.
+- Cross-module weakness routing (recommend a non-Writing scenario when
+  Writing isn't the learner's weakest module) remains Phase 3 (Learner
+  Brain) work, unstarted.

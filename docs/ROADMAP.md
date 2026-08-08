@@ -60,6 +60,13 @@ for cross-module personalization.
   not a dependency of) the Phase 3 `skill_observations` write path,
   rollup/decay job, and cross-module Study Hub surface below, which remain
   fully deferred. ✅ Complete, CTO-approved 2026-08-08.
+- **Adaptive Reading V1** (Sprint 2), **Adaptive Listening V1** (Sprint 3),
+  **Adaptive Writing V1** (Sprint 4): same rule-based, same-session
+  coaching pattern ported locally to each module's own results page,
+  completing **Adaptive Learning V1** across all four OET sub-tests. ✅ All
+  complete, CTO-approved 2026-08-08. **RC1 opened** to bundle Sprints 1-4
+  for production release — see [RELEASES.md](RELEASES.md) → Release
+  Candidates.
 
 **Dependencies**: Phase 1 complete (needs live traffic and paid users to
 harden against).
@@ -67,7 +74,8 @@ harden against).
 **Exit criteria**: no open P0 security finding; AI spend has a hard
 per-user ceiling and a routing layer with fallback; every scheduled job
 verified live. Frontend audit P0/P1 items (see
-[BACKLOG.md](BACKLOG.md) → Now) triaged and closed.
+[BACKLOG.md](BACKLOG.md) → Now) triaged and closed. Adaptive Learning V1
+(Sprints 1-4 / RC1) live-verified in production and merged to `main`.
 
 ---
 
@@ -114,6 +122,11 @@ generation with human review per item; this phase makes that a system.
   taxonomy so the Learner Brain (Phase 3) can route practice to specific
   content, not just a module.
 - Human review workflow as a first-class step, not an ad hoc founder pass.
+- Content taxonomy, metadata standard, difficulty model, and quality
+  checklist designed ahead of this phase in Sprint 1.5 (Phase 2,
+  documentation-only) — see [CONTENT_FOUNDATION.md](CONTENT_FOUNDATION.md).
+  Implementing the metadata migration it proposes is Phase 4 work, not
+  Phase 2, even though the design happened early.
 
 **Dependencies**: Phase 3's skill-tag taxonomy needs to exist and be
 stable before content can be tagged against it.
