@@ -1,12 +1,24 @@
 """Read-only aggregation across the content modules for the AI Content
 Studio (RC3.1 -- foundation only, no generation, no writes, no migrations).
 
-Normalizes existing `scenarios` (speaking/writing), `reading_passages`, and
-`listening_sections` rows into one shape. Grammar and Vocabulary have no
+Normalizes existing `scenarios` (speaking/writing), `reading_tests`, and
+`listening_tests` rows into one shape. Grammar and Vocabulary have no
 admin-ready content store (see docs/CONTENT_FOUNDATION.md S:1/S:2 --
 `vocab_cards` is a per-user SRS deck, not admin content; Grammar has no
 table at all) so neither is queried here -- "Coming Soon" is a static
 frontend fact, not a fabricated empty dataset.
+
+Reading/listening are grouped: a test (`reading_tests`/`listening_tests`)
+holds several passages/sections. The TEST's `is_active` is what gates
+student visibility (see reading.py's `list_reading_tests` /
+`_load_test_payload`, listening.py equivalent) -- a passage/section's own
+`is_active` only toggles whether it's included in its (already-live) test,
+it is not a second publish state. So this module reads the test tables,
+not the child tables, to match what "Published" means everywhere else in
+the app. Standalone passages/sections (`test_id is null`) have no parent
+to defer to and aren't test rows, so they're intentionally not
+represented here -- they're a legacy/authoring path, not the primary
+publishable unit.
 
 Status is a two-value proxy off the existing `is_active` boolean
 (Published/Unpublished). Draft/Review/Archived need a real `status` column
@@ -23,7 +35,8 @@ from app.core.supabase import get_supabase
 ACTIVE_MODULES = ["speaking", "writing", "reading", "listening"]
 
 _PREFIX = {"speaking": "SPK", "writing": "WRT", "reading": "RDG", "listening": "LST"}
-_TABLE = {"speaking": "scenarios", "writing": "scenarios", "reading": "reading_passages", "listening": "listening_sections"}
+_TABLE = {"speaking": "scenarios", "writing": "scenarios", "reading": "reading_tests", "listening": "listening_tests"}
+_HAS_DIFFICULTY_AND_UPDATED_AT = ("speaking", "writing")  # reading_tests/listening_tests have neither column
 
 
 def _content_id(module: str, row_id: int) -> str:
@@ -45,7 +58,9 @@ def _normalize(module: str, row: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _fetch(supabase, module: str) -> List[Dict[str, Any]]:
-    columns = "id, title, difficulty, is_active, created_at" + (", updated_at" if module in ("speaking", "writing") else "")
+    columns = "id, title, is_active, created_at"
+    if module in _HAS_DIFFICULTY_AND_UPDATED_AT:
+        columns += ", difficulty, updated_at"
     query = supabase.table(_TABLE[module]).select(columns)
     if module in ("speaking", "writing"):
         query = query.eq("module", module)

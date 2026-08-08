@@ -123,27 +123,54 @@ def _require_reading_plan(supabase, current_user: UserInfo, test_id: Optional[in
     )
 
 
+def _is_test_live(supabase, test_id: Optional[int]) -> bool:
+    """A passage with test_id=None is standalone -- no parent to gate on.
+    A passage with test_id set is only visible while its parent test is live;
+    the passage's own is_active only toggles inclusion within an already-live
+    test, it isn't a second publish state (see content_studio.py's docstring)."""
+    if test_id is None:
+        return True
+    t = supabase.table("reading_tests").select("id").eq("id", test_id).eq("is_active", True).execute()
+    return bool(t.data)
+
+
 @router.get("/passages")
 def list_passages(current_user: UserInfo = Depends(get_current_user)):
-    """List active reading passages (no body/questions — kept light for the grid)."""
+    """List active reading passages (no body/questions — kept light for the grid).
+    Excludes passages whose parent test is Draft -- standalone passages
+    (test_id null) are unaffected."""
     supabase = get_supabase()
-    data = supabase.table("reading_passages").select(
-        "id, title, part, difficulty"
-    ).eq("is_active", True).order("created_at", desc=True).execute()
-    return data.data
+    rows = supabase.table("reading_passages").select(
+        "id, title, part, difficulty, test_id"
+    ).eq("is_active", True).order("created_at", desc=True).execute().data
+
+    test_ids = {r["test_id"] for r in rows if r["test_id"] is not None}
+    live_test_ids = set()
+    if test_ids:
+        live_test_ids = {
+            t["id"] for t in supabase.table("reading_tests").select("id")
+            .in_("id", list(test_ids)).eq("is_active", True).execute().data
+        }
+
+    return [
+        {"id": r["id"], "title": r["title"], "part": r["part"], "difficulty": r["difficulty"]}
+        for r in rows if r["test_id"] is None or r["test_id"] in live_test_ids
+    ]
 
 
 @router.get("/passages/{passage_id}")
 def get_passage(passage_id: int, current_user: UserInfo = Depends(get_current_user)):
     """Passage body + its MCQs. correct_answer is deliberately NOT selected so the
-    answers can't be read before submitting."""
+    answers can't be read before submitting. 404s for a Draft test's passage same
+    as for any other missing/inactive passage -- doesn't reveal the test exists."""
     supabase = get_supabase()
     _require_reading_plan(supabase, current_user)
     p = supabase.table("reading_passages").select(
-        "id, title, part, difficulty, body"
+        "id, title, part, difficulty, body, test_id"
     ).eq("id", passage_id).eq("is_active", True).execute()
-    if not p.data:
+    if not p.data or not _is_test_live(supabase, p.data[0]["test_id"]):
         raise HTTPException(status_code=404, detail="Passage not found")
+    passage = {k: v for k, v in p.data[0].items() if k != "test_id"}
     qs = supabase.table("questions").select(
         "id, content, options, type"
     ).eq("passage_id", passage_id).execute()
@@ -153,7 +180,7 @@ def get_passage(passage_id: int, current_user: UserInfo = Depends(get_current_us
         "type": "short_answer" if q.get("type") == "short_answer" else "mcq",
         "options": json.loads(q["options"]) if q.get("options") else [],
     } for q in qs.data]
-    return {**p.data[0], "questions": questions}
+    return {**passage, "questions": questions}
 
 
 # ── HIGHLIGHTS + NOTES (per user, per passage) ────────────────────────
