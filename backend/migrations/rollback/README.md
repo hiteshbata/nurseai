@@ -28,6 +28,11 @@ normal migration sequence and must never run in a routine deploy.
   with no `TO` clause (defaults to `PUBLIC`), i.e. removes the
   authenticated-role restriction. Only run if the hardened RLS policies are
   actively breaking legitimate access and can't be fixed forward.
+- `20260808010000_learner_brain_product_column-rollback.sql` — reverts the
+  `product` column + rescoped unique constraint on `user_skill_stats`. Only
+  safe while every row is still `product = 'OET'`.
+- `20260808020000_skill_observations_log-rollback.sql` — drops
+  `skill_observations`. Safe any time; nothing reads/writes it yet.
 
 After running a rollback, re-apply or fix the forward migration promptly —
 the database is back in a weaker security state until you do.

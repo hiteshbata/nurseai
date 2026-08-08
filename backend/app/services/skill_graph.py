@@ -57,7 +57,9 @@ def _record_sync(user_id: str, tag_scores: Dict[str, float]) -> None:
 async def record_skill_observations(user_id: str, tag_scores: Dict[str, float]) -> None:
     """Best-effort: a bookkeeping failure here must never break the module's
     own scoring/submission flow, so every caller fires this after its own
-    submission is already saved and just logs on failure."""
+    submission is already saved and just logs on failure. Callers are
+    expected to have already validated tag_scores (see
+    app/services/observation_service.py) -- this function only aggregates."""
     if not tag_scores:
         return
     try:

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, Dispatch, SetStateAction } fr
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
-import { CheckCircle2, Mic, Trophy, Target, Captions, PartyPopper, MessageSquareText, Download } from 'lucide-react'
+import { CheckCircle2, Mic, Trophy, Target, Captions, PartyPopper, MessageSquareText, Download, Sparkles } from 'lucide-react'
 import VoiceOrb from '@/components/VoiceOrb'
 import PlanUsageBanner from '@/components/PlanUsageBanner'
 import api, { isUpgradeRequiredError } from '@/lib/api'
@@ -268,6 +268,7 @@ export default function SpeakingSession({
         is_premium_trial: res.data.is_premium_trial,
         plan: res.data.plan,
         criteria_count: res.data.criteria_count,
+        insights: res.data.insights,
       })
 
       // Get pronunciation assessment
@@ -1117,6 +1118,48 @@ export default function SpeakingSession({
                   <p className="text-sm text-gray-700 leading-relaxed">{feedback.top_improvement || 'Keep up the good work!'}</p>
                 </div>
               </div>
+
+              {feedback.insights && (
+                <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-6 mb-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="size-4 text-indigo-500" aria-hidden="true" />
+                    <h3 className="text-base font-bold text-[#0F2356]">Today&apos;s Speaking Insights</h3>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Strongest</p>
+                      <p className="text-sm font-semibold text-emerald-700">
+                        {feedback.insights.strongest_skill.label} ({feedback.insights.strongest_skill.score}/6)
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Weakest</p>
+                      <p className="text-sm font-semibold text-amber-700">
+                        {feedback.insights.weakest_skill.label} ({feedback.insights.weakest_skill.score}/6)
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-700 leading-relaxed mb-3">{feedback.insights.recommendation_reason}</p>
+                  <div className="rounded-xl bg-white border border-indigo-100 px-4 py-3 mb-3">
+                    <p className="text-xs text-indigo-500 font-semibold uppercase tracking-wide mb-1">Try This Next</p>
+                    <p className="text-sm text-gray-700 leading-relaxed">{feedback.insights.actionable_improvement}</p>
+                  </div>
+                  <p className="text-xs text-gray-500 italic mb-4">{feedback.insights.confidence_message}</p>
+                  {feedback.insights.next_best_action && (
+                    <a
+                      href={`/practice/speaking?scenario=${feedback.insights.next_best_action.scenario_id}`}
+                      className="flex items-center justify-between gap-3 rounded-xl bg-white border border-indigo-200 px-4 py-3 hover:border-indigo-400 transition"
+                    >
+                      <div>
+                        <p className="text-xs text-indigo-500 font-semibold uppercase tracking-wide">Recommended Next</p>
+                        <p className="text-sm font-semibold text-[#0F2356]">{feedback.insights.next_best_action.title}</p>
+                        <p className="text-xs text-gray-500">{feedback.insights.next_best_action.reason}</p>
+                      </div>
+                      <span className="text-indigo-500 text-sm font-semibold shrink-0">Start →</span>
+                    </a>
+                  )}
+                </div>
+              )}
 
               {feedback.examiner_summary && (
                 <div className="rounded-2xl bg-white border border-gray-200 p-6 mb-6">

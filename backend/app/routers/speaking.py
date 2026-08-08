@@ -7,7 +7,7 @@ import re
 from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Dict, List, Optional
 from app.core.config import settings
 from app.core.ai_pricing import estimate_deepgram_cost
 from app.core.supabase import get_supabase, get_auth_client
@@ -24,6 +24,8 @@ from app.services.ai_scoring import get_patient_response, score_speaking, _call_
 from app.services import ai_registry
 from app.services.pronunciation import get_pronunciation_feedback
 from app.services.skill_graph import record_skill_observations, get_weakness
+from app.services.observation_service import validate_and_normalize
+from app.services.coaching_messages import RECOMMENDATION_REASON, ACTIONABLE_IMPROVEMENT, CONFIDENCE_MESSAGE
 from app.services.plan_gating import (
     get_scoring_purpose,
     get_plan_from_profile,
@@ -684,6 +686,76 @@ def _recommend_scenarios(current_user: UserInfo, user_db: Client, limit: int) ->
     return recs
 
 
+def _skill_label(tag: str) -> str:
+    """"speaking:clinical_communication" -> "Clinical Communication" -- same
+    convention as skill_graph.get_weakness's default labeling."""
+    return tag.split(":", 1)[-1].replace("_", " ").title()
+
+
+async def _build_speaking_insights(
+    criterion_scores: Dict[str, float],
+    current_user: UserInfo,
+    user_db: Client,
+) -> Optional[dict]:
+    """Rule-based V1 recommendation (Sprint 1, ADR-008). Weakest skill
+    prefers learner history: get_weakness (existing, unmodified) reads the
+    rolled-up user_skill_stats EMA and only returns a skill once it has
+    WEAKNESS_MIN_ATTEMPTS behind it -- when it has an answer, that's a real
+    pattern, not one unlucky session, so it drives the recommendation. Falls
+    back to this session's own lowest-scoring criterion for a learner with
+    no history yet (or whose history has nothing weak enough to surface).
+    Strongest skill is always today's session -- that's a "how did today go"
+    read, independent of the history/session split above. No AI call, no
+    per-scenario skill tagging -- content tagging against the skill graph is
+    Knowledge Brain (Phase 4), not built.
+
+    Best-effort like record_skill_observations above: by the time this runs,
+    the submission is already saved and the session already claimed, so a
+    weakness-history or recommendation query blipping must not turn an
+    already-successful score into a 500 for the learner -- this is purely
+    additive UI, not something worth failing the request over."""
+    if not criterion_scores:
+        return None
+    try:
+        strongest_tag, strongest_score = max(criterion_scores.items(), key=lambda kv: kv[1])
+        strongest_label = _skill_label(strongest_tag)
+
+        history = await get_weakness(user_db, current_user.id, "speaking:")
+        if history:
+            weakest = history[0]
+            weakest_tag = f"speaking:{weakest['skill']}"
+            weakest_label = weakest["label"]
+            weakest_score = weakest["band"]
+            basis = "history"
+            template_args = {"label": weakest_label, "attempts": weakest["attempts"]}
+        else:
+            weakest_tag, weakest_score = min(criterion_scores.items(), key=lambda kv: kv[1])
+            weakest_label = _skill_label(weakest_tag)
+            basis = "session"
+            template_args = {"label": weakest_label, "attempts": 1}
+
+        next_best_action = None
+        try:
+            recs = await run_sync(_recommend_scenarios, current_user, user_db, 1)
+            if recs:
+                next_best_action = recs[0]
+        except HTTPException:
+            pass  # no scenarios available -- insights still useful without a pick
+
+        return {
+            "strongest_skill": {"tag": strongest_tag, "label": strongest_label, "score": strongest_score},
+            "weakest_skill": {"tag": weakest_tag, "label": weakest_label, "score": weakest_score},
+            "recommendation_reason": RECOMMENDATION_REASON[basis].format(**template_args),
+            "actionable_improvement": ACTIONABLE_IMPROVEMENT[basis].format(**template_args),
+            "confidence_message": CONFIDENCE_MESSAGE[basis].format(**template_args),
+            "next_best_action": next_best_action,
+            "based_on": basis,
+        }
+    except Exception as e:
+        logger.warning("[SPEAKING_INSIGHTS_FAILED] user_id=%s error=%s", current_user.id, str(e)[:300])
+        return None
+
+
 @router.get("/scenarios/recommend")
 def recommend_scenario(
     current_user: UserInfo = Depends(get_current_user),
@@ -886,12 +958,14 @@ async def score_speaking_session(
         }).execute
     )
 
-    criterion_scores = {
-        f"speaking:{criterion}": data["score"]
+    raw_criterion_scores = {
+        f"speaking:{criterion}": data.get("score")
         for criterion, data in feedback.get("scores", {}).items()
-        if isinstance(data, dict) and isinstance(data.get("score"), (int, float))
+        if isinstance(data, dict)
     }
+    criterion_scores = validate_and_normalize("speaking", raw_criterion_scores)
     await record_skill_observations(current_user.id, criterion_scores)
+    insights = await _build_speaking_insights(criterion_scores, current_user, user_db)
 
     return {
         "success": True,
@@ -899,6 +973,7 @@ async def score_speaking_session(
         "is_premium_trial": is_premium_trial,
         "plan": plan,
         "criteria_count": criteria_count,
+        "insights": insights,
     }
 
 
