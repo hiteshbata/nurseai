@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { useAdminUser } from '@/app/admin/AdminShell'
+import { ValidationErrorPanel, extractValidationResult, type ValidationResult } from '@/app/admin/ValidationErrors'
 
 // RC4.1: cutting a new Mock Test Version is owner-only (require_owner).
 const ROLE_RANK: Record<string, number> = { user: 0, support: 1, analyst: 2, admin: 3, owner: 4 }
@@ -34,10 +35,23 @@ export default function AdminMockTestsPage() {
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [publishingId, setPublishingId] = useState<number | null>(null)
+  // RC4.2: structured 409 validation errors from a failed pack publish, by pack id.
+  const [publishValidation, setPublishValidation] = useState<Record<number, ValidationResult>>({})
 
   const fetchPacks = () => {
     api.get('/mock/admin/tests')
-      .then((res) => setRows(res.data || []))
+      .then((res) => {
+        const packs: MockTestPack[] = res.data || []
+        setRows(packs)
+        // RC4.2: pull each pack's /preview validation in the background so the
+        // panel shows what's blocking publish before an admin even clicks it --
+        // same publishValidation state a failed publish attempt populates.
+        packs.forEach((p) => {
+          api.get(`/mock/admin/tests/${p.id}/preview`)
+            .then((r) => { if (r.data?.validation) setPublishValidation((v) => ({ ...v, [p.id]: r.data.validation })) })
+            .catch(() => {})
+        })
+      })
       .catch((error: any) => {
         if (error.response?.status === 403) router.push('/dashboard')
       })
@@ -79,9 +93,15 @@ export default function AdminMockTestsPage() {
     try {
       const res = await api.post(`/mock/admin/tests/${p.id}/publish`)
       toast.success(`${p.label}: published Version ${res.data.version}`)
+      setPublishValidation((v) => { const { [p.id]: _drop, ...rest } = v; return rest })
       fetchPacks()
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to publish a new version')
+      const validation = extractValidationResult(error)
+      if (validation) {
+        setPublishValidation((v) => ({ ...v, [p.id]: validation }))
+      } else {
+        toast.error(error.response?.data?.detail || 'Failed to publish a new version')
+      }
     } finally {
       setPublishingId(null)
     }
@@ -129,7 +149,8 @@ export default function AdminMockTestsPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {rows.map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50">
+                    <Fragment key={p.id}>
+                    <tr className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-semibold text-gray-800">{p.label}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{p.listening_title || '—'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{p.reading_title || '—'}</td>
@@ -166,6 +187,17 @@ export default function AdminMockTestsPage() {
                         </button>
                       </td>
                     </tr>
+                    {publishValidation[p.id] && (
+                      <tr>
+                        <td colSpan={8} className="px-4 pb-3">
+                          <ValidationErrorPanel
+                            result={publishValidation[p.id]}
+                            onDismiss={() => setPublishValidation((v) => { const { [p.id]: _drop, ...rest } = v; return rest })}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { useAdminUser } from '@/app/admin/AdminShell'
+import { ValidationErrorPanel, extractValidationResult, type ValidationResult } from '@/app/admin/ValidationErrors'
 
 // RC4.1: publishing/unpublishing a test cuts an immutable version -- owner-only (require_owner).
 const ROLE_RANK: Record<string, number> = { user: 0, support: 1, analyst: 2, admin: 3, owner: 4 }
@@ -229,6 +230,8 @@ export default function AdminListeningPage() {
 
   const [selectedTestIds, setSelectedTestIds] = useState<Set<number>>(new Set())
   const [bulkWorking, setBulkWorking] = useState(false)
+  // RC4.2: structured 409 validation errors from a failed single-test publish, by test id.
+  const [publishValidation, setPublishValidation] = useState<Record<number, ValidationResult>>({})
 
   const [activeTest, setActiveTest] = useState<TestRow | null>(null)
   const [detail, setDetail] = useState<TestDetail | null>(null)
@@ -264,9 +267,15 @@ export default function AdminListeningPage() {
   }
   useEffect(fetchTests, [])
 
+  // RC4.2: also pulls /preview's `validation` field into the same
+  // publishValidation state a failed publish attempt populates, so the panel
+  // shows what's blocking publish as soon as an admin opens the test.
   const loadDetail = (id: number) => {
     setLoadingDetail(true)
     api.get(`/listening/admin/tests/${id}/detail`).then((res) => setDetail(res.data)).catch(() => toast.error('Failed to load test')).finally(() => setLoadingDetail(false))
+    api.get(`/listening/admin/tests/${id}/preview`).then((res) => {
+      if (res.data?.validation) setPublishValidation((p) => ({ ...p, [id]: res.data.validation }))
+    }).catch(() => {})
   }
 
   const manage = (t: TestRow) => { setActiveTest(t); setDrafts([]); setEditor(null); loadDetail(t.id) }
@@ -287,9 +296,17 @@ export default function AdminListeningPage() {
     try {
       await api.post(`/listening/admin/tests/${t.id}/active`, { is_active: !t.is_active })
       toast.success(!t.is_active ? 'Test is now live' : 'Test unpublished')
+      setPublishValidation((p) => { const { [t.id]: _drop, ...rest } = p; return rest })
       fetchTests()
       if (activeTest?.id === t.id) loadDetail(t.id)
-    } catch (e: any) { toast.error(errorMessage(e, 'Failed')) }
+    } catch (e: any) {
+      const validation = extractValidationResult(e)
+      if (validation) {
+        setPublishValidation((p) => ({ ...p, [t.id]: validation }))
+      } else {
+        toast.error(errorMessage(e, 'Failed'))
+      }
+    }
   }
 
   const toggleTestSelect = (id: number) =>
@@ -574,6 +591,15 @@ export default function AdminListeningPage() {
           </div>
         </div>
 
+        {publishValidation[activeTest.id] && (
+          <div className="mb-6">
+            <ValidationErrorPanel
+              result={publishValidation[activeTest.id]}
+              onDismiss={() => setPublishValidation((p) => { const { [activeTest.id]: _drop, ...rest } = p; return rest })}
+            />
+          </div>
+        )}
+
         {/* Add content */}
         <div className="bg-white rounded-lg shadow p-6 mb-6 space-y-6">
           <div>
@@ -771,7 +797,8 @@ export default function AdminListeningPage() {
               </label>
             )}
             {tests.map((t) => (
-              <div key={t.id} className={`flex items-center justify-between gap-3 border rounded-lg px-4 py-3 ${selectedTestIds.has(t.id) ? 'bg-blue-50' : ''}`}>
+              <div key={t.id} className="space-y-2">
+              <div className={`flex items-center justify-between gap-3 border rounded-lg px-4 py-3 ${selectedTestIds.has(t.id) ? 'bg-blue-50' : ''}`}>
                 <div className="flex items-center gap-3 min-w-0">
                   <input type="checkbox" checked={selectedTestIds.has(t.id)} onChange={() => toggleTestSelect(t.id)} aria-label={`Select ${t.title}`} />
                   <div className="min-w-0">
@@ -795,6 +822,13 @@ export default function AdminListeningPage() {
                   <button onClick={() => togglePublish(t)} disabled={!canPublish} title={canPublish ? '' : 'Owner role required'} className="text-gray-600 disabled:opacity-40">{t.is_active ? 'Unpublish' : 'Publish'}</button>
                   <button onClick={() => deleteTest(t)} className="text-red-400 hover:text-red-600">Delete</button>
                 </div>
+              </div>
+              {publishValidation[t.id] && (
+                <ValidationErrorPanel
+                  result={publishValidation[t.id]}
+                  onDismiss={() => setPublishValidation((p) => { const { [t.id]: _drop, ...rest } = p; return rest })}
+                />
+              )}
               </div>
             ))}
           </div>

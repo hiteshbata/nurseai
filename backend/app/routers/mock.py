@@ -29,6 +29,7 @@ from app.routers.admin import require_admin, require_owner
 from app.services.plan_gating import has_mock_test_access, get_plan_from_profile
 from app.routers.sessions import _usage_payload, get_month_start_utc
 from app.services.assessment_versioning import publish_mock_version, latest_version_id, get_version_row
+from app.services.assessment_validation import validate_mock_test
 
 router = APIRouter(prefix="/mock", tags=["mock"])
 logger = logging.getLogger(__name__)
@@ -546,6 +547,42 @@ async def admin_list_mock_tests(current_user: UserInfo = Depends(require_admin))
     } for p in packs]
 
 
+@router.get("/admin/tests/{mock_test_id}/preview")
+async def admin_preview_mock_test(mock_test_id: int, _admin=Depends(require_admin)):
+    """RC4.2: resolved pack content (same title lookups as admin_list_mock_tests,
+    for one pack) plus `validation` -- the exact same result Owner publish
+    would get (assessment_validation.validate_mock_test), so an admin can see
+    what's blocking publish before reaching for the Owner-only button.
+
+    Deliberately NOT built on assessment_versioning.build_mock_snapshot --
+    that function 409s if the pack's Reading/Listening has no published
+    version yet, which is exactly the state a preview needs to surface, not
+    raise on. Admin-level (require_admin), matching Reading/Listening's own
+    /preview gate -- publish itself stays owner-only."""
+    supabase = get_supabase()
+    pack = (await run_sync(supabase.table("mock_tests").select("*").eq("id", mock_test_id).execute)).data
+    if not pack:
+        raise HTTPException(status_code=404, detail="Mock Test pack not found")
+    p = pack[0]
+
+    async def _title(table: str, content_id: Optional[int]) -> Optional[str]:
+        if not content_id:
+            return None
+        rows = (await run_sync(supabase.table(table).select("id, title").eq("id", content_id).execute)).data
+        return rows[0]["title"] if rows else None
+
+    validation = await run_sync(validate_mock_test, supabase, mock_test_id)
+    return {
+        **p,
+        "listening_title": await _title("listening_tests", p.get("listening_test_id")),
+        "reading_title": await _title("reading_tests", p.get("reading_test_id")),
+        "writing_title": await _title("scenarios", p.get("writing_scenario_id")),
+        "speaking_title_1": await _title("scenarios", p.get("speaking_scenario_id_1")),
+        "speaking_title_2": await _title("scenarios", p.get("speaking_scenario_id_2")),
+        "validation": validation,
+    }
+
+
 class MockTestActiveRequest(BaseModel):
     is_active: bool
 
@@ -581,11 +618,23 @@ async def admin_publish_mock_test_version(
 
     RC4.1: owner-gated -- cutting an immutable production version is
     high-impact (see require_owner). Normal mock admin ops (generate,
-    activate/deactivate) stay admin-level."""
+    activate/deactivate) stay admin-level.
+
+    RC4.2: hard-blocking validation gate composing Reading/Listening's own
+    validators against this pack's picks, plus Mock-specific checks (all 5
+    slots filled, referenced Reading/Listening already have a published
+    version, Writing/Speaking active with required fields, the two Speaking
+    scenarios distinct). A failing pack 409s with structured errors and
+    never reaches publish_mock_version -- no version cut, no partial write.
+    admin_generate_mock_test's own best-effort auto-publish is deliberately
+    NOT routed through this gate (see that function's docstring)."""
     supabase = get_supabase()
     existing = await run_sync(supabase.table("mock_tests").select("id").eq("id", mock_test_id).execute)
     if not existing.data:
         raise HTTPException(status_code=404, detail="Mock Test pack not found")
+    validation = await run_sync(validate_mock_test, supabase, mock_test_id)
+    if not validation["valid"]:
+        raise HTTPException(status_code=409, detail=validation)
     version_row = await run_sync(publish_mock_version, supabase, mock_test_id, current_user.id)
     return {"success": True, "version": version_row["version"], "id": version_row["id"]}
 

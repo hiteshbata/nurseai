@@ -52,6 +52,7 @@ from app.services.assessment_versioning import (
     publish_listening_version, latest_version_id, get_version_row,
     listening_snapshot_student_payload, listening_snapshot_questions_by_id, listening_snapshot_transcripts,
 )
+from app.services.assessment_validation import validate_listening_test
 
 logger = logging.getLogger(__name__)
 
@@ -1071,8 +1072,14 @@ def admin_test_detail(test_id: int, _admin=Depends(require_admin)):
 def admin_preview_test(test_id: int, _admin=Depends(require_admin)):
     """What students will see, but works BEFORE publishing: same payload as the
     student GET /tests/{id}, ignoring is_active so an admin can review a test as a
-    full session before making it live."""
-    return _load_test_payload(test_id, include_inactive=True)
+    full session before making it live.
+
+    RC4.2: also attaches `validation` -- the exact same result publish would
+    get (assessment_validation.validate_listening_test), so the preview shows
+    what's blocking publish without duplicating the rules."""
+    payload = _load_test_payload(test_id, include_inactive=True)
+    payload["validation"] = validate_listening_test(get_supabase(), test_id)
+    return payload
 
 
 @router.post("/admin/tests/{test_id}/active")
@@ -1081,12 +1088,20 @@ def set_test_active(test_id: int, req: SetActiveRequest, admin: UserInfo = Depen
 
     RC4.1: publishing (is_active=True) is this test's version-cut moment,
     same reasoning as reading.py's set_test_active -- see that docstring.
-    Owner-gated for the same reason (require_owner)."""
+    Owner-gated for the same reason (require_owner).
+
+    RC4.2: same hard-blocking validation gate as reading.py, plus every
+    active section must resolve an audio_url. A failing test 409s with
+    structured field-level errors and neither cuts a version nor flips
+    is_active (see assessment_validation.validate_listening_test)."""
     supabase = get_supabase()
     existing = supabase.table("listening_tests").select("id").eq("id", test_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Test not found")
     if req.is_active:
+        validation = validate_listening_test(supabase, test_id)
+        if not validation["valid"]:
+            raise HTTPException(status_code=409, detail=validation)
         publish_listening_version(supabase, test_id, admin.id)
     supabase.table("listening_tests").update({"is_active": req.is_active}).eq("id", test_id).execute()
     return {"success": True, "is_active": req.is_active}

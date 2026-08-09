@@ -103,6 +103,10 @@ _PRO_PROFILE = {"user_id": "student-1", "plan": "pro", "plan_expires_at": "2099-
 
 
 def _seeded_fake():
+    """Passage 10 (Part B) is what every test below actually exercises
+    (frozen body/grading). Passages 11 (Part A) and 12 (Part C) exist only
+    so the fixture satisfies RC4.2's full A/B/C publish gate -- set_test_active
+    now 409s on partial coverage (see assessment_validation.validate_reading_test)."""
     fake = FakeSupabase()
     fake.tables["user_profiles"] = [_PRO_PROFILE]
     fake.tables["mock_test_sessions"] = []  # no open mock -- get_pinned_test_version_id short-circuits
@@ -110,9 +114,21 @@ def _seeded_fake():
     fake.tables["reading_passages"] = [{
         "id": 10, "title": "Passage 1", "part": "B", "difficulty": "intermediate",
         "body": "original body", "test_id": 1, "is_active": True,
+    }, {
+        "id": 11, "title": "Passage A", "part": "A", "difficulty": "intermediate",
+        "body": "part a body", "test_id": 1, "is_active": True,
+    }, {
+        "id": 12, "title": "Passage C", "part": "C", "difficulty": "intermediate",
+        "body": "part c body", "test_id": 1, "is_active": True,
     }]
     fake.tables["questions"] = [{
         "id": 100, "passage_id": 10, "type": "mcq", "content": "original question",
+        "options": json.dumps(["a", "b"]), "correct_answer": "a",
+    }, {
+        "id": 110, "passage_id": 11, "type": "mcq", "content": "part a question",
+        "options": json.dumps(["a", "b"]), "correct_answer": "a",
+    }, {
+        "id": 120, "passage_id": 12, "type": "mcq", "content": "part c question",
         "options": json.dumps(["a", "b"]), "correct_answer": "a",
     }]
     return fake
@@ -158,7 +174,7 @@ def test_legacy_unversioned_test_still_serves_from_live_tables(monkeypatch):
     monkeypatch.setattr(reading_router, "get_supabase", lambda: fake)
 
     result = reading_router.get_reading_test(1, current_user=_USER)
-    assert result["passages"][0]["title"] == "Passage 1"
+    assert any(p["title"] == "Passage 1" for p in result["passages"])
     assert fake.tables.get("reading_test_versions", []) == []  # legacy path never touches versions
 
 

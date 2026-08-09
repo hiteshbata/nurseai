@@ -5,6 +5,7 @@ import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { splitPartASectionsRaw, joinPartASections } from '@/lib/utils'
 import { useAdminUser } from '@/app/admin/AdminShell'
+import { ValidationErrorPanel, extractValidationResult, type ValidationResult } from '@/app/admin/ValidationErrors'
 
 // RC4.1: publishing/unpublishing a test cuts an immutable version -- owner-only (require_owner).
 const ROLE_RANK: Record<string, number> = { user: 0, support: 1, analyst: 2, admin: 3, owner: 4 }
@@ -158,6 +159,8 @@ export default function AdminReadingPage() {
   // Bulk-select publish/unpublish for the tests list.
   const [selectedTestIds, setSelectedTestIds] = useState<Set<number>>(new Set())
   const [bulkTestWorking, setBulkTestWorking] = useState(false)
+  // RC4.2: structured 409 validation errors from a failed single-test publish, by test id.
+  const [publishValidation, setPublishValidation] = useState<Record<number, ValidationResult>>({})
 
   // Tests: a test groups a paper's passages into one student session.
   const [tests, setTests] = useState<ReadingTest[]>([])
@@ -221,21 +224,20 @@ export default function AdminReadingPage() {
   }
 
   const toggleTestActive = async (t: ReadingTest) => {
-    // Publishing an incomplete test is allowed (some sample sets are single-part),
-    // but warn about what's missing so a half-built test doesn't go live by accident.
-    if (!t.is_active) {
-      const gaps: string[] = []
-      const missingParts = ALL_PARTS.filter((p) => !t.parts.includes(p))
-      if (missingParts.length) gaps.push(`no Part ${missingParts.join(', ')}`)
-      if (t.missing_answers > 0) gaps.push(`${t.missing_answers} question${t.missing_answers === 1 ? '' : 's'} with no answer`)
-      if (gaps.length && !confirm(`"${t.title}" still has: ${gaps.join('; ')}.\n\nPublish it anyway?`)) return
-    }
+    // RC4.2: the backend now hard-blocks an incomplete publish (409 with
+    // structured field-level errors) -- no more "publish anyway?" confirm().
     try {
       await api.post(`/reading/admin/tests/${t.id}/active`, { is_active: !t.is_active })
       toast.success(t.is_active ? 'Test unpublished' : 'Test is now live')
+      setPublishValidation((p) => { const { [t.id]: _drop, ...rest } = p; return rest })
       fetchTests()
     } catch (e: any) {
-      toast.error(errorMessage(e, 'Failed to update test'))
+      const validation = extractValidationResult(e)
+      if (validation) {
+        setPublishValidation((p) => ({ ...p, [t.id]: validation }))
+      } else {
+        toast.error(errorMessage(e, 'Failed to update test'))
+      }
     }
   }
 
@@ -347,13 +349,26 @@ export default function AdminReadingPage() {
 
   // Load the open test's contents when expanded and not already cached. Cache is
   // cleared on every mutation (fetchTests), so this refetches fresh detail after edits.
+  // RC4.2: also pulls /preview's `validation` field, so the panel shows what's
+  // blocking publish as soon as an admin opens the test -- not just after a
+  // failed publish attempt (same ValidationErrorPanel/publishValidation state
+  // as toggleTestActive's catch below, so it's a no-op when the test is valid).
   useEffect(() => {
     const id = expandedTestId
     if (id == null || testDetail[id]) return
     let cancelled = false
     setLoadingDetailId(id)
-    api.get(`/reading/admin/tests/${id}/detail`)
-      .then((res) => { if (!cancelled) setTestDetail((d) => ({ ...d, [id]: res.data })) })
+    Promise.all([
+      api.get(`/reading/admin/tests/${id}/detail`),
+      api.get(`/reading/admin/tests/${id}/preview`),
+    ])
+      .then(([detailRes, previewRes]) => {
+        if (cancelled) return
+        setTestDetail((d) => ({ ...d, [id]: detailRes.data }))
+        if (previewRes.data?.validation) {
+          setPublishValidation((p) => ({ ...p, [id]: previewRes.data.validation }))
+        }
+      })
       .catch(() => { if (!cancelled) toast.error('Failed to load test contents') })
       .finally(() => { if (!cancelled) setLoadingDetailId(null) })
     return () => { cancelled = true }
@@ -794,6 +809,15 @@ export default function AdminReadingPage() {
                       <button onClick={() => deleteTest(t)} className="text-red-500 hover:text-red-700 font-semibold text-xs">Delete</button>
                     </div>
                   </div>
+
+                  {publishValidation[t.id] && (
+                    <div className="px-3 pb-3">
+                      <ValidationErrorPanel
+                        result={publishValidation[t.id]}
+                        onDismiss={() => setPublishValidation((p) => { const { [t.id]: _drop, ...rest } = p; return rest })}
+                      />
+                    </div>
+                  )}
 
                   {/* Expanded drill-down: Part A/B/C -> passages -> questions */}
                   {expanded && (

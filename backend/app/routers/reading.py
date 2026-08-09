@@ -40,6 +40,7 @@ from app.services.assessment_versioning import (
     publish_reading_version, latest_version_id, get_version_row,
     reading_snapshot_student_payload, reading_snapshot_questions_by_id,
 )
+from app.services.assessment_validation import validate_reading_test
 
 logger = logging.getLogger(__name__)
 
@@ -1555,8 +1556,14 @@ def admin_test_detail(test_id: int, _admin=Depends(require_admin)):
 def admin_preview_test(test_id: int, _admin=Depends(require_admin)):
     """What students will see, but works BEFORE publishing: same payload as the
     student GET /tests/{id}, ignoring is_active on the test and its passages so an
-    admin can review a test as a full session before making it live."""
-    return _load_test_payload(test_id, include_inactive=True)
+    admin can review a test as a full session before making it live.
+
+    RC4.2: also attaches `validation` -- the exact same result publish would
+    get (assessment_validation.validate_reading_test), so the preview shows
+    what's blocking publish without duplicating the rules."""
+    payload = _load_test_payload(test_id, include_inactive=True)
+    payload["validation"] = validate_reading_test(get_supabase(), test_id)
+    return payload
 
 
 class SetActiveRequest(BaseModel):
@@ -1577,12 +1584,21 @@ def set_test_active(test_id: int, req: SetActiveRequest, admin: UserInfo = Depen
 
     RC4.1: owner-gated -- cutting an immutable production version is a
     high-impact publish operation (see require_owner). Normal admin content
-    edits are unaffected."""
+    edits are unaffected.
+
+    RC4.2: publishing is now a hard-blocking validation gate -- full OET
+    Part A/B/C coverage, every question answered and answer-matching. A
+    failing test 409s with structured field-level errors and neither cuts a
+    version nor flips is_active. Unpublishing is never gated (see
+    assessment_validation.validate_reading_test)."""
     supabase = get_supabase()
     existing = supabase.table("reading_tests").select("id").eq("id", test_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Test not found")
     if req.is_active:
+        validation = validate_reading_test(supabase, test_id)
+        if not validation["valid"]:
+            raise HTTPException(status_code=409, detail=validation)
         publish_reading_version(supabase, test_id, admin.id)
     supabase.table("reading_tests").update({"is_active": req.is_active}).eq("id", test_id).execute()
     return {"success": True, "is_active": req.is_active}

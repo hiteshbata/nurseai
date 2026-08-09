@@ -114,16 +114,38 @@ _ELITE_PROFILE = {"user_id": "student-1", "plan": "elite", "plan_expires_at": "2
 
 def _seeded_content(fake):
     """One active, already-versioned Reading test (v1) and Listening test
-    (v1), plus a writing + two speaking scenarios with every snapshot field."""
+    (v1) -- each with full Part A/B/C coverage so admin_publish_mock_test_version's
+    RC4.2 validation gate passes -- plus a writing + two speaking scenarios
+    with every snapshot field."""
     fake.tables["reading_tests"] = [{"id": 1, "title": "Reading 1", "is_active": True}]
-    fake.tables["reading_passages"] = [{"id": 10, "title": "P1", "part": "B", "difficulty": "intermediate", "body": "b", "test_id": 1, "is_active": True}]
-    fake.tables["questions"] = [{"id": 100, "passage_id": 10, "type": "mcq", "content": "q", "options": json.dumps(["a", "b"]), "correct_answer": "a"}]
+    fake.tables["reading_passages"] = [
+        {"id": 10, "title": "P1", "part": "B", "difficulty": "intermediate", "body": "b", "test_id": 1, "is_active": True},
+        {"id": 11, "title": "PA", "part": "A", "difficulty": "intermediate", "body": "a", "test_id": 1, "is_active": True},
+        {"id": 12, "title": "PC", "part": "C", "difficulty": "intermediate", "body": "c", "test_id": 1, "is_active": True},
+    ]
+    fake.tables["questions"] = [
+        {"id": 100, "passage_id": 10, "type": "mcq", "content": "q", "options": json.dumps(["a", "b"]), "correct_answer": "a"},
+        {"id": 110, "passage_id": 11, "type": "mcq", "content": "qa", "options": json.dumps(["a", "b"]), "correct_answer": "a"},
+        {"id": 120, "passage_id": 12, "type": "mcq", "content": "qc", "options": json.dumps(["a", "b"]), "correct_answer": "a"},
+    ]
     fake.tables["listening_tests"] = [{"id": 2, "title": "Listening 1", "is_active": True, "part_audio": {}, "part_audio_times": {}}]
-    fake.tables["listening_sections"] = [{"id": 20, "title": "S1", "part": "B", "difficulty": "intermediate", "audio_url": "https://x/a.mp3", "transcript": [], "body": None, "test_id": 2, "is_active": True}]
+    fake.tables["listening_sections"] = [
+        {"id": 20, "title": "S1", "part": "B", "difficulty": "intermediate", "audio_url": "https://x/b.mp3", "transcript": [], "body": None, "test_id": 2, "is_active": True},
+        {"id": 21, "title": "SA", "part": "A", "difficulty": "intermediate", "audio_url": "https://x/a.mp3", "transcript": [], "body": None, "test_id": 2, "is_active": True},
+        {"id": 22, "title": "SC", "part": "C", "difficulty": "intermediate", "audio_url": "https://x/c.mp3", "transcript": [], "body": None, "test_id": 2, "is_active": True},
+    ]
+    fake.tables["questions"] += [
+        {"id": 200, "section_id": 20, "type": "mcq", "content": "q", "options": json.dumps(["a", "b"]), "correct_answer": "a"},
+        {"id": 210, "section_id": 21, "type": "mcq", "content": "qa", "options": json.dumps(["a", "b"]), "correct_answer": "a"},
+        {"id": 220, "section_id": 22, "type": "mcq", "content": "qc", "options": json.dumps(["a", "b"]), "correct_answer": "a"},
+    ]
+    # RC4.2: nurse_card/interlocutor_card/scoring_criteria must be non-empty
+    # (validate_mock_test's scenario checks) -- `{}` (this fixture's
+    # pre-RC4.2 placeholder) is now a legitimate "missing" failure.
     fake.tables["scenarios"] = [
-        {"id": 300, "module": "writing", "title": "W1", "is_active": True, "setting": "notes", "nurse_card": {}, "scoring_criteria": {}, "key_points": [], "difficulty": "medium", "specialty": "general"},
-        {"id": 301, "module": "speaking", "title": "S1", "is_active": True, "setting": "ward", "nurse_card": {}, "interlocutor_card": {}, "scoring_criteria": {}, "difficulty": "easy", "specialty": "general", "voice_config": {}, "patient_gender": "male", "patient_age": 40},
-        {"id": 302, "module": "speaking", "title": "S2", "is_active": True, "setting": "ward", "nurse_card": {}, "interlocutor_card": {}, "scoring_criteria": {}, "difficulty": "easy", "specialty": "general", "voice_config": {}, "patient_gender": "female", "patient_age": 30},
+        {"id": 300, "module": "writing", "title": "W1", "is_active": True, "setting": "notes", "nurse_card": {"task": "Write a letter"}, "scoring_criteria": {"rubric": "content"}, "key_points": [], "difficulty": "medium", "specialty": "general"},
+        {"id": 301, "module": "speaking", "title": "S1", "is_active": True, "setting": "ward", "nurse_card": {"task": "Explain the procedure"}, "interlocutor_card": {"persona": "anxious patient"}, "scoring_criteria": {"rubric": "communication"}, "difficulty": "easy", "specialty": "general", "voice_config": {}, "patient_gender": "male", "patient_age": 40},
+        {"id": 302, "module": "speaking", "title": "S2", "is_active": True, "setting": "ward", "nurse_card": {"task": "Reassure the patient"}, "interlocutor_card": {"persona": "worried relative"}, "scoring_criteria": {"rubric": "communication"}, "difficulty": "easy", "specialty": "general", "voice_config": {}, "patient_gender": "female", "patient_age": 30},
     ]
     from app.services.assessment_versioning import publish_reading_version, publish_listening_version
     publish_reading_version(fake, 1, "admin-1")

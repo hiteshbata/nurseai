@@ -102,6 +102,11 @@ _PRO_PROFILE = {"user_id": "student-1", "plan": "pro", "plan_expires_at": "2099-
 
 
 def _seeded_fake():
+    """Section 20 (Part B) is what every test below actually exercises
+    (frozen audio_url/transcript/grading). Sections 21 (Part A) and 22 (Part
+    C) exist only so the fixture satisfies RC4.2's full A/B/C publish gate
+    -- set_test_active now 409s on partial coverage (see
+    assessment_validation.validate_listening_test)."""
     fake = FakeSupabase()
     fake.tables["user_profiles"] = [_PRO_PROFILE]
     fake.tables["mock_test_sessions"] = []
@@ -110,9 +115,23 @@ def _seeded_fake():
         "id": 20, "title": "Section 1", "part": "B", "difficulty": "intermediate",
         "audio_url": "https://bucket/original.mp3", "transcript": [{"speaker": "Nurse", "text": "original"}],
         "body": None, "test_id": 2, "is_active": True,
+    }, {
+        "id": 21, "title": "Section A", "part": "A", "difficulty": "intermediate",
+        "audio_url": "https://bucket/part-a.mp3", "transcript": None,
+        "body": None, "test_id": 2, "is_active": True,
+    }, {
+        "id": 22, "title": "Section C", "part": "C", "difficulty": "intermediate",
+        "audio_url": "https://bucket/part-c.mp3", "transcript": None,
+        "body": None, "test_id": 2, "is_active": True,
     }]
     fake.tables["questions"] = [{
         "id": 200, "section_id": 20, "type": "mcq", "content": "original question",
+        "options": json.dumps(["a", "b"]), "correct_answer": "a",
+    }, {
+        "id": 210, "section_id": 21, "type": "mcq", "content": "part a question",
+        "options": json.dumps(["a", "b"]), "correct_answer": "a",
+    }, {
+        "id": 220, "section_id": 22, "type": "mcq", "content": "part c question",
         "options": json.dumps(["a", "b"]), "correct_answer": "a",
     }]
     return fake
@@ -136,7 +155,7 @@ def test_get_test_serves_frozen_audio_url_and_withholds_transcript(monkeypatch):
     fake.tables["listening_sections"][0]["audio_url"] = "https://bucket/REPLACED.mp3"
 
     result = listening_router.get_test(2, current_user=_USER)
-    section = result["sections"][0]
+    section = next(s for s in result["sections"] if s["title"] == "Section 1")
     assert section["audio_url"] == "https://bucket/original.mp3"  # frozen, not the replacement
     assert "transcript" not in section  # withheld pre-submit, same as legacy contract
     assert "correct_answer" not in section["questions"][0]
@@ -148,7 +167,7 @@ def test_legacy_unversioned_test_still_serves_from_live_tables(monkeypatch):
     monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
 
     result = listening_router.get_test(2, current_user=_USER)
-    assert result["sections"][0]["title"] == "Section 1"
+    assert any(s["title"] == "Section 1" for s in result["sections"])
     assert fake.tables.get("listening_test_versions", []) == []
 
 
@@ -165,7 +184,7 @@ def test_submit_grades_and_reveals_transcript_from_frozen_snapshot(monkeypatch):
     result = asyncio.run(listening_router.submit_test(2, request, current_user=_USER, user_db=fake))
 
     assert result["correct"] == 1  # graded against frozen "a", not live "b"
-    assert result["transcripts"] == {20: [{"speaker": "Nurse", "text": "original"}]}  # frozen transcript revealed
+    assert result["transcripts"][20] == [{"speaker": "Nurse", "text": "original"}]  # frozen transcript revealed
 
     stored_feedback = json.loads(fake.tables["submissions"][0]["feedback"])
     assert stored_feedback["test_version_id"] == fake.tables["listening_test_versions"][0]["id"]
@@ -179,7 +198,7 @@ def test_submit_legacy_test_grades_from_live_table(monkeypatch):
     request = ListeningTestSubmitRequest(answers=[ListeningAnswer(questionId=200, selectedOption="a")], elapsed_seconds=60)
     result = asyncio.run(listening_router.submit_test(2, request, current_user=_USER, user_db=fake))
     assert result["correct"] == 1
-    assert result["transcripts"] == {20: [{"speaker": "Nurse", "text": "original"}]}
+    assert result["transcripts"][20] == [{"speaker": "Nurse", "text": "original"}]
 
 
 if __name__ == "__main__":
