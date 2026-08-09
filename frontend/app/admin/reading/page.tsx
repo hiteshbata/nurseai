@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { splitPartASectionsRaw, joinPartASections } from '@/lib/utils'
+import { useAdminUser } from '@/app/admin/AdminShell'
+
+// RC4.1: publishing/unpublishing a test cuts an immutable version -- owner-only (require_owner).
+const ROLE_RANK: Record<string, number> = { user: 0, support: 1, analyst: 2, admin: 3, owner: 4 }
 
 type QuestionType = 'mcq' | 'short_answer'
 
@@ -51,6 +55,7 @@ interface ReadingTest {
   parts: string[]          // which of A/B/C have at least one active passage
   question_count: number
   missing_answers: number  // questions with no correct answer yet
+  current_version: number | null  // RC4.1: highest published version, null if never published
 }
 
 // Drill-down (accordion) shapes returned by /admin/tests/{id}/detail.
@@ -690,6 +695,9 @@ export default function AdminReadingPage() {
     [editingPassage?.part, editingPassage?.body]
   )
 
+  const { role: viewerRole } = useAdminUser()
+  const canPublish = (ROLE_RANK[viewerRole || 'user'] || 0) >= ROLE_RANK.owner
+
   return (
     <div className="max-w-4xl mx-auto py-10 px-4">
       <h1 className="text-3xl font-bold mb-2">Reading Passages</h1>
@@ -702,10 +710,10 @@ export default function AdminReadingPage() {
           {selectedTestIds.size > 0 && (
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-500">{selectedTestIds.size} selected</span>
-              <button onClick={() => bulkSetTestPublish(true)} disabled={bulkTestWorking} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50">
+              <button onClick={() => bulkSetTestPublish(true)} disabled={bulkTestWorking || !canPublish} title={canPublish ? '' : 'Owner role required to publish'} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50">
                 {bulkTestWorking ? 'Working…' : 'Publish selected'}
               </button>
-              <button onClick={() => bulkSetTestPublish(false)} disabled={bulkTestWorking} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-300 disabled:opacity-50">
+              <button onClick={() => bulkSetTestPublish(false)} disabled={bulkTestWorking || !canPublish} title={canPublish ? '' : 'Owner role required to unpublish'} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-300 disabled:opacity-50">
                 Unpublish selected
               </button>
               <button onClick={() => setSelectedTestIds(new Set())} className="text-xs text-gray-500 hover:text-gray-700">Clear</button>
@@ -749,6 +757,11 @@ export default function AdminReadingPage() {
                       <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${t.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'}`}>
                         {t.is_active ? 'Live' : 'Draft'}
                       </span>
+                      {t.current_version != null && (
+                        <span title="Published version -- learners who already started an attempt keep this exact content forever" className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-semibold shrink-0">
+                          v{t.current_version}
+                        </span>
+                      )}
                       <span className="flex gap-1 shrink-0">
                         {ALL_PARTS.map((p) => (
                           <span key={p} title={t.parts.includes(p) ? `Part ${p} present` : `No Part ${p} yet`}
@@ -772,8 +785,8 @@ export default function AdminReadingPage() {
                       )}
                       <button
                         onClick={() => toggleTestActive(t)}
-                        disabled={!t.is_active && t.passage_count === 0}
-                        title={!t.is_active && t.passage_count === 0 ? 'Add at least one passage before going live' : ''}
+                        disabled={!canPublish || (!t.is_active && t.passage_count === 0)}
+                        title={!canPublish ? 'Owner role required to publish' : (!t.is_active && t.passage_count === 0 ? 'Add at least one passage before going live' : '')}
                         className={`text-xs font-semibold px-3 py-1 rounded-lg ${t.is_active ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-emerald-600 text-white hover:bg-emerald-700'} disabled:opacity-40`}
                       >
                         {t.is_active ? 'Unpublish' : 'Make live'}

@@ -24,8 +24,8 @@ from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, get_user_supabase, UserInfo
 from supabase import Client
-from app.routers.admin import require_admin
-from app.routers.mock import has_mock_section_access
+from app.routers.admin import require_admin, require_owner
+from app.routers.mock import has_mock_section_access, get_pinned_test_version_id
 from app.services.ai_scoring import _call_ai
 from app.services.mcq_grading import grade_exact_match, combine_graded_results, resolve_latest_wrong_answers
 from app.services.open_ended_grading import grade_open_ended_answers
@@ -36,6 +36,10 @@ from app.services.observation_service import validate_and_normalize
 from app.services.coaching_messages import RECOMMENDATION_REASON, ACTIONABLE_IMPROVEMENT, CONFIDENCE_MESSAGE
 from app.services.plan_gating import has_reading_access, has_free_module_attempt, get_plan_from_profile
 from app.services.mock_reference_guard import block_if_referenced_by_mock_test
+from app.services.assessment_versioning import (
+    publish_reading_version, latest_version_id, get_version_row,
+    reading_snapshot_student_payload, reading_snapshot_questions_by_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -523,11 +527,30 @@ async def list_completed_test_ids(
     return sorted(test_ids)
 
 
+def _resolve_reading_version_id(supabase, current_user: UserInfo, test_id: int) -> Optional[int]:
+    """RC4.1: a mock-pinned version takes priority (see get_pinned_test_version_id);
+    otherwise the newest published version of this test, if any exists. None
+    means this test has never gone through the versioned publish flow --
+    caller falls back to the legacy live-table path, unchanged."""
+    pinned = get_pinned_test_version_id(supabase, current_user.id, "reading", test_id)
+    if pinned is not None:
+        return pinned
+    return latest_version_id(supabase, "reading_test_versions", "reading_test_id", test_id)
+
+
 @router.get("/tests/{test_id}")
 def get_reading_test(test_id: int, current_user: UserInfo = Depends(get_current_user)):
     """Full test for the session player. correct_answer is NOT sent (can't be read
-    before submitting). Only active tests/passages are visible to students."""
-    _require_reading_plan(get_supabase(), current_user, test_id)
+    before submitting). Only active tests/passages are visible to students.
+
+    RC4.1: if a published version exists (or one is pinned via an in-progress
+    Mock Test leg), serves the frozen snapshot instead of live tables -- see
+    _resolve_reading_version_id. Legacy (never-versioned) tests are unaffected."""
+    supabase = get_supabase()
+    _require_reading_plan(supabase, current_user, test_id)
+    version_id = _resolve_reading_version_id(supabase, current_user, test_id)
+    if version_id is not None:
+        return reading_snapshot_student_payload(get_version_row(supabase, "reading_test_versions", version_id))
     return _load_test_payload(test_id, include_inactive=False)
 
 
@@ -624,25 +647,37 @@ async def submit_reading_test(
 
     supabase = get_supabase()
     _require_reading_plan(supabase, current_user, test_id)
-    t = await run_sync(
-        supabase.table("reading_tests").select("id").eq("id", test_id).eq("is_active", True).execute
-    )
-    if not t.data:
-        raise HTTPException(status_code=404, detail="Test not found")
 
-    passages = await run_sync(
-        supabase.table("reading_passages").select("id, part").eq("test_id", test_id).eq("is_active", True).execute
-    )
-    part_by_passage = {p["id"]: p["part"] for p in passages.data}
-    pids = list(part_by_passage.keys())
-    if not pids:
-        raise HTTPException(status_code=404, detail="Test has no passages")
+    # RC4.1: grade against the exact snapshot the student was served (see
+    # get_reading_test) whenever a version applies -- never re-resolve
+    # against live tables, so an admin edit mid-attempt can't change what's
+    # being graded. Legacy (never-versioned) tests fall through unchanged.
+    version_id = _resolve_reading_version_id(supabase, current_user, test_id)
+    if version_id is not None:
+        version_row = await run_sync(get_version_row, supabase, "reading_test_versions", version_id)
+        questions_by_id = reading_snapshot_questions_by_id(version_row)
+        part_by_passage = {p["passage_id"]: p["part"] for p in version_row["snapshot"]["passages"]}
+        part_by_qid = {q["question_id"]: part_by_passage.get(q["passage_id"]) for q in version_row["snapshot"]["questions"]}
+    else:
+        t = await run_sync(
+            supabase.table("reading_tests").select("id").eq("id", test_id).eq("is_active", True).execute
+        )
+        if not t.data:
+            raise HTTPException(status_code=404, detail="Test not found")
 
-    qrows = await run_sync(
-        supabase.table("questions").select("id, content, correct_answer, type, passage_id").in_("passage_id", pids).execute
-    )
-    questions_by_id = {q["id"]: q for q in qrows.data}
-    part_by_qid = {q["id"]: part_by_passage.get(q["passage_id"]) for q in qrows.data}
+        passages = await run_sync(
+            supabase.table("reading_passages").select("id, part").eq("test_id", test_id).eq("is_active", True).execute
+        )
+        part_by_passage = {p["id"]: p["part"] for p in passages.data}
+        pids = list(part_by_passage.keys())
+        if not pids:
+            raise HTTPException(status_code=404, detail="Test has no passages")
+
+        qrows = await run_sync(
+            supabase.table("questions").select("id, content, correct_answer, type, passage_id").in_("passage_id", pids).execute
+        )
+        questions_by_id = {q["id"]: q for q in qrows.data}
+        part_by_qid = {q["id"]: part_by_passage.get(q["passage_id"]) for q in qrows.data}
 
     # only grade answers to questions that actually belong to this test
     answers = [a for a in request.answers if a.questionId in questions_by_id]
@@ -705,6 +740,7 @@ async def submit_reading_test(
             "score": combined["band"],
             "feedback": json.dumps({
                 "test_id": test_id,
+                "test_version_id": version_id,
                 "correct": combined["correct"],
                 "graded": combined["graded"],
                 "results": combined["results"],
@@ -1444,12 +1480,23 @@ def admin_list_tests(_admin=Depends(require_admin)):
             if not (q.get("correct_answer") or "").strip():
                 s["missing_answers"] += 1
 
+    # RC4.1: current version number per test (highest `version` row), so the
+    # admin list can show "v2" next to Live/Draft. None = never published
+    # through the versioned flow yet.
+    version_rows = supabase.table("reading_test_versions").select("reading_test_id, version").in_(
+        "reading_test_id", [t["id"] for t in tests]
+    ).execute().data if tests else []
+    current_version: Dict[int, int] = {}
+    for v in version_rows:
+        current_version[v["reading_test_id"]] = max(current_version.get(v["reading_test_id"], 0), v["version"])
+
     return [{
         **t,
         "passage_count": summary[t["id"]]["passage_count"],
         "parts": sorted(summary[t["id"]]["parts"]),
         "question_count": summary[t["id"]]["question_count"],
         "missing_answers": summary[t["id"]]["missing_answers"],
+        "current_version": current_version.get(t["id"]),
     } for t in tests]
 
 
@@ -1517,12 +1564,26 @@ class SetActiveRequest(BaseModel):
 
 
 @router.post("/admin/tests/{test_id}/active")
-def set_test_active(test_id: int, req: SetActiveRequest, _admin=Depends(require_admin)):
-    """Publish/unpublish a whole test. Unpublished tests vanish from the student list."""
+def set_test_active(test_id: int, req: SetActiveRequest, admin: UserInfo = Depends(require_owner)):
+    """Publish/unpublish a whole test. Unpublished tests vanish from the student list.
+
+    RC4.1: publishing (is_active=True) is this test's version-cut moment --
+    it resolves the currently-live passages/questions into an immutable
+    snapshot (see assessment_versioning.build_reading_snapshot) before
+    flipping the test live, so every future attempt traces back to exactly
+    what a student was served. Unpublishing does not touch versions; existing
+    admin edits to passages/questions still land in the live tables and only
+    get frozen the next time this endpoint is called with is_active=True.
+
+    RC4.1: owner-gated -- cutting an immutable production version is a
+    high-impact publish operation (see require_owner). Normal admin content
+    edits are unaffected."""
     supabase = get_supabase()
     existing = supabase.table("reading_tests").select("id").eq("id", test_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Test not found")
+    if req.is_active:
+        publish_reading_version(supabase, test_id, admin.id)
     supabase.table("reading_tests").update({"is_active": req.is_active}).eq("id", test_id).execute()
     return {"success": True, "is_active": req.is_active}
 

@@ -34,8 +34,8 @@ from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, get_user_supabase, UserInfo
 from supabase import Client
-from app.routers.admin import require_admin
-from app.routers.mock import has_mock_section_access
+from app.routers.admin import require_admin, require_owner
+from app.routers.mock import has_mock_section_access, get_pinned_test_version_id
 from app.services.mcq_grading import grade_exact_match, combine_graded_results, resolve_latest_wrong_answers
 from app.services.open_ended_grading import grade_open_ended_answers
 from app.services.explanations import generate_mcq_explanation
@@ -48,6 +48,10 @@ from app.services.listening_audio import (
 from app.services.ai_scoring import _call_ai
 from app.services.mock_reference_guard import block_if_referenced_by_mock_test
 from app.services.plan_gating import has_listening_access, has_free_module_attempt, get_plan_from_profile
+from app.services.assessment_versioning import (
+    publish_listening_version, latest_version_id, get_version_row,
+    listening_snapshot_student_payload, listening_snapshot_questions_by_id, listening_snapshot_transcripts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -218,11 +222,29 @@ def recommend_test(
     return _recommend_listening_tests(current_user, user_db, limit=1)[0]
 
 
+def _resolve_listening_version_id(supabase, current_user: UserInfo, test_id: int) -> Optional[int]:
+    """RC4.1: mirrors reading.py's _resolve_reading_version_id -- a mock-pinned
+    version takes priority, otherwise the newest published version of this
+    test, if any. None means legacy (never-versioned), caller falls back to
+    the live-table path unchanged."""
+    pinned = get_pinned_test_version_id(supabase, current_user.id, "listening", test_id)
+    if pinned is not None:
+        return pinned
+    return latest_version_id(supabase, "listening_test_versions", "listening_test_id", test_id)
+
+
 @router.get("/tests/{test_id}")
 def get_test(test_id: int, current_user: UserInfo = Depends(get_current_user)):
     """Full test for the session player. correct_answer + transcript are NOT sent
-    (can't be read before submitting). Only active tests/sections are visible."""
-    _require_listening_plan(get_supabase(), current_user, test_id)
+    (can't be read before submitting). Only active tests/sections are visible.
+
+    RC4.1: serves the frozen version snapshot (pinned or latest) when one
+    exists -- see _resolve_listening_version_id. Legacy tests are unaffected."""
+    supabase = get_supabase()
+    _require_listening_plan(supabase, current_user, test_id)
+    version_id = _resolve_listening_version_id(supabase, current_user, test_id)
+    if version_id is not None:
+        return listening_snapshot_student_payload(get_version_row(supabase, "listening_test_versions", version_id))
     return _load_test_payload(test_id, include_inactive=False)
 
 
@@ -374,25 +396,38 @@ async def submit_test(
 
     supabase = get_supabase()
     _require_listening_plan(supabase, current_user, test_id)
-    t = await run_sync(
-        supabase.table("listening_tests").select("id").eq("id", test_id).eq("is_active", True).execute
-    )
-    if not t.data:
-        raise HTTPException(status_code=404, detail="Test not found")
 
-    sections = await run_sync(
-        supabase.table("listening_sections").select("id, part, transcript").eq("test_id", test_id).eq("is_active", True).execute
-    )
-    part_by_section = {s["id"]: s["part"] for s in sections.data}
-    sids = list(part_by_section.keys())
-    if not sids:
-        raise HTTPException(status_code=404, detail="Test has no sections")
+    # RC4.1: grade + reveal transcripts against the exact snapshot the student
+    # was served (see get_test), never re-resolved from live tables. Legacy
+    # (never-versioned) tests fall through to the original live-table path.
+    version_id = _resolve_listening_version_id(supabase, current_user, test_id)
+    if version_id is not None:
+        version_row = await run_sync(get_version_row, supabase, "listening_test_versions", version_id)
+        questions_by_id = listening_snapshot_questions_by_id(version_row)
+        part_by_section = {s["section_id"]: s["part"] for s in version_row["snapshot"]["sections"]}
+        part_by_qid = {q["question_id"]: part_by_section.get(q["section_id"]) for q in version_row["snapshot"]["questions"]}
+        transcripts_by_section = listening_snapshot_transcripts(version_row)
+    else:
+        t = await run_sync(
+            supabase.table("listening_tests").select("id").eq("id", test_id).eq("is_active", True).execute
+        )
+        if not t.data:
+            raise HTTPException(status_code=404, detail="Test not found")
 
-    qrows = await run_sync(
-        supabase.table("questions").select("id, content, correct_answer, type, section_id").in_("section_id", sids).execute
-    )
-    questions_by_id = {q["id"]: q for q in qrows.data}
-    part_by_qid = {q["id"]: part_by_section.get(q["section_id"]) for q in qrows.data}
+        sections = await run_sync(
+            supabase.table("listening_sections").select("id, part, transcript").eq("test_id", test_id).eq("is_active", True).execute
+        )
+        part_by_section = {s["id"]: s["part"] for s in sections.data}
+        sids = list(part_by_section.keys())
+        if not sids:
+            raise HTTPException(status_code=404, detail="Test has no sections")
+
+        qrows = await run_sync(
+            supabase.table("questions").select("id, content, correct_answer, type, section_id").in_("section_id", sids).execute
+        )
+        questions_by_id = {q["id"]: q for q in qrows.data}
+        part_by_qid = {q["id"]: part_by_section.get(q["section_id"]) for q in qrows.data}
+        transcripts_by_section = {s["id"]: s.get("transcript") for s in sections.data}
 
     # only grade answers to questions that actually belong to this test
     answers = [a for a in request.answers if a.questionId in questions_by_id]
@@ -450,6 +485,7 @@ async def submit_test(
             "score": combined["band"],
             "feedback": json.dumps({
                 "test_id": test_id,
+                "test_version_id": version_id,
                 "correct": combined["correct"],
                 "graded": combined["graded"],
                 "results": combined["results"],
@@ -467,7 +503,7 @@ async def submit_test(
         "total": combined["graded"],
         "results": combined["results"],
         "per_part": per_part,
-        "transcripts": {s["id"]: s.get("transcript") for s in sections.data},
+        "transcripts": transcripts_by_section,
         "insights": insights,
     }
 
@@ -956,6 +992,14 @@ def admin_list_tests(_admin=Depends(require_admin)):
             if not (q.get("correct_answer") or "").strip():
                 row["missing_answers"] += 1
 
+    # RC4.1: current version number per test, mirrors reading.py's admin_list_tests.
+    version_rows = supabase.table("listening_test_versions").select("listening_test_id, version").in_(
+        "listening_test_id", [t["id"] for t in tests]
+    ).execute().data if tests else []
+    current_version: Dict[int, int] = {}
+    for v in version_rows:
+        current_version[v["listening_test_id"]] = max(current_version.get(v["listening_test_id"], 0), v["version"])
+
     return [{
         **t,
         "section_count": summary[t["id"]]["section_count"],
@@ -963,6 +1007,7 @@ def admin_list_tests(_admin=Depends(require_admin)):
         "question_count": summary[t["id"]]["question_count"],
         "missing_answers": summary[t["id"]]["missing_answers"],
         "missing_audio": summary[t["id"]]["missing_audio"],
+        "current_version": current_version.get(t["id"]),
     } for t in tests]
 
 
@@ -1031,12 +1076,18 @@ def admin_preview_test(test_id: int, _admin=Depends(require_admin)):
 
 
 @router.post("/admin/tests/{test_id}/active")
-def set_test_active(test_id: int, req: SetActiveRequest, _admin=Depends(require_admin)):
-    """Publish/unpublish a whole test. Unpublished tests vanish from the student list."""
+def set_test_active(test_id: int, req: SetActiveRequest, admin: UserInfo = Depends(require_owner)):
+    """Publish/unpublish a whole test. Unpublished tests vanish from the student list.
+
+    RC4.1: publishing (is_active=True) is this test's version-cut moment,
+    same reasoning as reading.py's set_test_active -- see that docstring.
+    Owner-gated for the same reason (require_owner)."""
     supabase = get_supabase()
     existing = supabase.table("listening_tests").select("id").eq("id", test_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Test not found")
+    if req.is_active:
+        publish_listening_version(supabase, test_id, admin.id)
     supabase.table("listening_tests").update({"is_active": req.is_active}).eq("id", test_id).execute()
     return {"success": True, "is_active": req.is_active}
 

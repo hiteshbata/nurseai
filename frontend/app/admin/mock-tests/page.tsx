@@ -4,6 +4,10 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
+import { useAdminUser } from '@/app/admin/AdminShell'
+
+// RC4.1: cutting a new Mock Test Version is owner-only (require_owner).
+const ROLE_RANK: Record<string, number> = { user: 0, support: 1, analyst: 2, admin: 3, owner: 4 }
 
 interface MockTestPack {
   id: number
@@ -15,6 +19,7 @@ interface MockTestPack {
   writing_title: string | null
   speaking_title_1: string | null
   speaking_title_2: string | null
+  current_version: number | null  // RC4.1: highest published Mock Test Version, null if generation's own version failed
 }
 
 function formatTimestamp(ts: string) {
@@ -23,9 +28,12 @@ function formatTimestamp(ts: string) {
 
 export default function AdminMockTestsPage() {
   const router = useRouter()
+  const { role: viewerRole } = useAdminUser()
+  const canPublish = (ROLE_RANK[viewerRole || 'user'] || 0) >= ROLE_RANK.owner
   const [rows, setRows] = useState<MockTestPack[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [publishingId, setPublishingId] = useState<number | null>(null)
 
   const fetchPacks = () => {
     api.get('/mock/admin/tests')
@@ -58,6 +66,24 @@ export default function AdminMockTestsPage() {
     } catch {
       toast.error('Failed to update pack')
       fetchPacks()
+    }
+  }
+
+  // RC4.1: cuts a new immutable Mock Test Version for this pack, picking up
+  // the latest published version of its Reading/Listening test and a fresh
+  // snapshot of its Writing/Speaking content. Already-started attempts on
+  // this pack keep whatever version they were pinned to -- only new attempts
+  // pick up the one this creates.
+  const publishVersion = async (p: MockTestPack) => {
+    setPublishingId(p.id)
+    try {
+      const res = await api.post(`/mock/admin/tests/${p.id}/publish`)
+      toast.success(`${p.label}: published Version ${res.data.version}`)
+      fetchPacks()
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to publish a new version')
+    } finally {
+      setPublishingId(null)
     }
   }
 
@@ -97,6 +123,7 @@ export default function AdminMockTestsPage() {
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Writing</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Speaking</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Created</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Version</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Status</th>
                   </tr>
                 </thead>
@@ -111,6 +138,23 @@ export default function AdminMockTestsPage() {
                         {p.speaking_title_1 || '—'} / {p.speaking_title_2 || '—'}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{formatTimestamp(p.created_at)}</td>
+                      <td className="px-4 py-3 text-sm whitespace-nowrap">
+                        {p.current_version != null ? (
+                          <span title="Published version -- learners who already started an attempt keep this exact content forever" className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-semibold">
+                            v{p.current_version}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">unpublished</span>
+                        )}
+                        <button
+                          onClick={() => publishVersion(p)}
+                          disabled={publishingId === p.id || !canPublish}
+                          title={canPublish ? "Cut a new immutable version from this pack's current Reading/Listening/Writing/Speaking content" : 'Owner role required to publish'}
+                          className="ml-2 text-xs text-blue-600 font-semibold hover:underline disabled:opacity-50"
+                        >
+                          {publishingId === p.id ? 'Publishing…' : 'Publish new version'}
+                        </button>
+                      </td>
                       <td className="px-4 py-3 text-sm">
                         <button
                           onClick={() => toggleActive(p)}

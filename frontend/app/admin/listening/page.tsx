@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
+import { useAdminUser } from '@/app/admin/AdminShell'
+
+// RC4.1: publishing/unpublishing a test cuts an immutable version -- owner-only (require_owner).
+const ROLE_RANK: Record<string, number> = { user: 0, support: 1, analyst: 2, admin: 3, owner: 4 }
 
 type QType = 'mcq' | 'short_answer'
 
@@ -36,6 +40,7 @@ interface TestRow {
   question_count: number
   missing_answers: number
   missing_audio: number
+  current_version: number | null  // RC4.1: highest published version, null if never published
 }
 
 interface DetailQuestion { id: number; content: string; type: QType; options: string[]; correct_answer: string | null }
@@ -216,6 +221,8 @@ function SectionFields({ value, onChange }: { value: SectionForm; onChange: (nex
 }
 
 export default function AdminListeningPage() {
+  const { role: viewerRole } = useAdminUser()
+  const canPublish = (ROLE_RANK[viewerRole || 'user'] || 0) >= ROLE_RANK.owner
   const [tests, setTests] = useState<TestRow[]>([])
   const [newTitle, setNewTitle] = useState('')
   const [creating, setCreating] = useState(false)
@@ -272,7 +279,7 @@ export default function AdminListeningPage() {
       const res = await api.post('/listening/admin/tests', { title: newTitle.trim() })
       setNewTitle('')
       fetchTests()
-      manage({ ...res.data, section_count: 0, parts: [], question_count: 0, missing_answers: 0, missing_audio: 0 })
+      manage({ ...res.data, section_count: 0, parts: [], question_count: 0, missing_answers: 0, missing_audio: 0, current_version: null })
     } catch (e: any) { toast.error(errorMessage(e, 'Create failed')) } finally { setCreating(false) }
   }
 
@@ -561,7 +568,7 @@ export default function AdminListeningPage() {
           <h1 className="text-2xl font-bold">{detail?.title || activeTest.title}</h1>
           <div className="flex gap-2">
             <a href={`/practice/listening/test/${activeTest.id}?preview=1`} target="_blank" rel="noreferrer" className="px-3 py-1.5 border rounded-lg text-sm font-semibold hover:bg-gray-50">👁 Preview</a>
-            <button onClick={() => togglePublish(detail ? { ...activeTest, is_active: detail.is_active } : activeTest)} className="px-3 py-1.5 border rounded-lg text-sm font-semibold hover:bg-gray-50">
+            <button onClick={() => togglePublish(detail ? { ...activeTest, is_active: detail.is_active } : activeTest)} disabled={!canPublish} title={canPublish ? '' : 'Owner role required'} className="px-3 py-1.5 border rounded-lg text-sm font-semibold hover:bg-gray-50 disabled:opacity-40">
               {detail?.is_active ? 'Unpublish' : 'Publish'}
             </button>
           </div>
@@ -745,10 +752,10 @@ export default function AdminListeningPage() {
           {selectedTestIds.size > 0 && (
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-500">{selectedTestIds.size} selected</span>
-              <button onClick={() => bulkSetPublish(true)} disabled={bulkWorking} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50">
+              <button onClick={() => bulkSetPublish(true)} disabled={bulkWorking || !canPublish} title={canPublish ? '' : 'Owner role required to publish'} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50">
                 {bulkWorking ? 'Working…' : 'Publish selected'}
               </button>
-              <button onClick={() => bulkSetPublish(false)} disabled={bulkWorking} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-300 disabled:opacity-50">
+              <button onClick={() => bulkSetPublish(false)} disabled={bulkWorking || !canPublish} title={canPublish ? '' : 'Owner role required to unpublish'} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-300 disabled:opacity-50">
                 Unpublish selected
               </button>
               <button onClick={() => setSelectedTestIds(new Set())} className="text-xs text-gray-500 hover:text-gray-700">Clear</button>
@@ -768,7 +775,14 @@ export default function AdminListeningPage() {
                 <div className="flex items-center gap-3 min-w-0">
                   <input type="checkbox" checked={selectedTestIds.has(t.id)} onChange={() => toggleTestSelect(t.id)} aria-label={`Select ${t.title}`} />
                   <div className="min-w-0">
-                    <p className="font-semibold truncate">{t.title} {t.is_active ? <span className="text-xs text-emerald-600">● live</span> : <span className="text-xs text-muted-foreground">draft</span>}</p>
+                    <p className="font-semibold truncate">
+                      {t.title} {t.is_active ? <span className="text-xs text-emerald-600">● live</span> : <span className="text-xs text-muted-foreground">draft</span>}
+                      {t.current_version != null && (
+                        <span title="Published version -- learners who already started an attempt keep this exact content forever" className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-semibold ml-1">
+                          v{t.current_version}
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-gray-500">
                       {t.section_count} sections · Parts {t.parts.join('/') || '—'} · {t.question_count} Q
                       {t.missing_answers > 0 && <span className="text-red-500"> · {t.missing_answers} missing answers</span>}
@@ -778,7 +792,7 @@ export default function AdminListeningPage() {
                 </div>
                 <div className="flex gap-3 shrink-0 text-sm">
                   <button onClick={() => manage(t)} className="text-blue-600 font-semibold">Manage</button>
-                  <button onClick={() => togglePublish(t)} className="text-gray-600">{t.is_active ? 'Unpublish' : 'Publish'}</button>
+                  <button onClick={() => togglePublish(t)} disabled={!canPublish} title={canPublish ? '' : 'Owner role required'} className="text-gray-600 disabled:opacity-40">{t.is_active ? 'Unpublish' : 'Publish'}</button>
                   <button onClick={() => deleteTest(t)} className="text-red-400 hover:text-red-600">Delete</button>
                 </div>
               </div>

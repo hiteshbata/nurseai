@@ -13,6 +13,7 @@ continuous timed sitting and land the mock at `awaiting_speaking`; Speaking (two
 role plays, taken separately like the real exam, no hard timer -- paced by the
 live conversation same as standalone speaking practice) then completes it.
 """
+import logging
 import random
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Tuple
@@ -24,11 +25,13 @@ from app.core.supabase import get_supabase
 from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo, _client_ip
-from app.routers.admin import require_admin
+from app.routers.admin import require_admin, require_owner
 from app.services.plan_gating import has_mock_test_access, get_plan_from_profile
 from app.routers.sessions import _usage_payload, get_month_start_utc
+from app.services.assessment_versioning import publish_mock_version, latest_version_id, get_version_row
 
 router = APIRouter(prefix="/mock", tags=["mock"])
+logger = logging.getLogger(__name__)
 
 # Anonymous free-trial mock starts (see /tools/oet-mock-test-free) -- caps how
 # many distinct anonymous accounts one IP can spin up fresh mocks for per day.
@@ -107,12 +110,21 @@ def _active_speaking_scenario_ids(supabase) -> List[int]:
 CONTENT_TABLE = {"listening": "listening_tests", "reading": "reading_tests", "writing": "scenarios", "speaking": "scenarios"}
 
 
-def _content_is_active(supabase, module: str, content_id: Optional[int]) -> bool:
+def _content_is_active(supabase, module: str, content_id: Optional[int], version_id: Optional[int] = None) -> bool:
     """Gate right before handing a student into one section, so a section that
     went stale since the mock was built/started fails clearly instead of the
-    section player hitting a bare 404 partway through."""
+    section player hitting a bare 404 partway through.
+
+    version_id (RC4.1): if this session already has an immutable Reading/
+    Listening version pinned for the section it's advancing into, that
+    version's content is self-contained and frozen -- it no longer depends
+    on the live table's is_active, so admin unpublishing/editing the live
+    test after the student started must not block them mid-mock. Legacy
+    sessions (version_id is None) keep the original live-table check."""
     if content_id is None:
         return False
+    if version_id is not None:
+        return True
     row = supabase.table(CONTENT_TABLE[module]).select("id").eq("id", content_id).eq("is_active", True).execute()
     return bool(row.data)
 
@@ -249,6 +261,33 @@ def has_mock_section_access(supabase, user_id: str, module: str, content_id: int
     return session["status"] == "in_progress" and session.get("current_section") == module and session.get(CONTENT_KEY.get(module)) == content_id
 
 
+_VERSION_KEY = {"reading": "reading_test_version_id", "listening": "listening_test_version_id"}
+
+
+def get_pinned_test_version_id(supabase, user_id: str, module: str, test_id: int) -> Optional[int]:
+    """RC4.1: if `user_id` is mid-mock on exactly this module/test, and that
+    session has an immutable version pinned for it (see start_mock), return
+    that version's id -- reading.py/listening.py grade and serve against it
+    instead of the live tables, so a mock leg's content can never drift from
+    what section-done recorded. None for a standalone (non-mock) attempt, no
+    open mock at all, or a legacy session that predates versioning -- the
+    caller falls back to the latest published version (or the live path)."""
+    version_col = _VERSION_KEY.get(module)
+    if version_col is None:
+        return None
+    res = (
+        supabase.table("mock_test_sessions").select("*")
+        .eq("user_id", user_id).eq("status", "in_progress")
+        .order("created_at", desc=True).limit(1).execute()
+    )
+    if not res.data:
+        return None
+    session = res.data[0]
+    if session.get("current_section") != module or session.get(CONTENT_KEY[module]) != test_id:
+        return None
+    return session.get(version_col)
+
+
 # ── endpoints ─────────────────────────────────────────────────────────
 
 @router.get("/current")
@@ -372,6 +411,21 @@ async def start_mock(req: StartMockRequest, request: Request, current_user: User
     if not _pack_is_servable(p, active):
         raise HTTPException(status_code=404, detail="This mock test pack isn't available.")
 
+    # RC4.1: pin this attempt to the pack's newest immutable Mock Test Version,
+    # if one exists (packs created via admin_generate_mock_test always have
+    # one; a legacy pack from before RC4.1 -- or before the backfill runs --
+    # won't, and the session simply starts with all three version columns
+    # null, same as before this feature existed).
+    mock_version_id = await run_sync(latest_version_id, supabase, "mock_test_versions", "mock_test_id", p["id"])
+    version_stamps: Dict[str, Any] = {}
+    if mock_version_id is not None:
+        mock_version = await run_sync(get_version_row, supabase, "mock_test_versions", mock_version_id)
+        version_stamps = {
+            "mock_test_version_id": mock_version_id,
+            "reading_test_version_id": mock_version["snapshot"]["reading_test_version_id"],
+            "listening_test_version_id": mock_version["snapshot"]["listening_test_version_id"],
+        }
+
     row = await run_sync(
         supabase.table("mock_test_sessions").insert({
             "user_id": current_user.id,
@@ -383,6 +437,7 @@ async def start_mock(req: StartMockRequest, request: Request, current_user: User
             "speaking_scenario_id_2": p["speaking_scenario_id_2"],
             "current_section": SECTION_ORDER[0],
             "status": "in_progress",
+            **version_stamps,
         }).execute
     )
     session = await _ensure_section_started(supabase, row.data[0])
@@ -429,7 +484,19 @@ async def admin_generate_mock_test(current_user: UserInfo = Depends(require_admi
             "speaking_scenario_id_2": picks["speaking"][1],
         }).execute
     )
-    return row.data[0]
+    pack = row.data[0]
+
+    # RC4.1: a pack has no draft state (is_active defaults true, servable to
+    # students the instant it's generated) -- so generation IS this pack's
+    # first publish. Best-effort: picks were just drawn from active, already-
+    # published-at-least-once content (see the pools above), so this should
+    # always succeed; if it doesn't, the pack still works via the legacy
+    # path and an admin can retry with POST /mock/admin/tests/{id}/publish.
+    try:
+        await run_sync(publish_mock_version, supabase, pack["id"], current_user.id)
+    except Exception as e:
+        logger.warning("[mock] Version 1 for pack %s failed at generation: %s", pack["id"], str(e)[:300])
+    return pack
 
 
 @router.get("/admin/tests")
@@ -457,6 +524,17 @@ async def admin_list_mock_tests(current_user: UserInfo = Depends(require_admin))
     reading_titles = await _titles("reading_tests", reading_ids)
     scenario_titles = await _titles("scenarios", scenario_ids)
 
+    # RC4.1: current version number per pack, so the admin list can show
+    # "v2" etc. Highest `version` per mock_test_id; None for a pack that
+    # hasn't gone through the versioned publish flow yet.
+    version_rows = (await run_sync(
+        supabase.table("mock_test_versions").select("mock_test_id, version")
+        .in_("mock_test_id", [p["id"] for p in packs]).execute
+    )).data
+    current_version: Dict[int, int] = {}
+    for v in version_rows:
+        current_version[v["mock_test_id"]] = max(current_version.get(v["mock_test_id"], 0), v["version"])
+
     return [{
         **p,
         "listening_title": listening_titles.get(p.get("listening_test_id")),
@@ -464,6 +542,7 @@ async def admin_list_mock_tests(current_user: UserInfo = Depends(require_admin))
         "writing_title": scenario_titles.get(p.get("writing_scenario_id")),
         "speaking_title_1": scenario_titles.get(p.get("speaking_scenario_id_1")),
         "speaking_title_2": scenario_titles.get(p.get("speaking_scenario_id_2")),
+        "current_version": current_version.get(p["id"]),
     } for p in packs]
 
 
@@ -485,6 +564,30 @@ async def admin_set_mock_test_active(
         supabase.table("mock_tests").update({"is_active": req.is_active}).eq("id", mock_test_id).execute
     )
     return {"success": True}
+
+
+@router.post("/admin/tests/{mock_test_id}/publish")
+async def admin_publish_mock_test_version(
+    mock_test_id: int,
+    current_user: UserInfo = Depends(require_owner),
+):
+    """RC4.1: cut a new immutable Mock Test Version for an existing pack,
+    resolving Reading/Listening by reference to whichever version of each is
+    currently newest, and Writing/Speaking as a fresh embedded snapshot of
+    their current content. Use this after the pack's Reading or Listening
+    test has been re-published (a newer version now exists) and you want new
+    attempts on this pack to pick it up -- existing sessions already pinned
+    to an earlier Mock Test Version are unaffected (see start_mock).
+
+    RC4.1: owner-gated -- cutting an immutable production version is
+    high-impact (see require_owner). Normal mock admin ops (generate,
+    activate/deactivate) stay admin-level."""
+    supabase = get_supabase()
+    existing = await run_sync(supabase.table("mock_tests").select("id").eq("id", mock_test_id).execute)
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Mock Test pack not found")
+    version_row = await run_sync(publish_mock_version, supabase, mock_test_id, current_user.id)
+    return {"success": True, "version": version_row["version"], "id": version_row["id"]}
 
 
 class SectionDoneRequest(BaseModel):
@@ -518,8 +621,10 @@ async def section_done(
     next_section = SECTION_ORDER[idx + 1] if idx + 1 < len(SECTION_ORDER) else None
     # Don't advance the student into a section whose content has gone stale
     # since the mock was built/started -- fail clearly here instead of the
-    # next section player hitting a bare 404 right after this call.
-    if next_section and not await run_sync(_content_is_active, supabase, next_section, session.get(CONTENT_KEY[next_section])):
+    # next section player hitting a bare 404 right after this call. Skipped
+    # for a section this session has an immutable version pinned for (RC4.1).
+    next_version_id = session.get(_VERSION_KEY[next_section]) if next_section in _VERSION_KEY else None
+    if next_section and not await run_sync(_content_is_active, supabase, next_section, session.get(CONTENT_KEY[next_section]), next_version_id):
         raise HTTPException(
             status_code=409,
             detail=f"The {next_section} section of this mock is no longer available. Contact support.",

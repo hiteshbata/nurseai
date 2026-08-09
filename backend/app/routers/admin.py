@@ -11,6 +11,7 @@ from app.core.plans import GRACE_PERIOD_DAYS, PLAN_PERIOD_DAYS, PLAN_PRICE_INR
 from app.routers.payments import get_current_plan, grant_subscription_period, get_razorpay_client, _process_refund
 from app.services.plan_gating import get_plan_from_profile
 from app.services.mock_reference_guard import block_if_referenced_by_mock_test
+from app.services.assessment_versioning import backfill_versions
 from app.services.founder_metrics import get_founder_metrics
 from app.services.ai_cost_metrics import get_ai_cost_metrics
 from app.core import cost_circuit_breaker
@@ -662,6 +663,28 @@ def admin_backfill_users_mirror(_=Depends(require_admin_or_cron)):
 
     logger.info("users/backfill-mirror synced %d users", synced)
     return {"synced": synced}
+
+
+@router.post("/content/backfill-versions")
+def admin_backfill_rc41_versions(current_user: UserInfo = Depends(require_admin)):
+    """RC4.1 rollout: give every currently-active Reading test, Listening
+    test, and Mock Test pack a Version 1 baseline, so existing production
+    assessments enter the immutable-version system instead of staying on the
+    legacy live-reference path indefinitely.
+
+    Version 1 = whatever is live right now, at rollout time -- it is NOT a
+    reconstruction of any earlier historical state, and existing learner
+    attempts made before this runs keep their original (unversioned)
+    reference untouched; only new attempts from here on are guaranteed
+    immutable. Idempotent: a test/pack that already has any version is
+    skipped, so this is safe to run once, safe to re-run, and can never
+    mint a second Version 1. Trigger once by hand after this migration
+    lands; no cron wiring needed (it's a one-time rollout step, not a
+    recurring job)."""
+    supabase = get_supabase()
+    result = backfill_versions(supabase, current_user.id)
+    logger.info("[rc41 backfill] created=%s skipped=%s failed=%s", result["created"], result["skipped"], result["failed"])
+    return result
 
 
 @router.get("/users/{user_id}")
