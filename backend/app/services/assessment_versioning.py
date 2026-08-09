@@ -111,6 +111,36 @@ def get_version_row_for_parent(supabase, table: str, id_col: str, parent_id: Any
     return rows[0]
 
 
+# ── publisher identity (RC4.3.2.1) ─────────────────────────────────────
+# `published_by` on a version row is a raw auth.users UUID -- not something
+# an admin should have to read. Resolved via the public.users mirror table
+# (kept in sync by auth.py's get_current_user on every authenticated
+# request -- see supabase/migrations/20260718000800_users_mirror.sql), the
+# exact same lookup admin.py's _emails_by_user_id already uses for User 360,
+# rather than a second identity mechanism. No auth.users access, no new
+# columns, no RLS change: public.users already carries only id/email/name.
+
+def display_names_by_user_id(supabase, user_ids: set) -> Dict[str, str]:
+    """Bulk id -> human-readable identity (name, falling back to email).
+    Ids with no mirror row (deleted account, or never made an authenticated
+    request since the mirror was introduced) are simply absent from the
+    result -- callers supply their own "unknown" fallback for those."""
+    ids = [i for i in {i for i in user_ids if i}]
+    if not ids:
+        return {}
+    rows = supabase.table("users").select("id, email, name").in_("id", ids).execute().data
+    return {r["id"]: name for r in rows if (name := (r.get("name") or r.get("email") or ""))}
+
+
+def publisher_display(display_by_id: Dict[str, str], published_by: Optional[str]) -> Optional[str]:
+    """None when there's no publisher recorded at all (e.g. a version cut by
+    a system backfill); "Unknown staff member" when a UUID is recorded but
+    the mirror has no row for it; the resolved name/email otherwise."""
+    if not published_by:
+        return None
+    return display_by_id.get(published_by) or "Unknown staff member"
+
+
 # ── READING ────────────────────────────────────────────────────────────
 
 def build_reading_snapshot(supabase, test_id: int) -> Dict[str, Any]:

@@ -40,6 +40,7 @@ from app.services.assessment_versioning import (
     publish_reading_version, latest_version_id, get_version_row,
     reading_snapshot_student_payload, reading_snapshot_questions_by_id,
     list_version_rows, get_version_row_for_parent,
+    display_names_by_user_id, publisher_display,
 )
 from app.services.assessment_validation import validate_reading_test
 
@@ -1579,11 +1580,13 @@ def list_reading_test_versions(test_id: int, _admin=Depends(require_admin)):
         raise HTTPException(status_code=404, detail="Test not found")
     rows = list_version_rows(supabase, "reading_test_versions", "reading_test_id", test_id)
     current = rows[0]["version"] if rows else None
+    display_by_id = display_names_by_user_id(supabase, {r.get("published_by") for r in rows})
     return {"versions": [{
         "id": r["id"],
         "version": r["version"],
         "published_at": r.get("published_at"),
         "published_by": r.get("published_by"),
+        "published_by_display": publisher_display(display_by_id, r.get("published_by")),
         "is_current": r["version"] == current,
     } for r in rows]}
 
@@ -1597,7 +1600,10 @@ def get_reading_test_version(test_id: int, version_id: int, _admin=Depends(requi
     t = supabase.table("reading_tests").select("id").eq("id", test_id).execute()
     if not t.data:
         raise HTTPException(status_code=404, detail="Test not found")
-    return get_version_row_for_parent(supabase, "reading_test_versions", "reading_test_id", test_id, version_id)
+    row = get_version_row_for_parent(supabase, "reading_test_versions", "reading_test_id", test_id, version_id)
+    published_by = row.get("published_by")
+    display_by_id = display_names_by_user_id(supabase, {published_by})
+    return {**row, "published_by_display": publisher_display(display_by_id, published_by)}
 
 
 class SetActiveRequest(BaseModel):
