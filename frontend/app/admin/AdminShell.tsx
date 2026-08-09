@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useSupabaseSession } from '@/lib/supabase'
@@ -11,7 +11,23 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 // Matches backend/app/routers/admin.py's ROLE_RANK -- any staff tier
 // (support and up) gets past the front door; per-page/per-action floors
 // are still enforced server-side by each endpoint's own require_*() dep.
+// This is a UI gate ONLY -- every admin-mutating endpoint independently
+// re-checks the caller's role server-side via require_role(), so nothing
+// here is a security boundary. See AdminUserContext below.
 const STAFF_ROLES = new Set(['support', 'analyst', 'admin', 'owner'])
+
+// AdminShell already fetches /auth/me once to gate entry into the admin
+// area. Nested admin pages (users/[id], content-studio drafts/[id]) used to
+// each fetch /auth/me again themselves just to read their own viewer's
+// role for an in-page UI check -- this shares the one AdminShell already
+// resolved instead. Purely a UI convenience: it does not weaken
+// authorization, since the backend enforces its own role checks regardless
+// of what this context (or a tampered client) claims.
+const AdminUserContext = createContext<{ role: string | null }>({ role: null })
+
+export function useAdminUser(): { role: string | null } {
+  return useContext(AdminUserContext)
+}
 
 const NAV_GROUPS = [
   {
@@ -68,6 +84,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const router = useRouter()
   const [unresolvedCount, setUnresolvedCount] = useState(0)
   const [roleStatus, setRoleStatus] = useState<'checking' | 'staff' | 'denied'>('checking')
+  const [role, setRole] = useState<string | null>(null)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const mobileNavPanelRef = useRef<HTMLDivElement>(null)
   const mobileNavTriggerRef = useRef<HTMLButtonElement>(null)
@@ -118,6 +135,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     api.get('/auth/me')
       .then((res) => {
         if (cancelled) return
+        setRole(res.data?.role || null)
         if (STAFF_ROLES.has(res.data?.role)) {
           setRoleStatus('staff')
         } else {
@@ -199,6 +217,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     ))
 
   return (
+    <AdminUserContext.Provider value={{ role }}>
     <div className="min-h-screen bg-gray-50 md:flex">
       {/* Mobile top bar */}
       <div className="md:hidden bg-white shadow-md sticky top-0 z-40 flex items-center justify-between px-4 py-3">
@@ -272,5 +291,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         <ErrorBoundary>{children}</ErrorBoundary>
       </div>
     </div>
+    </AdminUserContext.Provider>
   )
 }

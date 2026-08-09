@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
+import { useAdminUser } from '@/app/admin/AdminShell'
 
 const MODULE_LABELS: Record<string, string> = {
   speaking: 'Speaking', reading: 'Reading', listening: 'Listening',
@@ -66,7 +67,12 @@ export default function DraftEditorPage() {
   const [draftName, setDraftName] = useState('')
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
-  const [role, setRole] = useState<string>('user')
+  // AdminShell (the wrapping shell for every /admin/* page) already fetches
+  // /auth/me to gate entry -- read its resolved role instead of fetching
+  // /auth/me again here. UI convenience only: the save/publish endpoints
+  // this page calls still enforce their own role checks server-side.
+  const { role: roleFromShell } = useAdminUser()
+  const role = roleFromShell || 'user'
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -90,10 +96,7 @@ export default function DraftEditorPage() {
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([
-      load(),
-      api.get('/auth/me').then((res) => setRole(res.data?.role || 'user')).catch(() => {}),
-    ]).finally(() => setLoading(false))
+    load().finally(() => setLoading(false))
   }, [load])
 
   // Autosave: debounced PATCH whenever the edited content actually changes.

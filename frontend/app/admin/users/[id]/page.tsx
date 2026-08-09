@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import { beginImpersonation } from '@/lib/impersonation'
+import { useAdminUser } from '@/app/admin/AdminShell'
 
 // Matches backend/app/routers/admin.py's ROLE_RANK / ALLOWED_ROLES.
 const STAFF_ROLES = ['user', 'support', 'analyst', 'admin', 'owner'] as const
@@ -68,7 +69,12 @@ export default function AdminUserDetailPage() {
   const userId = params.id as string
 
   const [user, setUser] = useState<UserDetail | null>(null)
-  const [viewerRole, setViewerRole] = useState<string>('user')
+  // AdminShell (the wrapping shell for every /admin/* page) already fetches
+  // /auth/me to gate entry -- read its resolved role instead of fetching
+  // /auth/me again here. UI convenience only: the role-change endpoint this
+  // page calls still enforces its own owner-only check server-side.
+  const { role: viewerRoleFromShell } = useAdminUser()
+  const viewerRole = viewerRoleFromShell || 'user'
   const [loading, setLoading] = useState(true)
   const [savingRole, setSavingRole] = useState(false)
   const [impersonating, setImpersonating] = useState(false)
@@ -91,7 +97,6 @@ export default function AdminUserDetailPage() {
     fetchUser()
     fetchPayments()
     fetchTranscripts()
-    api.get('/auth/me').then((res) => setViewerRole(res.data?.role || 'user')).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
