@@ -1,15 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { Progress } from '@/components/ui/progress'
-import api from '@/lib/api'
-
-interface SessionUsage {
-  plan: string
-  sessions_used: number
-  sessions_limit: number
-  sessions_remaining: number
-}
+import { useSessionUsage } from '@/components/AppShell'
 
 const PLAN_LABELS: Record<string, string> = {
   free: 'Free',
@@ -21,16 +13,13 @@ const PLAN_LABELS: Record<string, string> = {
 // Upgrade CTAs live in the single contextual upsell banner elsewhere on the Results
 // page (see `activeUpsell` in practice/speaking/page.tsx) — this banner is usage
 // info only, so the page never stacks more than one upgrade prompt.
+//
+// Usage data comes from AppShell (this always renders nested inside it, via
+// SpeakingSession -> practice/speaking/page.tsx) instead of fetching
+// /sessions/usage itself -- that was a confirmed duplicate request whenever
+// this banner mounted.
 export default function PlanUsageBanner() {
-  const [usage, setUsage] = useState<SessionUsage | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    api.get('/sessions/usage').then((res) => {
-      if (!cancelled) setUsage(res.data)
-    }).catch(() => {})
-    return () => { cancelled = true }
-  }, [])
+  const { usage } = useSessionUsage()
 
   if (!usage) return null
 

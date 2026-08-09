@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { createContext, useContext, useMemo, useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { signOut, useSupabaseSession } from '@/lib/supabase'
@@ -44,6 +44,26 @@ interface SessionUsage {
   sessions_limit: number
   sessions_remaining: number
   plan: string
+}
+
+// AppShell is the shared ancestor for every authenticated app route
+// (dashboard, profile, practice/*, etc. -- see conditional-layout.tsx), and
+// it already fetched /sessions/usage here. Pages nested under it (dashboard,
+// profile) and components nested under it (PlanUsageBanner) used to each
+// fetch the same endpoint again independently. They now read this instead.
+// `ready` mirrors the old per-page pattern: false only while the fetch is
+// in flight, true once it's settled (success or fail) or was never needed
+// (signed out / anonymous) -- consumers that gated a skeleton on that exact
+// signal keep doing so unchanged.
+interface SessionUsageState {
+  usage: SessionUsage | null
+  ready: boolean
+}
+
+const SessionUsageContext = createContext<SessionUsageState>({ usage: null, ready: false })
+
+export function useSessionUsage(): SessionUsageState {
+  return useContext(SessionUsageContext)
 }
 
 interface NavItem {
@@ -213,6 +233,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [usage, setUsage] = useState<SessionUsage | null>(null)
+  const [usageReady, setUsageReady] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [avatarOpen, setAvatarOpen] = useState(false)
   const avatarRef = useRef<HTMLDivElement>(null)
@@ -226,19 +247,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (status !== 'authenticated' || isAnonymous) {
       setUsage(null)
+      // No fetch will happen in this state -- settled immediately rather
+      // than leaving consumers stuck on a "not ready yet" skeleton.
+      setUsageReady(true)
       return
     }
     let cancelled = false
+    setUsageReady(false)
     api
       .get('/sessions/usage')
       .then((res) => {
         if (!cancelled) setUsage(res.data)
       })
       .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setUsageReady(true)
+      })
     return () => {
       cancelled = true
     }
   }, [status, isAnonymous])
+
+  const usageContextValue = useMemo<SessionUsageState>(
+    () => ({ usage, ready: usageReady }),
+    [usage, usageReady]
+  )
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
@@ -314,17 +347,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // test; the signup moment itself lives in FreeReportGate at the end.
   if (isAnonymous) {
     return (
-      <div className="min-h-screen bg-background">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/95 px-4 backdrop-blur sm:px-6 lg:px-8">
-          <Link href="/" className="inline-flex rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
-            <SpeakOETLogo height={32} variant="full" theme="dark" priority />
-          </Link>
-          <h1 className="truncate text-base font-bold text-foreground">{title}</h1>
-        </header>
-        <main id="main-content" className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
-          <ErrorBoundary>{children}</ErrorBoundary>
-        </main>
-      </div>
+      <SessionUsageContext.Provider value={usageContextValue}>
+        <div className="min-h-screen bg-background">
+          <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/95 px-4 backdrop-blur sm:px-6 lg:px-8">
+            <Link href="/" className="inline-flex rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
+              <SpeakOETLogo height={32} variant="full" theme="dark" priority />
+            </Link>
+            <h1 className="truncate text-base font-bold text-foreground">{title}</h1>
+          </header>
+          <main id="main-content" className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </main>
+        </div>
+      </SessionUsageContext.Provider>
     )
   }
 
@@ -349,6 +384,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   )
 
   return (
+    <SessionUsageContext.Provider value={usageContextValue}>
     <div className="min-h-screen bg-background">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-border bg-card px-3 py-4 lg:flex">
@@ -574,5 +610,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </button>
       </nav>
     </div>
+    </SessionUsageContext.Provider>
   )
 }

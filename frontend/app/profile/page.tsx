@@ -4,6 +4,7 @@ import { useSupabaseSession, signIn, updatePassword, signOut, humanizeAuthError 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import api from '@/lib/api'
+import { useSessionUsage } from '@/components/AppShell'
 import toast from 'react-hot-toast'
 import { Calendar, Mail, Shield, Pencil } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -60,7 +61,22 @@ export default function ProfilePage() {
   const { session, status } = useSupabaseSession()
   const router = useRouter()
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [sessionUsage, setSessionUsage] = useState<SessionUsage | null>(null)
+  // /sessions/usage is fetched once by AppShell (this page always renders
+  // inside it) and read here instead of fetching it again -- that was a
+  // confirmed duplicate request on every profile load. AppShell's own type
+  // for this endpoint only declares the fields it displays; this page also
+  // needs auto_renew_enabled/plan_expires_at, which the same response
+  // already carries. cancelAutoRenew below still needs an instant local
+  // flip after the POST succeeds, so that one field can be overridden
+  // on top of the shared value without mutating AppShell's copy.
+  const { usage: sharedUsage } = useSessionUsage()
+  const [autoRenewOverride, setAutoRenewOverride] = useState<boolean | null>(null)
+  const sessionUsage: SessionUsage | null = sharedUsage
+    ? {
+        ...(sharedUsage as unknown as SessionUsage),
+        ...(autoRenewOverride !== null ? { auto_renew_enabled: autoRenewOverride } : {}),
+      }
+    : null
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -91,12 +107,10 @@ export default function ProfilePage() {
 
   const fetchProfile = async () => {
     try {
-      const [usageRes, profileRes, receiptsRes] = await Promise.all([
-        api.get('/sessions/usage'),
+      const [profileRes, receiptsRes] = await Promise.all([
         api.get('/onboarding/status'),
         api.get('/payments/receipts').catch(() => ({ data: [] })),
       ])
-      setSessionUsage(usageRes.data)
       if (profileRes.data?.user_id) {
         setProfile(profileRes.data)
       }
@@ -132,7 +146,7 @@ export default function ProfilePage() {
     setCancellingAutoRenew(true)
     try {
       await api.post('/payments/cancel-subscription')
-      setSessionUsage((prev) => (prev ? { ...prev, auto_renew_enabled: false } : prev))
+      setAutoRenewOverride(false)
       toast.success('Auto-renew turned off')
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to turn off auto-renew')

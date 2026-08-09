@@ -1,6 +1,6 @@
 import { createBrowserClient } from '@supabase/ssr'
 import type { SupabaseClient, Session } from '@supabase/supabase-js'
-import { useState, useEffect } from 'react'
+import { createContext, createElement, useContext, useState, useEffect, type ReactNode } from 'react'
 
 let _supabase: SupabaseClient | null = null
 
@@ -31,7 +31,15 @@ export const supabase = new Proxy({} as SupabaseClient, {
   },
 })
 
-export function useSupabaseSession() {
+type SessionState = { session: Session | null; status: 'loading' | 'authenticated' | 'unauthenticated' }
+
+// The actual subscription: reads local storage once via getSession() (no
+// network round-trip) and stays in sync via onAuthStateChange. This used to
+// be instantiated directly by every consumer (26+ call sites) -- each one
+// its own subscription doing the same work. SessionProvider below now calls
+// this exactly once per app load; useSupabaseSession() reads that single
+// result via context instead of re-subscribing.
+function useSupabaseSessionState(): SessionState {
   const [session, setSession] = useState<Session | null>(null)
   const [status, setStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading')
 
@@ -64,6 +72,25 @@ export function useSupabaseSession() {
   }, [])
 
   return { session, status }
+}
+
+const SessionContext = createContext<SessionState | null>(null)
+
+// Mounted once, in app/providers.tsx, above everything else in the tree.
+export function SessionProvider({ children }: { children: ReactNode }) {
+  const value = useSupabaseSessionState()
+  return createElement(SessionContext.Provider, { value }, children)
+}
+
+// Reads the single session subscription owned by SessionProvider. Same
+// { session, status } shape as before, so every existing call site keeps
+// working unchanged -- only the underlying subscription count changed.
+export function useSupabaseSession(): SessionState {
+  const ctx = useContext(SessionContext)
+  // SessionProvider wraps the entire app in the root layout, so this should
+  // always be present. Fall back to 'loading' (never a hard crash) in case
+  // some future call site ends up rendered outside that tree.
+  return ctx ?? { session: null, status: 'loading' }
 }
 
 export async function getCurrentSession() {

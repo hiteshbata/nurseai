@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { OetDashboard } from '@/components/oet-dashboard'
 import { scoreToGrade } from '@/app/practice/speaking/shared'
 import { RouteSpinner } from '@/components/RouteSpinner'
+import { useSessionUsage } from '@/components/AppShell'
 import type { ModuleAverages, NextBestAction, WeakSkillEntry } from '@/components/oet/types'
 
 interface Stats {
@@ -31,13 +32,6 @@ interface Stats {
   module_averages: ModuleAverages
   weak_skills: WeakSkillEntry[]
   next_best_action: NextBestAction
-}
-
-interface SessionUsage {
-  sessions_used: number
-  sessions_limit: number
-  sessions_remaining: number
-  plan: string
 }
 
 interface CriteriaAverages {
@@ -67,15 +61,14 @@ const gradeToPoints: Record<string, number> =
 export default function DashboardPage() {
   const { session, status } = useSupabaseSession()
   const router = useRouter()
+  const { usage: sessionUsage, ready: sessionUsageReady } = useSessionUsage()
   const [stats, setStats] = useState<Stats | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [sessionUsage, setSessionUsage] = useState<SessionUsage | null>(null)
   const [criteriaAverages, setCriteriaAverages] = useState<CriteriaAverages | null>(null)
   const [totalSessionsScored, setTotalSessionsScored] = useState(0)
   const [scoreHistory, setScoreHistory] = useState<any[]>([])
   const [statsReady, setStatsReady] = useState(false)
   const [profileReady, setProfileReady] = useState(false)
-  const [sessionUsageReady, setSessionUsageReady] = useState(false)
   const [criteriaReady, setCriteriaReady] = useState(false)
   const [historyReady, setHistoryReady] = useState(false)
   const [savingExamDate, setSavingExamDate] = useState(false)
@@ -118,12 +111,10 @@ export default function DashboardPage() {
       })
       .finally(() => setProfileReady(true))
 
-    api.get('/sessions/usage')
-      .then(res => setSessionUsage(res.data))
-      .catch((error: any) => {
-        console.error('[Dashboard] /sessions/usage failed:', error.response?.status, error.response?.data)
-      })
-      .finally(() => setSessionUsageReady(true))
+    // /sessions/usage is fetched once by AppShell (the parent shell every
+    // authenticated route renders inside) and read here via useSessionUsage()
+    // -- fetching it again here was a confirmed duplicate request on every
+    // dashboard load.
 
     api.get('/scoring/criteria-averages')
       .then(res => {

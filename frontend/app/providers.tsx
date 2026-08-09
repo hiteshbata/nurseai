@@ -4,13 +4,24 @@ import { useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import { ThemeProvider } from 'next-themes'
 import { Toaster } from 'react-hot-toast'
-import { useSupabaseSession } from '@/lib/supabase'
+import { SessionProvider, useSupabaseSession } from '@/lib/supabase'
 import { initAnalytics, identifyUser } from '@/lib/analytics'
 import { initGA } from '@/lib/ga'
 import { initClarity } from '@/lib/clarity'
 import { initMetaPixel, trackMetaEvent, setMetaUserData } from '@/lib/meta-pixel'
 
+// SessionProvider owns the app's one Supabase session subscription; every
+// descendant (AppShell, Navbar, page components, ...) reads it via
+// useSupabaseSession() instead of each opening its own subscription.
 export default function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <SessionProvider>
+      <ProvidersInner>{children}</ProvidersInner>
+    </SessionProvider>
+  )
+}
+
+function ProvidersInner({ children }: { children: React.ReactNode }) {
   const { session, status } = useSupabaseSession()
   const pathname = usePathname()
 
