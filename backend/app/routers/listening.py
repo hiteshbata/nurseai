@@ -52,6 +52,7 @@ from app.services.assessment_versioning import (
     publish_listening_version, latest_version_id, get_version_row,
     listening_snapshot_student_payload, listening_snapshot_questions_by_id, listening_snapshot_transcripts,
     list_version_rows, get_version_row_for_parent,
+    display_names_by_user_id, publisher_display,
 )
 from app.services.assessment_validation import validate_listening_test
 
@@ -1087,18 +1088,23 @@ def admin_preview_test(test_id: int, _admin=Depends(require_admin)):
 def list_listening_test_versions(test_id: int, _admin=Depends(require_admin)):
     """RC4.3.1: lightweight history of every immutable version this test has
     had -- newest first, no snapshot payload. is_current computed from the
-    actual max version present, not array position."""
+    actual max version present, not array position.
+
+    RC4.3.2.2: adds published_by_display -- one bulk lookup for the whole
+    list, not per-row (see assessment_versioning.display_names_by_user_id)."""
     supabase = get_supabase()
     t = supabase.table("listening_tests").select("id").eq("id", test_id).execute()
     if not t.data:
         raise HTTPException(status_code=404, detail="Test not found")
     rows = list_version_rows(supabase, "listening_test_versions", "listening_test_id", test_id)
     current = rows[0]["version"] if rows else None
+    display_by_id = display_names_by_user_id(supabase, {r.get("published_by") for r in rows})
     return {"versions": [{
         "id": r["id"],
         "version": r["version"],
         "published_at": r.get("published_at"),
         "published_by": r.get("published_by"),
+        "published_by_display": publisher_display(display_by_id, r.get("published_by")),
         "is_current": r["version"] == current,
     } for r in rows]}
 
@@ -1107,12 +1113,17 @@ def list_listening_test_versions(test_id: int, _admin=Depends(require_admin)):
 def get_listening_test_version(test_id: int, version_id: int, _admin=Depends(require_admin)):
     """RC4.3.1: the frozen snapshot for one version, read-only. 404s if the
     test doesn't exist, the version doesn't exist, or the version belongs to
-    a different test."""
+    a different test.
+
+    RC4.3.2.2: adds published_by_display (RC4.3.2.1 helper, reused as-is)."""
     supabase = get_supabase()
     t = supabase.table("listening_tests").select("id").eq("id", test_id).execute()
     if not t.data:
         raise HTTPException(status_code=404, detail="Test not found")
-    return get_version_row_for_parent(supabase, "listening_test_versions", "listening_test_id", test_id, version_id)
+    row = get_version_row_for_parent(supabase, "listening_test_versions", "listening_test_id", test_id, version_id)
+    published_by = row.get("published_by")
+    display_by_id = display_names_by_user_id(supabase, {published_by})
+    return {**row, "published_by_display": publisher_display(display_by_id, published_by)}
 
 
 @router.post("/admin/tests/{test_id}/active")

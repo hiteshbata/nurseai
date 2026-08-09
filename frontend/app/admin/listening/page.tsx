@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { useAdminUser } from '@/app/admin/AdminShell'
@@ -57,6 +57,53 @@ interface TestDetail {
   part_audio: Record<string, string | null>
   part_audio_times: Record<string, PartTime | null>
   groups: { part: string; sections: DetailSection[] }[]
+}
+
+// RC4.3.2.2: Version History (read-only) shapes -- match GET .../versions and
+// .../versions/{id} exactly as returned by assessment_versioning.py.
+interface VersionSummary {
+  id: number
+  version: number
+  published_at: string | null
+  published_by: string | null
+  // RC4.3.2.2: human-readable identity resolved server-side from the public.users
+  // mirror (never the raw UUID above) -- null only when published_by itself is null.
+  published_by_display: string | null
+  is_current: boolean
+}
+interface ListeningSnapshotSection {
+  section_id: number
+  title: string
+  part: string
+  difficulty: string
+  audio_url: string | null
+  transcript: unknown // jsonb: speaker turns [{speaker, text}] or plain text, or null
+  body: string | null
+}
+interface ListeningSnapshotQuestion {
+  question_id: number
+  section_id: number
+  type: QType
+  content: string
+  options: string[]
+  correct_answer: string | null
+}
+interface ListeningSnapshot {
+  test_id: number
+  title: string
+  part_audio: Record<string, string | null>
+  part_audio_times: Record<string, PartTime | null>
+  sections: ListeningSnapshotSection[]
+  questions: ListeningSnapshotQuestion[]
+}
+interface VersionDetail {
+  id: number
+  listening_test_id: number
+  version: number
+  snapshot: ListeningSnapshot
+  published_by: string | null
+  published_by_display: string | null
+  published_at: string | null
 }
 
 // FastAPI 422 returns `detail` as an array of objects; collapse to a string so
@@ -262,6 +309,23 @@ export default function AdminListeningPage() {
   const [cutting, setCutting] = useState(false)
   const [partUploading, setPartUploading] = useState<string | null>(null)
 
+  // RC4.3.2.2: Version History modal -- read-only, no owner gate. historyTest
+  // holds {id, title} for whichever test's modal is open (null = closed).
+  const [historyTest, setHistoryTest] = useState<{ id: number; title: string } | null>(null)
+  const [historyVersions, setHistoryVersions] = useState<VersionSummary[] | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  // Drilled-in snapshot view, or null when showing the list.
+  const [viewingVersion, setViewingVersion] = useState<VersionDetail | null>(null)
+  const [viewingLoading, setViewingLoading] = useState(false)
+  const [viewingError, setViewingError] = useState<string | null>(null)
+  // Request-identity refs: each open/view call stamps its own id here. A
+  // response only applies its setState if its id is still the latest one --
+  // a slower earlier request (switch tests/versions quickly, or close mid-flight)
+  // resolving after a newer one must not clobber the newer state.
+  const historyReqId = useRef(0)
+  const viewReqId = useRef(0)
+
   const fetchTests = () => {
     api.get('/listening/admin/tests').then((res) => setTests(res.data || [])).catch(() => toast.error('Failed to load tests'))
   }
@@ -340,6 +404,52 @@ export default function AdminListeningPage() {
     if (!confirm(`Delete test "${t.title}"? Its sections detach but are kept.`)) return
     try { await api.delete(`/listening/admin/tests/${t.id}`); fetchTests() }
     catch (e: any) { toast.error(errorMessage(e, 'Failed')) }
+  }
+
+  // ── Version History (RC4.3.2.2) -- read-only, additive only ──
+  const openVersionHistory = (id: number, title: string) => {
+    const reqId = ++historyReqId.current
+    setHistoryTest({ id, title })
+    setHistoryVersions(null)
+    setHistoryError(null)
+    setViewingVersion(null)
+    setViewingError(null)
+    setHistoryLoading(true)
+    api.get(`/listening/admin/tests/${id}/versions`)
+      .then((res) => { if (historyReqId.current === reqId) setHistoryVersions(res.data?.versions || []) })
+      .catch((e) => { if (historyReqId.current === reqId) setHistoryError(errorMessage(e, 'Failed to load version history')) })
+      .finally(() => { if (historyReqId.current === reqId) setHistoryLoading(false) })
+  }
+
+  const closeVersionHistory = () => {
+    historyReqId.current++ // invalidate any outstanding history-list request
+    viewReqId.current++    // invalidate any outstanding version-detail request
+    setHistoryTest(null)
+    setHistoryVersions(null)
+    setHistoryError(null)
+    setHistoryLoading(false)
+    setViewingVersion(null)
+    setViewingError(null)
+    setViewingLoading(false)
+  }
+
+  const viewVersion = (versionId: number) => {
+    if (!historyTest) return
+    const reqId = ++viewReqId.current
+    setViewingVersion(null)
+    setViewingError(null)
+    setViewingLoading(true)
+    api.get(`/listening/admin/tests/${historyTest.id}/versions/${versionId}`)
+      .then((res) => { if (viewReqId.current === reqId) setViewingVersion(res.data) })
+      .catch((e) => { if (viewReqId.current === reqId) setViewingError(errorMessage(e, 'Failed to load this version')) })
+      .finally(() => { if (viewReqId.current === reqId) setViewingLoading(false) })
+  }
+
+  const backToVersionList = () => {
+    viewReqId.current++ // invalidate any outstanding version-detail request
+    setViewingVersion(null)
+    setViewingError(null)
+    setViewingLoading(false)
   }
 
   const handleExtract = async () => {
@@ -819,6 +929,7 @@ export default function AdminListeningPage() {
                 </div>
                 <div className="flex gap-3 shrink-0 text-sm">
                   <button onClick={() => manage(t)} className="text-blue-600 font-semibold">Manage</button>
+                  <button onClick={() => openVersionHistory(t.id, t.title)} className="text-gray-600 font-semibold">Version History</button>
                   <button onClick={() => togglePublish(t)} disabled={!canPublish} title={canPublish ? '' : 'Owner role required'} className="text-gray-600 disabled:opacity-40">{t.is_active ? 'Unpublish' : 'Publish'}</button>
                   <button onClick={() => deleteTest(t)} className="text-red-400 hover:text-red-600">Delete</button>
                 </div>
@@ -834,6 +945,241 @@ export default function AdminListeningPage() {
           </div>
         )}
       </div>
+
+      {/* RC4.3.2.2: Version History modal -- strictly read-only, additive only.
+          List view when viewingVersion is null, drilled-in snapshot view otherwise. */}
+      {historyTest && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeVersionHistory}>
+          <div
+            className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {viewingVersion || viewingLoading || viewingError ? (
+              <ListeningVersionSnapshotView
+                testTitle={historyTest.title}
+                detail={viewingVersion}
+                loading={viewingLoading}
+                error={viewingError}
+                onBack={backToVersionList}
+                onClose={closeVersionHistory}
+              />
+            ) : (
+              <ListeningVersionHistoryList
+                testTitle={historyTest.title}
+                versions={historyVersions}
+                loading={historyLoading}
+                error={historyError}
+                onView={viewVersion}
+                onClose={closeVersionHistory}
+              />
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Version History list panel ──
+function ListeningVersionHistoryList({
+  testTitle, versions, loading, error, onView, onClose,
+}: {
+  testTitle: string
+  versions: VersionSummary[] | null
+  loading: boolean
+  error: string | null
+  onView: (versionId: number) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="font-bold text-lg">Version History</h2>
+        <button onClick={onClose} className="text-sm text-muted-foreground hover:text-gray-600">Close</button>
+      </div>
+      <p className="text-sm text-gray-500 mb-4 truncate">{testTitle}</p>
+
+      {loading && <p className="text-muted-foreground text-sm py-4">Loading version history…</p>}
+
+      {!loading && error && (
+        <p className="text-red-600 text-sm py-4">{error}</p>
+      )}
+
+      {!loading && !error && versions && versions.length === 0 && (
+        <p className="text-muted-foreground text-sm py-4">No published versions yet — this test has never been made live.</p>
+      )}
+
+      {!loading && !error && versions && versions.length > 0 && (
+        <div className="space-y-2">
+          {versions.map((v) => (
+            <div key={v.id} className="flex items-center justify-between gap-3 border rounded-lg p-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">v{v.version}</span>
+                  {v.is_current && (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-700">Current</span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 truncate">
+                  {v.published_at ? new Date(v.published_at).toLocaleString() : 'Unknown date'}
+                  {' · by '}{v.published_by_display || '—'}
+                </p>
+              </div>
+              <button onClick={() => onView(v.id)}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 shrink-0">
+                View
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Version snapshot detail panel (immutable, read-only) ──
+// Listening-specific: sections (not passages), grouped by part, each carrying
+// its own audio_url/transcript/body -- cannot reuse Reading's renderer.
+function ListeningVersionSnapshotView({
+  testTitle, detail, loading, error, onBack, onClose,
+}: {
+  testTitle: string
+  detail: VersionDetail | null
+  loading: boolean
+  error: string | null
+  onBack: () => void
+  onClose: () => void
+}) {
+  const groups = useMemo(() => {
+    const snap = detail?.snapshot
+    if (!snap || !Array.isArray(snap.sections)) return []
+    const qBySection: Record<number, ListeningSnapshotQuestion[]> = {}
+    for (const q of snap.questions || []) {
+      (qBySection[q.section_id] ||= []).push(q)
+    }
+    const byPart: Record<string, ListeningSnapshotSection[]> = {}
+    for (const s of snap.sections) (byPart[s.part] ||= []).push(s)
+    const order: string[] = [
+      'A', 'B', 'C',
+      ...Object.keys(byPart).filter((p) => !['A', 'B', 'C'].includes(p)),
+    ]
+    return order
+      .filter((part) => byPart[part]?.length)
+      .map((part) => ({
+        part,
+        sections: byPart[part].map((s) => ({ ...s, questions: qBySection[s.section_id] || [] })),
+      }))
+  }, [detail])
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <button onClick={onBack} className="text-sm text-blue-600 hover:underline font-semibold">← Back</button>
+          <h2 className="font-bold text-lg">
+            {detail ? `v${detail.version}` : 'Version'}
+          </h2>
+        </div>
+        <button onClick={onClose} className="text-sm text-muted-foreground hover:text-gray-600">Close</button>
+      </div>
+      <p className="text-sm text-gray-500 mb-4 truncate">{testTitle}</p>
+
+      {loading && <p className="text-muted-foreground text-sm py-4">Loading version…</p>}
+      {!loading && error && <p className="text-red-600 text-sm py-4">{error}</p>}
+
+      {!loading && !error && detail && (
+        <>
+          <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
+            🔒 Historical snapshot — read-only and cannot be edited, saved, or published.
+          </div>
+
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mb-4">
+            <dt className="text-gray-500">Test title</dt>
+            <dd className="font-medium truncate">{detail.snapshot?.title ?? '—'}</dd>
+            <dt className="text-gray-500">Version</dt>
+            <dd className="font-medium">v{detail.version}</dd>
+            <dt className="text-gray-500">Published</dt>
+            <dd className="font-medium">{detail.published_at ? new Date(detail.published_at).toLocaleString() : '—'}</dd>
+            <dt className="text-gray-500">Published by</dt>
+            <dd className="font-medium">{detail.published_by_display || '—'}</dd>
+          </dl>
+
+          {groups.length === 0 ? (
+            <p className="text-muted-foreground text-sm py-2">This snapshot has no sections recorded.</p>
+          ) : (
+            groups.map((g) => (
+              <div key={g.part} className="mb-4 last:mb-0">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+                  Part {g.part} · {g.sections.length} section{g.sections.length === 1 ? '' : 's'}
+                </p>
+                <div className="space-y-2">
+                  {g.sections.map((s) => (
+                    <div key={s.section_id} className="border rounded-lg p-3 bg-gray-50">
+                      <p className="font-medium">{s.title || '(untitled)'}</p>
+                      <p className="text-xs text-gray-500 mb-2">Difficulty: {s.difficulty || '—'}</p>
+
+                      {s.audio_url ? (
+                        <audio src={s.audio_url} controls controlsList="nodownload noplaybackrate" className="w-full mb-3" />
+                      ) : (
+                        <p className="text-xs text-amber-600 mb-3">No audio recorded in this snapshot.</p>
+                      )}
+
+                      {s.body && (
+                        <p className="text-xs whitespace-pre-wrap text-gray-700 mb-3 max-h-40 overflow-y-auto border rounded bg-white p-2">
+                          {s.body}
+                        </p>
+                      )}
+
+                      {s.transcript != null && (
+                        <details className="mb-3 text-xs">
+                          <summary className="cursor-pointer text-gray-600 font-semibold">Transcript</summary>
+                          <div className="mt-1 max-h-40 overflow-y-auto border rounded bg-white p-2 text-gray-700">
+                            {Array.isArray(s.transcript)
+                              ? (s.transcript as { speaker?: string; text?: string }[]).map((turn, ti) => (
+                                <p key={ti}><span className="font-semibold">{turn.speaker || 'Speaker'}:</span> {turn.text}</p>
+                              ))
+                              : <p className="whitespace-pre-wrap">{String(s.transcript)}</p>}
+                          </div>
+                        </details>
+                      )}
+
+                      {s.questions.length === 0 ? (
+                        <p className="text-muted-foreground text-xs">No questions.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {s.questions.map((q, qi) => (
+                            <div key={q.question_id} className="text-xs">
+                              <p className="font-medium text-gray-800">{qi + 1}. {q.content || '(no stem)'}</p>
+                              {q.type === 'mcq' ? (
+                                <ul className="ml-4 mt-0.5">
+                                  {(q.options || []).map((opt, oi) => {
+                                    const correct = !!q.correct_answer && opt === q.correct_answer
+                                    return (
+                                      <li key={oi} className={correct ? 'text-emerald-700 font-semibold' : 'text-gray-600'}>
+                                        {correct ? '✓ ' : '• '}{opt}
+                                      </li>
+                                    )
+                                  })}
+                                </ul>
+                              ) : (
+                                <p className="ml-4 mt-0.5 text-gray-600">
+                                  Answer: {q.correct_answer
+                                    ? <span className="text-emerald-700 font-semibold">{q.correct_answer}</span>
+                                    : <span className="text-amber-600">—</span>}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </>
+      )}
     </div>
   )
 }

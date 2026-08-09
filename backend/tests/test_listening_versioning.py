@@ -251,7 +251,9 @@ def test_version_detail_returns_exact_frozen_snapshot(monkeypatch):
     stored = fake.tables["listening_test_versions"][0]
 
     row = listening_router.get_listening_test_version(2, stored["id"], _admin=_ADMIN)
-    assert row == stored
+    # published_by_display (RC4.3.2.2) is a computed field layered on top of
+    # the stored row -- everything else must be the exact frozen row, not re-derived.
+    assert {k: v for k, v in row.items() if k != "published_by_display"} == stored
     assert row["version"] == 1
     assert row["listening_test_id"] == 2
     assert row["snapshot"]["test_id"] == 2
@@ -308,6 +310,97 @@ def test_versions_endpoints_are_read_only(monkeypatch):
     listening_router.get_listening_test_version(2, fake.tables["listening_test_versions"][0]["id"], _admin=_ADMIN)
 
     assert fake.tables["listening_test_versions"] == before
+
+
+# ── RC4.3.2.2 -- publisher identity (published_by_display) ─────────────
+# Mirrors test_reading_versioning.py's RC4.3.2.1 block exactly -- same
+# shared helpers (display_names_by_user_id/publisher_display), reused as-is.
+# _seeded_fake() never seeds "users", so admin-1 has no mirror row by
+# default -- these tests seed it explicitly where a known publisher is needed.
+
+def test_version_list_shows_known_publisher_display_name(monkeypatch):
+    fake = _seeded_fake()
+    fake.tables["users"] = [{"id": "admin-1", "email": "owner@example.com", "name": "Jane Owner"}]
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)
+
+    v = listening_router.list_listening_test_versions(2, _admin=_ADMIN)["versions"][0]
+    assert v["published_by"] == "admin-1"  # raw uuid retained
+    assert v["published_by_display"] == "Jane Owner"
+
+
+def test_version_list_prefers_name_falls_back_to_email(monkeypatch):
+    fake = _seeded_fake()
+    fake.tables["users"] = [{"id": "admin-1", "email": "owner@example.com", "name": None}]
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)
+
+    v = listening_router.list_listening_test_versions(2, _admin=_ADMIN)["versions"][0]
+    assert v["published_by_display"] == "owner@example.com"
+
+
+def test_version_list_falls_back_for_unknown_publisher(monkeypatch):
+    fake = _seeded_fake()  # no "users" mirror row for admin-1 -- deleted/never-synced account
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)
+
+    v = listening_router.list_listening_test_versions(2, _admin=_ADMIN)["versions"][0]
+    assert v["published_by"] == "admin-1"
+    assert v["published_by_display"] == "Unknown staff member"
+
+
+def test_version_list_null_publisher_has_no_display(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)
+    fake.tables["listening_test_versions"][0]["published_by"] = None  # e.g. a system backfill
+
+    v = listening_router.list_listening_test_versions(2, _admin=_ADMIN)["versions"][0]
+    assert v["published_by"] is None
+    assert v["published_by_display"] is None
+
+
+def test_version_list_is_current_unaffected_by_publisher_lookup(monkeypatch):
+    fake = _seeded_fake()
+    fake.tables["users"] = [{"id": "admin-1", "email": "owner@example.com", "name": "Jane Owner"}]
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)   # v1
+    listening_router.set_test_active(2, SetActiveRequest(is_active=False), admin=_ADMIN)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)   # v2
+
+    versions = listening_router.list_listening_test_versions(2, _admin=_ADMIN)["versions"]
+    assert [v["version"] for v in versions] == [2, 1]
+    assert versions[0]["is_current"] is True
+    assert versions[1]["is_current"] is False
+    assert all(v["published_by_display"] == "Jane Owner" for v in versions)
+
+
+def test_version_detail_includes_publisher_display_and_exact_snapshot(monkeypatch):
+    fake = _seeded_fake()
+    fake.tables["users"] = [{"id": "admin-1", "email": "owner@example.com", "name": "Jane Owner"}]
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)
+    stored = fake.tables["listening_test_versions"][0]
+
+    row = listening_router.get_listening_test_version(2, stored["id"], _admin=_ADMIN)
+    assert row["published_by"] == "admin-1"
+    assert row["published_by_display"] == "Jane Owner"
+    assert row["snapshot"] == stored["snapshot"]  # immutable snapshot untouched by the lookup
+
+
+def test_versions_endpoints_still_read_only_with_publisher_lookup(monkeypatch):
+    fake = _seeded_fake()
+    fake.tables["users"] = [{"id": "admin-1", "email": "owner@example.com", "name": "Jane Owner"}]
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)
+    before_versions = json.loads(json.dumps(fake.tables["listening_test_versions"]))
+    before_users = json.loads(json.dumps(fake.tables["users"]))
+
+    listening_router.list_listening_test_versions(2, _admin=_ADMIN)
+    listening_router.get_listening_test_version(2, fake.tables["listening_test_versions"][0]["id"], _admin=_ADMIN)
+
+    assert fake.tables["listening_test_versions"] == before_versions
+    assert fake.tables["users"] == before_users  # publisher lookup never mutates the mirror table
 
 
 if __name__ == "__main__":
