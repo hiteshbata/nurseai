@@ -1,8 +1,4 @@
-'use client'
-import { useSupabaseSession } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import api from '@/lib/api'
+import { AuthRedirectGate } from '@/components/landing/AuthRedirectGate'
 import HeroSection from '@/components/landing/HeroSection'
 import StatsBar from '@/components/landing/StatsBar'
 import FailureSection from '@/components/landing/FailureSection'
@@ -68,33 +64,8 @@ const faqJsonLd = {
 }
 
 export default function Home() {
-  const { session, status } = useSupabaseSession()
-  const router = useRouter()
-  const [onboardingChecked, setOnboardingChecked] = useState(false)
-
-  useEffect(() => {
-    if (status === 'authenticated' && session?.user?.is_anonymous) {
-      router.push('/tools/oet-mock-test-free')
-      return
-    }
-    if (status === 'authenticated' && !session?.user?.is_anonymous && !onboardingChecked) {
-      api.get('/onboarding/status').then((res) => {
-        const complete = res.data?.onboarding_completed === true
-        router.push(complete ? '/dashboard' : '/onboarding')
-      }).catch(() => {
-        router.push('/dashboard')
-      }).finally(() => {
-        setOnboardingChecked(true)
-      })
-    }
-  }, [status, session, onboardingChecked, router])
-
-  if (status === 'authenticated') {
-    return null
-  }
-
   return (
-    <>
+    <AuthRedirectGate>
       <script
         type="application/ld+json"
         // eslint-disable-next-line react/no-danger
@@ -112,6 +83,6 @@ export default function Home() {
       <FounderSection />
       <InstituteSection />
       <FAQSection />
-    </>
+    </AuthRedirectGate>
   )
 }
