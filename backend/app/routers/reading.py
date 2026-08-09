@@ -39,6 +39,7 @@ from app.services.mock_reference_guard import block_if_referenced_by_mock_test
 from app.services.assessment_versioning import (
     publish_reading_version, latest_version_id, get_version_row,
     reading_snapshot_student_payload, reading_snapshot_questions_by_id,
+    list_version_rows, get_version_row_for_parent,
 )
 from app.services.assessment_validation import validate_reading_test
 
@@ -1564,6 +1565,39 @@ def admin_preview_test(test_id: int, _admin=Depends(require_admin)):
     payload = _load_test_payload(test_id, include_inactive=True)
     payload["validation"] = validate_reading_test(get_supabase(), test_id)
     return payload
+
+
+@router.get("/admin/tests/{test_id}/versions")
+def list_reading_test_versions(test_id: int, _admin=Depends(require_admin)):
+    """RC4.3.1: lightweight history of every immutable version this test has
+    had -- newest first, no snapshot payload (see the /versions/{version_id}
+    endpoint for that). is_current is computed from the actual max version
+    present, not assumed from array position."""
+    supabase = get_supabase()
+    t = supabase.table("reading_tests").select("id").eq("id", test_id).execute()
+    if not t.data:
+        raise HTTPException(status_code=404, detail="Test not found")
+    rows = list_version_rows(supabase, "reading_test_versions", "reading_test_id", test_id)
+    current = rows[0]["version"] if rows else None
+    return {"versions": [{
+        "id": r["id"],
+        "version": r["version"],
+        "published_at": r.get("published_at"),
+        "published_by": r.get("published_by"),
+        "is_current": r["version"] == current,
+    } for r in rows]}
+
+
+@router.get("/admin/tests/{test_id}/versions/{version_id}")
+def get_reading_test_version(test_id: int, version_id: int, _admin=Depends(require_admin)):
+    """RC4.3.1: the frozen snapshot for one version, read-only. 404s if the
+    test doesn't exist, the version doesn't exist, or the version belongs to
+    a different test -- never leaks another test's version by id guessing."""
+    supabase = get_supabase()
+    t = supabase.table("reading_tests").select("id").eq("id", test_id).execute()
+    if not t.data:
+        raise HTTPException(status_code=404, detail="Test not found")
+    return get_version_row_for_parent(supabase, "reading_test_versions", "reading_test_id", test_id, version_id)
 
 
 class SetActiveRequest(BaseModel):

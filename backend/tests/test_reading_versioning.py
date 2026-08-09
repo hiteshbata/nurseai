@@ -12,6 +12,8 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from fastapi import HTTPException
+
 import app.routers.reading as reading_router
 from app.routers.reading import ReadingTestSubmitRequest, ReadingAnswer, SetActiveRequest
 
@@ -213,6 +215,114 @@ def test_submit_legacy_test_grades_from_live_table(monkeypatch):
 
     stored_feedback = json.loads(fake.tables["submissions"][0]["feedback"])
     assert stored_feedback["test_version_id"] is None
+
+
+# ── RC4.3.1 -- version history (list + detail) ─────────────────────────
+
+def test_versions_empty_history(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(reading_router, "get_supabase", lambda: fake)
+    result = reading_router.list_reading_test_versions(1, _admin=_ADMIN)
+    assert result == {"versions": []}
+
+
+def test_versions_one_version(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(reading_router, "get_supabase", lambda: fake)
+    reading_router.set_test_active(1, SetActiveRequest(is_active=True), admin=_ADMIN)
+    fake.tables["reading_test_versions"][0]["published_at"] = "2026-08-09T12:00:00Z"  # DB default(now()), not app-set
+
+    result = reading_router.list_reading_test_versions(1, _admin=_ADMIN)
+    versions = result["versions"]
+    assert len(versions) == 1
+    v = versions[0]
+    assert v["id"] == fake.tables["reading_test_versions"][0]["id"]
+    assert v["version"] == 1
+    assert v["published_at"] == "2026-08-09T12:00:00Z"
+    assert v["published_by"] == "admin-1"
+    assert v["is_current"] is True
+
+
+def test_versions_multiple_newest_first_only_latest_current(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(reading_router, "get_supabase", lambda: fake)
+    reading_router.set_test_active(1, SetActiveRequest(is_active=True), admin=_ADMIN)  # v1
+    reading_router.set_test_active(1, SetActiveRequest(is_active=False), admin=_ADMIN)  # unpublish, no version cut
+    reading_router.set_test_active(1, SetActiveRequest(is_active=True), admin=_ADMIN)  # v2
+
+    result = reading_router.list_reading_test_versions(1, _admin=_ADMIN)
+    versions = result["versions"]
+    assert [v["version"] for v in versions] == [2, 1]  # newest first
+    assert {v["id"] for v in versions} == {r["id"] for r in fake.tables["reading_test_versions"]}  # all present
+    assert versions[0]["is_current"] is True
+    assert versions[1]["is_current"] is False
+
+
+def test_version_detail_returns_exact_frozen_snapshot(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(reading_router, "get_supabase", lambda: fake)
+    reading_router.set_test_active(1, SetActiveRequest(is_active=True), admin=_ADMIN)
+    stored = fake.tables["reading_test_versions"][0]
+
+    row = reading_router.get_reading_test_version(1, stored["id"], _admin=_ADMIN)
+    assert row == stored  # exact frozen row, not re-derived
+    assert row["version"] == 1
+    assert row["reading_test_id"] == 1
+    assert row["snapshot"]["test_id"] == 1
+
+
+def test_version_detail_cross_parent_returns_404(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(reading_router, "get_supabase", lambda: fake)
+    reading_router.set_test_active(1, SetActiveRequest(is_active=True), admin=_ADMIN)
+    version_id = fake.tables["reading_test_versions"][0]["id"]  # belongs to test 1
+
+    # A second, unrelated test.
+    fake.tables["reading_tests"].append({"id": 2, "title": "Reading Test 2", "is_active": False})
+
+    try:
+        reading_router.get_reading_test_version(2, version_id, _admin=_ADMIN)
+        assert False, "expected 404 -- version 8-style leak across parents"
+    except HTTPException as e:
+        assert e.status_code == 404
+
+
+def test_version_detail_missing_version_returns_404(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(reading_router, "get_supabase", lambda: fake)
+    try:
+        reading_router.get_reading_test_version(1, 999, _admin=_ADMIN)
+        assert False, "expected 404"
+    except HTTPException as e:
+        assert e.status_code == 404
+
+
+def test_versions_missing_parent_returns_404_for_list_and_detail(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(reading_router, "get_supabase", lambda: fake)
+    try:
+        reading_router.list_reading_test_versions(999, _admin=_ADMIN)
+        assert False, "expected 404"
+    except HTTPException as e:
+        assert e.status_code == 404
+
+    try:
+        reading_router.get_reading_test_version(999, 1, _admin=_ADMIN)
+        assert False, "expected 404"
+    except HTTPException as e:
+        assert e.status_code == 404
+
+
+def test_versions_endpoints_are_read_only(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(reading_router, "get_supabase", lambda: fake)
+    reading_router.set_test_active(1, SetActiveRequest(is_active=True), admin=_ADMIN)
+    before = json.loads(json.dumps(fake.tables["reading_test_versions"]))
+
+    reading_router.list_reading_test_versions(1, _admin=_ADMIN)
+    reading_router.get_reading_test_version(1, fake.tables["reading_test_versions"][0]["id"], _admin=_ADMIN)
+
+    assert fake.tables["reading_test_versions"] == before  # no insert/update from either endpoint
 
 
 if __name__ == "__main__":

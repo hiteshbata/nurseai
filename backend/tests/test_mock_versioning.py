@@ -284,6 +284,149 @@ def test_admin_publish_404s_for_unknown_pack(monkeypatch):
         assert e.status_code == 404
 
 
+# ── RC4.3.1 -- version history (list + detail) ─────────────────────────
+
+def test_versions_empty_history(monkeypatch):
+    fake = FakeSupabase()
+    _seeded_content(fake)
+    monkeypatch.setattr(mock_router, "get_supabase", lambda: fake)
+    fake.tables["mock_tests"] = [{
+        "id": 9, "label": "Never Published", "is_active": True,
+        "reading_test_id": 1, "listening_test_id": 2,
+        "writing_scenario_id": 300, "speaking_scenario_id_1": 301, "speaking_scenario_id_2": 302,
+    }]
+    result = asyncio.run(mock_router.list_mock_test_versions(9, _admin=_ADMIN))
+    assert result == {"versions": []}
+
+
+def test_versions_one_version(monkeypatch):
+    fake = FakeSupabase()
+    _seeded_content(fake)
+    monkeypatch.setattr(mock_router, "get_supabase", lambda: fake)
+    pack = asyncio.run(mock_router.admin_generate_mock_test(current_user=_ADMIN))  # cuts version 1 at creation
+    fake.tables["mock_test_versions"][0]["published_at"] = "2026-08-09T12:00:00Z"
+
+    result = asyncio.run(mock_router.list_mock_test_versions(pack["id"], _admin=_ADMIN))
+    versions = result["versions"]
+    assert len(versions) == 1
+    v = versions[0]
+    assert v["id"] == fake.tables["mock_test_versions"][0]["id"]
+    assert v["version"] == 1
+    assert v["published_at"] == "2026-08-09T12:00:00Z"
+    assert v["published_by"] == "admin-1"
+    assert v["is_current"] is True
+
+
+def test_versions_multiple_newest_first_only_latest_current(monkeypatch):
+    fake = FakeSupabase()
+    _seeded_content(fake)
+    monkeypatch.setattr(mock_router, "get_supabase", lambda: fake)
+    pack = asyncio.run(mock_router.admin_generate_mock_test(current_user=_ADMIN))  # v1
+
+    from app.services.assessment_versioning import publish_reading_version
+    publish_reading_version(fake, 1, "admin-1")  # reading -> v2, so mock has something new to pick up
+    asyncio.run(mock_router.admin_publish_mock_test_version(pack["id"], current_user=_ADMIN))  # mock -> v2
+
+    result = asyncio.run(mock_router.list_mock_test_versions(pack["id"], _admin=_ADMIN))
+    versions = result["versions"]
+    assert [v["version"] for v in versions] == [2, 1]
+    assert {v["id"] for v in versions} == {r["id"] for r in fake.tables["mock_test_versions"]}
+    assert versions[0]["is_current"] is True
+    assert versions[1]["is_current"] is False
+
+
+def test_version_detail_returns_exact_frozen_snapshot(monkeypatch):
+    fake = FakeSupabase()
+    _seeded_content(fake)
+    monkeypatch.setattr(mock_router, "get_supabase", lambda: fake)
+    pack = asyncio.run(mock_router.admin_generate_mock_test(current_user=_ADMIN))
+    stored = fake.tables["mock_test_versions"][0]
+
+    row = asyncio.run(mock_router.get_mock_test_version(pack["id"], stored["id"], _admin=_ADMIN))
+    assert row == stored
+    assert row["version"] == 1
+    assert row["mock_test_id"] == pack["id"]
+    assert row["snapshot"]["mock_test_id"] == pack["id"]
+
+
+def test_version_detail_cross_parent_returns_404(monkeypatch):
+    fake = FakeSupabase()
+    _seeded_content(fake)
+    monkeypatch.setattr(mock_router, "get_supabase", lambda: fake)
+    pack_1 = asyncio.run(mock_router.admin_generate_mock_test(current_user=_ADMIN))
+    version_id = fake.tables["mock_test_versions"][0]["id"]  # belongs to pack_1
+
+    # A second, unrelated pack (own content picks, own version).
+    fake.tables["reading_tests"].append({"id": 4, "title": "Reading 2", "is_active": True})
+    fake.tables["reading_passages"].append({"id": 40, "title": "P", "part": "A", "difficulty": "x", "body": "b", "test_id": 4, "is_active": True})
+    fake.tables["reading_passages"].append({"id": 41, "title": "P", "part": "B", "difficulty": "x", "body": "b", "test_id": 4, "is_active": True})
+    fake.tables["reading_passages"].append({"id": 42, "title": "P", "part": "C", "difficulty": "x", "body": "b", "test_id": 4, "is_active": True})
+    fake.tables["questions"] += [
+        {"id": 400, "passage_id": 40, "type": "mcq", "content": "q", "options": json.dumps(["a", "b"]), "correct_answer": "a"},
+        {"id": 410, "passage_id": 41, "type": "mcq", "content": "q", "options": json.dumps(["a", "b"]), "correct_answer": "a"},
+        {"id": 420, "passage_id": 42, "type": "mcq", "content": "q", "options": json.dumps(["a", "b"]), "correct_answer": "a"},
+    ]
+    from app.services.assessment_versioning import publish_reading_version
+    publish_reading_version(fake, 4, "admin-1")
+    fake.tables["mock_tests"] = fake.tables.get("mock_tests", [])
+    fake.tables["mock_tests"].append({
+        "id": 99, "label": "Pack 2", "is_active": True,
+        "reading_test_id": 4, "listening_test_id": 2,
+        "writing_scenario_id": 300, "speaking_scenario_id_1": 301, "speaking_scenario_id_2": 302,
+    })
+    from app.services.assessment_versioning import publish_mock_version
+    publish_mock_version(fake, 99, "admin-1")
+
+    try:
+        asyncio.run(mock_router.get_mock_test_version(99, version_id, _admin=_ADMIN))
+        assert False, "expected 404 -- cross-parent leak"
+    except HTTPException as e:
+        assert e.status_code == 404
+    assert pack_1["id"] != 99
+
+
+def test_version_detail_missing_version_returns_404(monkeypatch):
+    fake = FakeSupabase()
+    _seeded_content(fake)
+    monkeypatch.setattr(mock_router, "get_supabase", lambda: fake)
+    pack = asyncio.run(mock_router.admin_generate_mock_test(current_user=_ADMIN))
+    try:
+        asyncio.run(mock_router.get_mock_test_version(pack["id"], 999, _admin=_ADMIN))
+        assert False, "expected 404"
+    except HTTPException as e:
+        assert e.status_code == 404
+
+
+def test_versions_missing_parent_returns_404_for_list_and_detail(monkeypatch):
+    fake = FakeSupabase()
+    _seeded_content(fake)
+    monkeypatch.setattr(mock_router, "get_supabase", lambda: fake)
+    try:
+        asyncio.run(mock_router.list_mock_test_versions(999, _admin=_ADMIN))
+        assert False, "expected 404"
+    except HTTPException as e:
+        assert e.status_code == 404
+
+    try:
+        asyncio.run(mock_router.get_mock_test_version(999, 1, _admin=_ADMIN))
+        assert False, "expected 404"
+    except HTTPException as e:
+        assert e.status_code == 404
+
+
+def test_versions_endpoints_are_read_only(monkeypatch):
+    fake = FakeSupabase()
+    _seeded_content(fake)
+    monkeypatch.setattr(mock_router, "get_supabase", lambda: fake)
+    pack = asyncio.run(mock_router.admin_generate_mock_test(current_user=_ADMIN))
+    before = json.loads(json.dumps(fake.tables["mock_test_versions"]))
+
+    asyncio.run(mock_router.list_mock_test_versions(pack["id"], _admin=_ADMIN))
+    asyncio.run(mock_router.get_mock_test_version(pack["id"], fake.tables["mock_test_versions"][0]["id"], _admin=_ADMIN))
+
+    assert fake.tables["mock_test_versions"] == before
+
+
 if __name__ == "__main__":
     import inspect
 

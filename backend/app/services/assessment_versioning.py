@@ -85,6 +85,32 @@ def get_version_row(supabase, table: str, version_id: int) -> Dict[str, Any]:
     return rows[0]
 
 
+# ── version history (RC4.3.1) ─────────────────────────────────────────
+# Read-only listing/lookup on top of the RC4.1 version tables -- no new
+# tables, no new write path. Shared across Reading/Listening/Mock so the
+# three routers' /versions endpoints don't each hand-roll the same query.
+
+def list_version_rows(supabase, table: str, id_col: str, content_id: Any) -> List[Dict[str, Any]]:
+    """Every version row for one content id, newest first. Metadata-only
+    projection is the caller's job (list endpoints shouldn't ship the full
+    snapshot); this returns full rows so a detail endpoint can also use it
+    if ever needed."""
+    return (
+        supabase.table(table).select("*")
+        .eq(id_col, content_id).order("version", desc=True).execute()
+    ).data
+
+
+def get_version_row_for_parent(supabase, table: str, id_col: str, parent_id: Any, version_id: int) -> Dict[str, Any]:
+    """Same as get_version_row, but also requires the version to belong to
+    the given parent id -- so GET .../tests/{test_id}/versions/{version_id}
+    can never return a version that actually belongs to a different test."""
+    rows = supabase.table(table).select("*").eq("id", version_id).eq(id_col, parent_id).execute().data
+    if not rows:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return rows[0]
+
+
 # ── READING ────────────────────────────────────────────────────────────
 
 def build_reading_snapshot(supabase, test_id: int) -> Dict[str, Any]:

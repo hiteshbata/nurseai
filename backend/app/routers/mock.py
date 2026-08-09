@@ -28,7 +28,10 @@ from app.routers.auth import get_current_user, UserInfo, _client_ip
 from app.routers.admin import require_admin, require_owner
 from app.services.plan_gating import has_mock_test_access, get_plan_from_profile
 from app.routers.sessions import _usage_payload, get_month_start_utc
-from app.services.assessment_versioning import publish_mock_version, latest_version_id, get_version_row
+from app.services.assessment_versioning import (
+    publish_mock_version, latest_version_id, get_version_row,
+    list_version_rows, get_version_row_for_parent,
+)
 from app.services.assessment_validation import validate_mock_test
 
 router = APIRouter(prefix="/mock", tags=["mock"])
@@ -581,6 +584,40 @@ async def admin_preview_mock_test(mock_test_id: int, _admin=Depends(require_admi
         "speaking_title_2": await _title("scenarios", p.get("speaking_scenario_id_2")),
         "validation": validation,
     }
+
+
+@router.get("/admin/tests/{mock_test_id}/versions")
+async def list_mock_test_versions(mock_test_id: int, _admin=Depends(require_admin)):
+    """RC4.3.1: lightweight history of every immutable Mock Test Version this
+    pack has had -- newest first, no snapshot payload. is_current computed
+    from the actual max version present, not array position."""
+    supabase = get_supabase()
+    pack = await run_sync(supabase.table("mock_tests").select("id").eq("id", mock_test_id).execute)
+    if not pack.data:
+        raise HTTPException(status_code=404, detail="Mock Test pack not found")
+    rows = await run_sync(list_version_rows, supabase, "mock_test_versions", "mock_test_id", mock_test_id)
+    current = rows[0]["version"] if rows else None
+    return {"versions": [{
+        "id": r["id"],
+        "version": r["version"],
+        "published_at": r.get("published_at"),
+        "published_by": r.get("published_by"),
+        "is_current": r["version"] == current,
+    } for r in rows]}
+
+
+@router.get("/admin/tests/{mock_test_id}/versions/{version_id}")
+async def get_mock_test_version(mock_test_id: int, version_id: int, _admin=Depends(require_admin)):
+    """RC4.3.1: the frozen snapshot for one Mock Test Version, read-only.
+    404s if the pack doesn't exist, the version doesn't exist, or the
+    version belongs to a different pack."""
+    supabase = get_supabase()
+    pack = await run_sync(supabase.table("mock_tests").select("id").eq("id", mock_test_id).execute)
+    if not pack.data:
+        raise HTTPException(status_code=404, detail="Mock Test pack not found")
+    return await run_sync(
+        get_version_row_for_parent, supabase, "mock_test_versions", "mock_test_id", mock_test_id, version_id
+    )
 
 
 class MockTestActiveRequest(BaseModel):

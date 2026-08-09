@@ -11,6 +11,8 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from fastapi import HTTPException
+
 import app.routers.listening as listening_router
 from app.routers.listening import ListeningTestSubmitRequest, ListeningAnswer, SetActiveRequest
 
@@ -199,6 +201,113 @@ def test_submit_legacy_test_grades_from_live_table(monkeypatch):
     result = asyncio.run(listening_router.submit_test(2, request, current_user=_USER, user_db=fake))
     assert result["correct"] == 1
     assert result["transcripts"][20] == [{"speaker": "Nurse", "text": "original"}]
+
+
+# ── RC4.3.1 -- version history (list + detail) ─────────────────────────
+
+def test_versions_empty_history(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    result = listening_router.list_listening_test_versions(2, _admin=_ADMIN)
+    assert result == {"versions": []}
+
+
+def test_versions_one_version(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)
+    fake.tables["listening_test_versions"][0]["published_at"] = "2026-08-09T12:00:00Z"
+
+    result = listening_router.list_listening_test_versions(2, _admin=_ADMIN)
+    versions = result["versions"]
+    assert len(versions) == 1
+    v = versions[0]
+    assert v["id"] == fake.tables["listening_test_versions"][0]["id"]
+    assert v["version"] == 1
+    assert v["published_at"] == "2026-08-09T12:00:00Z"
+    assert v["published_by"] == "admin-1"
+    assert v["is_current"] is True
+
+
+def test_versions_multiple_newest_first_only_latest_current(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)  # v1
+    listening_router.set_test_active(2, SetActiveRequest(is_active=False), admin=_ADMIN)  # unpublish, no version cut
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)  # v2
+
+    result = listening_router.list_listening_test_versions(2, _admin=_ADMIN)
+    versions = result["versions"]
+    assert [v["version"] for v in versions] == [2, 1]
+    assert {v["id"] for v in versions} == {r["id"] for r in fake.tables["listening_test_versions"]}
+    assert versions[0]["is_current"] is True
+    assert versions[1]["is_current"] is False
+
+
+def test_version_detail_returns_exact_frozen_snapshot(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)
+    stored = fake.tables["listening_test_versions"][0]
+
+    row = listening_router.get_listening_test_version(2, stored["id"], _admin=_ADMIN)
+    assert row == stored
+    assert row["version"] == 1
+    assert row["listening_test_id"] == 2
+    assert row["snapshot"]["test_id"] == 2
+
+
+def test_version_detail_cross_parent_returns_404(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)
+    version_id = fake.tables["listening_test_versions"][0]["id"]  # belongs to test 2
+
+    fake.tables["listening_tests"].append({"id": 3, "title": "Listening Test 2", "is_active": False, "part_audio": {}, "part_audio_times": {}})
+
+    try:
+        listening_router.get_listening_test_version(3, version_id, _admin=_ADMIN)
+        assert False, "expected 404 -- cross-parent leak"
+    except HTTPException as e:
+        assert e.status_code == 404
+
+
+def test_version_detail_missing_version_returns_404(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    try:
+        listening_router.get_listening_test_version(2, 999, _admin=_ADMIN)
+        assert False, "expected 404"
+    except HTTPException as e:
+        assert e.status_code == 404
+
+
+def test_versions_missing_parent_returns_404_for_list_and_detail(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    try:
+        listening_router.list_listening_test_versions(999, _admin=_ADMIN)
+        assert False, "expected 404"
+    except HTTPException as e:
+        assert e.status_code == 404
+
+    try:
+        listening_router.get_listening_test_version(999, 1, _admin=_ADMIN)
+        assert False, "expected 404"
+    except HTTPException as e:
+        assert e.status_code == 404
+
+
+def test_versions_endpoints_are_read_only(monkeypatch):
+    fake = _seeded_fake()
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)
+    before = json.loads(json.dumps(fake.tables["listening_test_versions"]))
+
+    listening_router.list_listening_test_versions(2, _admin=_ADMIN)
+    listening_router.get_listening_test_version(2, fake.tables["listening_test_versions"][0]["id"], _admin=_ADMIN)
+
+    assert fake.tables["listening_test_versions"] == before
 
 
 if __name__ == "__main__":
