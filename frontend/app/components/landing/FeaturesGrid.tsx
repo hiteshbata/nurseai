@@ -1,7 +1,4 @@
-"use client"
-
 import { Bot, BarChart2, TrendingUp, Heart, Zap, Globe } from "lucide-react"
-import { useInView } from "@/app/hooks/useInView"
 
 const features = [
   {
@@ -43,8 +40,6 @@ const features = [
 ]
 
 export default function FeaturesGrid() {
-  const { ref, inView } = useInView<HTMLDivElement>()
-
   return (
     <section id="features" className="bg-white py-16 md:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -59,18 +54,13 @@ export default function FeaturesGrid() {
             things that need a boundary (comparisons, panels). Six identical
             icon-heading-text boxes here would just repeat that container as
             page structure. */}
-        <div ref={ref} className="grid grid-cols-1 md:grid-cols-2 gap-x-14 gap-y-10">
-          {features.map(({ icon: Icon, title, text, accent }, i) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-14 gap-y-10">
+          {features.map(({ icon: Icon, title, text, accent }) => {
             const isEmerald = accent === "emerald"
             return (
               <div
                 key={title}
-                className="flex gap-4 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
-                style={{
-                  transitionDelay: `${i * 80}ms`,
-                  opacity: inView ? 1 : 0,
-                  transform: inView ? "translateY(0)" : "translateY(12px)",
-                }}
+                className="flex gap-4"
               >
                 <Icon
                   className={`w-6 h-6 shrink-0 mt-0.5 ${isEmerald ? "text-[#10B981]" : "text-[#0F2356]"}`}

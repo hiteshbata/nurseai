@@ -1,7 +1,4 @@
-"use client"
-
 import { Search, Mic, BarChart2, RotateCcw } from "lucide-react"
-import { useInView } from "@/app/hooks/useInView"
 
 const steps = [
   {
@@ -35,8 +32,6 @@ const steps = [
 ]
 
 export default function HowItWorks() {
-  const { ref, inView } = useInView<HTMLDivElement>()
-
   return (
     <section id="how-it-works" className="bg-[#F8FAFC] py-16 md:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -47,7 +42,7 @@ export default function HowItWorks() {
           <p className="text-gray-500 text-lg">The same loop every time — choose, practice, get scored, go again</p>
         </div>
 
-        <div ref={ref} className="relative flex flex-col md:flex-row items-start gap-8 md:gap-0">
+        <div className="relative flex flex-col md:flex-row items-start gap-8 md:gap-0">
           {/* Connecting line on desktop — inset by half a card so it starts and
               ends at the centre of the first and last step circles. */}
           <div className="hidden md:block absolute top-12 h-0.5 bg-gray-200 z-0" style={{ left: "12.5%", right: "12.5%" }} />
@@ -62,12 +57,7 @@ export default function HowItWorks() {
             return (
               <div
                 key={step.number}
-                className={`relative flex-1 flex flex-col items-center text-center px-4 z-10 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${staggerClass}`}
-                style={{
-                  transitionDelay: `${i * 80}ms`,
-                  opacity: inView ? 1 : 0,
-                  transform: inView ? undefined : "translateY(12px)",
-                }}
+                className={`relative flex-1 flex flex-col items-center text-center px-4 z-10 ${staggerClass}`}
               >
                 {/* Circle number */}
                 <div

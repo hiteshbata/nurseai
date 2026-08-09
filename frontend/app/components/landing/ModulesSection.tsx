@@ -1,7 +1,4 @@
-'use client'
-
 import { Mic, BookOpen, PenLine, Headphones, ClipboardCheck, ArrowRight } from 'lucide-react'
-import { useInView } from '@/app/hooks/useInView'
 
 // Icons match AppShell's NavLinks exactly (Mic/PenLine/BookOpen/Headphones/
 // ClipboardCheck) so a signed-up user recognizes the same module by the same
@@ -31,8 +28,6 @@ const MODULES = [
 ]
 
 export default function ModulesSection() {
-  const { ref, inView } = useInView<HTMLDivElement>()
-
   return (
     <section className="bg-white py-16 md:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -45,14 +40,7 @@ export default function ModulesSection() {
           </p>
         </div>
 
-        <div
-          ref={ref}
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 lg:grid-rows-2 gap-4 lg:h-[420px] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
-          style={{
-            opacity: inView ? 1 : 0,
-            transform: inView ? 'translateY(0)' : 'translateY(12px)',
-          }}
-        >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 lg:grid-rows-2 gap-4 lg:h-[420px]">
           {/* Speaking — the differentiator, given the full 2x2 block */}
           <a
             href="/auth/register"

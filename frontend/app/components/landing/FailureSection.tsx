@@ -1,7 +1,4 @@
-"use client"
-
 import { AlertCircle, Mic, MessageSquare, CheckCircle2 } from "lucide-react"
-import { useInView } from "@/app/hooks/useInView"
 
 const cards = [
   {
@@ -28,8 +25,6 @@ const cards = [
 ]
 
 export default function FailureSection() {
-  const { ref, inView } = useInView<HTMLDivElement>()
-
   return (
     <section className="bg-white py-16 md:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -40,16 +35,11 @@ export default function FailureSection() {
           <p className="text-gray-500 text-lg">Three criteria worth practising — and how SpeakOET helps with each</p>
         </div>
 
-        <div ref={ref} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {cards.map(({ icon: Icon, title, problem, fix }, i) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {cards.map(({ icon: Icon, title, problem, fix }) => (
             <div
               key={title}
-              className="bg-white rounded-2xl border border-gray-100 shadow-premium overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
-              style={{
-                transitionDelay: `${i * 80}ms`,
-                opacity: inView ? 1 : 0,
-                transform: inView ? "translateY(0)" : "translateY(12px)",
-              }}
+              className="bg-white rounded-2xl border border-gray-100 shadow-premium overflow-hidden"
             >
               <div className="p-6">
                 <div className="flex items-start gap-4 mb-4">

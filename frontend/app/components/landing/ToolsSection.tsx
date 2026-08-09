@@ -1,7 +1,4 @@
-'use client'
-
 import { Calculator, Sparkles, Rocket, ArrowRight } from 'lucide-react'
-import { useInView } from '@/app/hooks/useInView'
 
 const TOOLS = [
   {
@@ -25,8 +22,6 @@ const TOOLS = [
 ]
 
 export default function ToolsSection() {
-  const { ref, inView } = useInView<HTMLDivElement>()
-
   return (
     <section className="bg-[#F8FAFC] py-16 md:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -36,14 +31,7 @@ export default function ToolsSection() {
           </h2>
         </div>
 
-        <div
-          ref={ref}
-          className="grid grid-cols-1 md:grid-cols-3 gap-0 divide-y md:divide-y-0 md:divide-x divide-gray-200 rounded-2xl border border-gray-200 bg-white shadow-premium overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
-          style={{
-            opacity: inView ? 1 : 0,
-            transform: inView ? 'translateY(0)' : 'translateY(12px)',
-          }}
-        >
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-0 divide-y md:divide-y-0 md:divide-x divide-gray-200 rounded-2xl border border-gray-200 bg-white shadow-premium overflow-hidden">
           {TOOLS.map(({ href, icon: Icon, title, text }) => (
             <a
               key={title}
