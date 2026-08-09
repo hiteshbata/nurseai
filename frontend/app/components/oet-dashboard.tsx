@@ -1,4 +1,5 @@
 import { memo } from "react"
+import dynamic from "next/dynamic"
 import { DashboardHeader } from "./oet/dashboard-header"
 import { FirstRunHero } from "./oet/FirstRunHero"
 import { HeroCards } from "./oet/hero-cards"
@@ -12,7 +13,6 @@ import { StudyPlanCard } from "./oet/StudyPlanCard"
 import { StreakHeatmapCard } from "./oet/StreakHeatmapCard"
 import { CriteriaPentagonCard } from "./oet/CriteriaPentagonCard"
 import { MilestoneBadges } from "./oet/MilestoneBadges"
-import { ProgressChart } from "./ProgressChart"
 import { RecentSessions } from "./oet/recent-sessions"
 import { UpgradeBanner } from "./UpgradeBanner"
 import type { ModuleName, OetDashboardProps } from "./oet/types"
@@ -40,6 +40,15 @@ function ChartSkeleton() {
     <SkeletonBlock className="h-64 w-full" />
   )
 }
+
+// Recharts is the heaviest dependency the dashboard would otherwise pull into
+// its initial JS -- deferred behind the chart's own section, reusing the same
+// skeleton already shown while score history is loading so there's no visual
+// difference between "data loading" and "chart code loading".
+const ProgressChart = dynamic(
+  () => import("./ProgressChart").then((m) => m.ProgressChart),
+  { ssr: false, loading: () => <ChartSkeleton /> }
+)
 
 function UpgradeBannerSkeleton() {
   return <SkeletonBlock className="h-20 w-full" />
