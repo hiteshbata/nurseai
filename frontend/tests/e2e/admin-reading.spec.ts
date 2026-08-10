@@ -74,7 +74,7 @@ test('Make live is Owner-gated for an admin-role account [REAL]', async ({ brows
   await page.goto('/admin/reading')
 
   const row = page.locator('div.border.rounded-lg.overflow-hidden').first()
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No reading tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No reading tests exist in this environment')
 
   const publishButton = row.getByRole('button', { name: /Make live|Unpublish/ })
   await expect(publishButton).toBeDisabled()
@@ -89,7 +89,7 @@ test('expanding a test pulls real validation state from the preview endpoint [RE
   await page.goto('/admin/reading')
 
   const row = page.locator('div.border.rounded-lg.overflow-hidden').first()
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No reading tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No reading tests exist in this environment')
 
   const [previewResponse] = await Promise.all([
     page.waitForResponse((res) => /\/reading\/admin\/tests\/\d+\/preview/.test(res.url())),
@@ -140,7 +140,7 @@ test('[MOCKED UI ONLY] validation error panel renders structured errors and can 
 
   await page.goto('/admin/reading')
   const row = page.locator('div.border.rounded-lg.overflow-hidden').first()
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No reading tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No reading tests exist in this environment')
 
   await row.locator('button.flex-1').first().click()
 
@@ -165,7 +165,7 @@ test('Version History control exists on a test row [REAL]', async ({ browser }) 
   await page.goto('/admin/reading')
 
   const row = page.locator('div.border.rounded-lg.overflow-hidden').first()
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No reading tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No reading tests exist in this environment')
 
   await expect(row.getByRole('button', { name: 'Version History' })).toBeVisible()
 
@@ -178,7 +178,7 @@ test('clicking Version History requests the versions list endpoint [REAL]', asyn
   await page.goto('/admin/reading')
 
   const row = page.locator('div.border.rounded-lg.overflow-hidden').first()
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No reading tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No reading tests exist in this environment')
 
   const [versionsResponse] = await Promise.all([
     page.waitForResponse((res) => /\/reading\/admin\/tests\/\d+\/versions$/.test(res.url())),
@@ -213,7 +213,7 @@ test('[MOCKED UI ONLY] version list renders version numbers and marks the curren
 
   await page.goto('/admin/reading')
   const row = page.locator('div.border.rounded-lg.overflow-hidden').first()
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No reading tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No reading tests exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
 
@@ -242,7 +242,7 @@ test('[MOCKED UI ONLY] empty version history shows a clear empty state', async (
 
   await page.goto('/admin/reading')
   const row = page.locator('div.border.rounded-lg.overflow-hidden').first()
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No reading tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No reading tests exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
 
@@ -265,7 +265,7 @@ test('[MOCKED UI ONLY] version list request failure shows an error, not a raw ba
 
   await page.goto('/admin/reading')
   const row = page.locator('div.border.rounded-lg.overflow-hidden').first()
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No reading tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No reading tests exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
 
@@ -323,7 +323,7 @@ test('[MOCKED UI ONLY] clicking View requests the specific version endpoint and 
 
   await page.goto('/admin/reading')
   const row = page.locator('div.border.rounded-lg.overflow-hidden').first()
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No reading tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No reading tests exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
   await page.getByRole('button', { name: 'View' }).click()
@@ -387,7 +387,7 @@ test('[MOCKED UI ONLY] a late-resolving version response cannot clobber a newer 
 
   await page.goto('/admin/reading')
   const row = page.locator('div.border.rounded-lg.overflow-hidden').first()
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No reading tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No reading tests exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
   const modal = page.locator('div.fixed.inset-0')

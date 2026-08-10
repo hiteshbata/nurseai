@@ -64,7 +64,7 @@ test('Publish new version is Owner-gated for an admin-role account [REAL]', asyn
   await page.goto('/admin/mock-tests')
 
   const publishButton = page.getByRole('button', { name: /Publish new version|Publishing…/ }).first()
-  test.skip(!(await publishButton.isVisible({ timeout: 10_000 }).catch(() => false)), 'No mock test packs exist in this environment')
+  test.skip(!(await publishButton.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No mock test packs exist in this environment')
 
   await expect(publishButton).toBeDisabled()
   await expect(publishButton).toHaveAttribute('title', 'Owner role required to publish')
@@ -125,7 +125,7 @@ test('[MOCKED UI ONLY] validation error panel renders structured errors for a br
 
   await page.goto('/admin/mock-tests')
   const row = page.getByRole('row').filter({ hasText: 'Mocked Pack' }).or(page.locator('tr').filter({ hasText: 'L1' }))
-  test.skip(!(await row.first().isVisible({ timeout: 10_000 }).catch(() => false)), 'No mock test packs exist in this environment')
+  test.skip(!(await row.first().waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No mock test packs exist in this environment')
 
   await expect(page.getByText('Cannot publish yet')).toBeVisible()
   await expect(page.getByText('Writing Scenario slot is empty')).toBeVisible()
@@ -154,7 +154,7 @@ test('Version History control exists on a pack row [REAL]', async ({ browser }) 
   await page.goto('/admin/mock-tests')
 
   const row = mockPackRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No mock test packs exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No mock test packs exist in this environment')
 
   await expect(row.getByRole('button', { name: 'Version History' })).toBeVisible()
 
@@ -167,7 +167,7 @@ test('clicking Version History requests the real /mock/admin/tests/{id}/versions
   await page.goto('/admin/mock-tests')
 
   const row = mockPackRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No mock test packs exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No mock test packs exist in this environment')
 
   const [versionsResponse] = await Promise.all([
     page.waitForResponse((res) => /\/mock\/admin\/tests\/\d+\/versions$/.test(res.url())),
@@ -202,7 +202,7 @@ test('[MOCKED UI ONLY] version list renders version numbers, Current badge, and 
 
   await page.goto('/admin/mock-tests')
   const row = mockPackRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No mock test packs exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No mock test packs exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
 
@@ -230,7 +230,7 @@ test('[MOCKED UI ONLY] empty version history shows a clear empty state', async (
 
   await page.goto('/admin/mock-tests')
   const row = mockPackRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No mock test packs exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No mock test packs exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
 
@@ -253,7 +253,7 @@ test('[MOCKED UI ONLY] version list request failure shows an error, not a raw ba
 
   await page.goto('/admin/mock-tests')
   const row = mockPackRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No mock test packs exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No mock test packs exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
 
@@ -325,7 +325,7 @@ test('[MOCKED UI ONLY] clicking View requests the specific version endpoint and 
 
   await page.goto('/admin/mock-tests')
   const row = mockPackRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No mock test packs exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No mock test packs exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
   await page.getByRole('button', { name: 'View' }).click()
@@ -400,7 +400,7 @@ test('[MOCKED UI ONLY] a late-resolving version response cannot clobber a newer 
 
   await page.goto('/admin/mock-tests')
   const row = mockPackRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No mock test packs exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No mock test packs exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
   const modal = page.locator('div.fixed.inset-0')

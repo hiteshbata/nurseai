@@ -63,7 +63,7 @@ test('Publish is Owner-gated for an admin-role account [REAL]', async ({ browser
   await page.goto('/admin/listening')
 
   const publishButton = page.getByRole('button', { name: /^(Publish|Unpublish)$/ }).first()
-  test.skip(!(await publishButton.isVisible({ timeout: 10_000 }).catch(() => false)), 'No listening tests exist in this environment')
+  test.skip(!(await publishButton.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No listening tests exist in this environment')
 
   await expect(publishButton).toBeDisabled()
   await expect(publishButton).toHaveAttribute('title', 'Owner role required')
@@ -77,7 +77,7 @@ test('opening a test (Manage) pulls real validation state from the preview endpo
   await page.goto('/admin/listening')
 
   const manageButton = page.getByRole('button', { name: 'Manage' }).first()
-  test.skip(!(await manageButton.isVisible({ timeout: 10_000 }).catch(() => false)), 'No listening tests exist in this environment')
+  test.skip(!(await manageButton.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No listening tests exist in this environment')
 
   const [previewResponse] = await Promise.all([
     page.waitForResponse((res) => /\/listening\/admin\/tests\/\d+\/preview/.test(res.url())),
@@ -122,7 +122,7 @@ test('[MOCKED UI ONLY] validation error panel renders structured errors includin
 
   await page.goto('/admin/listening')
   const manageButton = page.getByRole('button', { name: 'Manage' }).first()
-  test.skip(!(await manageButton.isVisible({ timeout: 10_000 }).catch(() => false)), 'No listening tests exist in this environment')
+  test.skip(!(await manageButton.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No listening tests exist in this environment')
 
   await manageButton.click()
 
@@ -151,7 +151,7 @@ test('Version History control exists on a test row [REAL]', async ({ browser }) 
   await page.goto('/admin/listening')
 
   const row = listeningTestRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No listening tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No listening tests exist in this environment')
 
   await expect(row.getByRole('button', { name: 'Version History' })).toBeVisible()
 
@@ -164,7 +164,7 @@ test('clicking Version History requests the versions list endpoint [REAL]', asyn
   await page.goto('/admin/listening')
 
   const row = listeningTestRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No listening tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No listening tests exist in this environment')
 
   const [versionsResponse] = await Promise.all([
     page.waitForResponse((res) => /\/listening\/admin\/tests\/\d+\/versions$/.test(res.url())),
@@ -199,7 +199,7 @@ test('[MOCKED UI ONLY] version list renders version numbers, Current badge, and 
 
   await page.goto('/admin/listening')
   const row = listeningTestRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No listening tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No listening tests exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
 
@@ -227,7 +227,7 @@ test('[MOCKED UI ONLY] empty version history shows a clear empty state', async (
 
   await page.goto('/admin/listening')
   const row = listeningTestRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No listening tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No listening tests exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
 
@@ -250,7 +250,7 @@ test('[MOCKED UI ONLY] version list request failure shows an error, not a raw ba
 
   await page.goto('/admin/listening')
   const row = listeningTestRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No listening tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No listening tests exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
 
@@ -313,7 +313,7 @@ test('[MOCKED UI ONLY] clicking View requests the specific version endpoint and 
 
   await page.goto('/admin/listening')
   const row = listeningTestRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No listening tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No listening tests exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
   await page.getByRole('button', { name: 'View' }).click()
@@ -322,7 +322,11 @@ test('[MOCKED UI ONLY] clicking View requests the specific version endpoint and 
   await expect(page.getByText('Historical snapshot')).toBeVisible()
   await expect(page.getByText('Mocked Historical Listening Test')).toBeVisible()
   await expect(page.getByText('Nurse and patient')).toBeVisible()
-  await expect(page.getByText('Sleep', { exact: true })).toBeVisible()
+  // not exact: the historical snapshot view renders each option as
+  // `{correct ? '✓ ' : '• '}{opt}` -- 'Sleep' and its bullet/checkmark
+  // prefix are sibling text nodes in the same <li>, so no element's exact
+  // text content is ever just 'Sleep' alone.
+  await expect(page.getByText('Sleep')).toBeVisible()
 
   const modal = page.locator('div.fixed.inset-0')
   // Read-only audio player, no upload control, for the section's audio_url.
@@ -379,7 +383,7 @@ test('[MOCKED UI ONLY] a late-resolving version response cannot clobber a newer 
 
   await page.goto('/admin/listening')
   const row = listeningTestRow(page)
-  test.skip(!(await row.isVisible({ timeout: 10_000 }).catch(() => false)), 'No listening tests exist in this environment')
+  test.skip(!(await row.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)), 'No listening tests exist in this environment')
 
   await row.getByRole('button', { name: 'Version History' }).click()
   const modal = page.locator('div.fixed.inset-0')
