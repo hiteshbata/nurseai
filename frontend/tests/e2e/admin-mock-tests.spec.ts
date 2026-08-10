@@ -338,9 +338,12 @@ test('[MOCKED UI ONLY] clicking View requests the specific version endpoint and 
   // Reading/Listening rendered as frozen version-ID references, not resolved titles.
   await expect(modal.getByText('References Reading Test Version #42')).toBeVisible()
   await expect(modal.getByText('References Listening Test Version #43')).toBeVisible()
-  await expect(modal.getByText('Wound Care Letter')).toBeVisible()
-  await expect(modal.getByText('Anxious Patient')).toBeVisible()
-  await expect(modal.getByText('Worried Relative')).toBeVisible()
+  // exact: true -- each title also appears inside its scenario's collapsed
+  // <pre>{JSON.stringify(...)}</pre> debug dump, which would otherwise be a
+  // second (strict-mode-violating) match for the plain substring.
+  await expect(modal.getByText('Wound Care Letter', { exact: true })).toBeVisible()
+  await expect(modal.getByText('Anxious Patient', { exact: true })).toBeVisible()
+  await expect(modal.getByText('Worried Relative', { exact: true })).toBeVisible()
   await expect(modal.getByText('Jane Owner')).toBeVisible()
   await expect(modal.getByText('66666666-6666-4666-8666-666666666666')).toHaveCount(0)
 

@@ -269,7 +269,10 @@ test('[MOCKED UI ONLY] version list request failure shows an error, not a raw ba
 
   await row.getByRole('button', { name: 'Version History' }).click()
 
-  await expect(page.getByText(/Failed to load version history/)).toBeVisible()
+  // reading/page.tsx's errorMessage() passes a string `detail` through verbatim
+  // (same convention as admin-mock-tests.spec.ts's equivalent test) -- the
+  // generic fallback only applies when `detail` is absent or non-string.
+  await expect(page.getByText('Internal Server Error: traceback at db.py line 42')).toBeVisible()
 
   await context.close()
 })
