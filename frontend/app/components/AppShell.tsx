@@ -23,6 +23,7 @@ import {
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import api from '@/lib/api'
+import { openConsentPreferences } from '@/lib/consent'
 
 const WRITING_PLANS = ['pro', 'elite']
 // Reading/Listening: free gets one lifetime trial attempt (not plan-gated),
@@ -545,6 +546,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       >
                         Terms
                       </Link>
+                      <span aria-hidden="true">&middot;</span>
+                      <button
+                        onClick={() => {
+                          setAvatarOpen(false)
+                          openConsentPreferences()
+                        }}
+                        className="hover:text-foreground hover:underline"
+                      >
+                        Cookie Settings
+                      </button>
                     </div>
                     <div className="my-1 border-t border-border" />
                     <button

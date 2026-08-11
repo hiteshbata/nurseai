@@ -7,6 +7,8 @@
 // Mirrors the queue-until-init pattern already used by src/lib/analytics.ts
 // so events fired before the deferred pixel script loads aren't dropped.
 
+import { getStoredConsent } from './consent'
+
 declare global {
   interface Window {
     fbq?: ((...args: unknown[]) => void) & { callMethod?: unknown; queue?: unknown[] }
@@ -99,12 +101,35 @@ function fireBrowserEvent(name: MetaEventName, customData: Record<string, unknow
   window.fbq?.(STANDARD_EVENTS.has(name) ? 'track' : 'trackCustom', name, customData ?? {}, { eventID: eventId })
 }
 
+// Meta's documented consent handshake for gtag-style SDKs: revoke stops the
+// pixel from setting cookies/sending further hits without tearing down the
+// already-loaded script; grant resumes it. Only meaningful once the pixel
+// has actually been initialized (see initMetaPixel below).
+export function disableMetaPixel() {
+  if (typeof window === 'undefined') return
+  window.fbq?.('consent', 'revoke')
+}
+
+export function enableMetaPixel() {
+  if (typeof window === 'undefined') return
+  if (!initialized) {
+    initMetaPixel()
+    return
+  }
+  window.fbq?.('consent', 'grant')
+}
+
 export function trackMetaEvent(
   eventName: MetaEventName,
   customData?: Record<string, unknown>,
   userData?: MetaUserData
 ) {
   if (typeof window === 'undefined') return
+  // Single choke point for both the browser pixel call AND the server-side
+  // CAPI dispatch below -- both are "Marketing" tracking per the consent
+  // inventory, so neither should fire before Marketing consent is granted,
+  // regardless of whether initMetaPixel() has run yet.
+  if (!getStoredConsent()?.marketing) return
 
   const eventId = crypto.randomUUID()
 

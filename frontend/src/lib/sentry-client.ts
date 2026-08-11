@@ -6,8 +6,6 @@ export async function initSentry() {
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
     tracesSampleRate: 0.2,
-    replaysSessionSampleRate: 0.1,
-    replaysOnErrorSampleRate: 1.0,
 
     // NODE_ENV can only ever be 'development' | 'production' -- it can't express
     // rc1 vs prod, since both are `next build` output. NEXT_PUBLIC_SENTRY_ENVIRONMENT

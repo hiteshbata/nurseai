@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
 import { useSupabaseSession } from '@/lib/supabase'
+import { openConsentPreferences } from '@/lib/consent'
 
 export function Footer() {
   const currentYear = new Date().getFullYear()
@@ -159,6 +160,10 @@ export function Footer() {
             <Link href="/terms" className="hover:text-white transition">
               Terms
             </Link>
+            <span aria-hidden="true">&middot;</span>
+            <button onClick={openConsentPreferences} className="hover:text-white transition">
+              Cookie Settings
+            </button>
           </div>
         </div>
       </div>

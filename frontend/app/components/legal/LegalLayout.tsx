@@ -1,9 +1,14 @@
 import type { LucideIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { RevealOnScroll } from '@/components/RevealOnScroll'
 
 export interface LegalSection {
   heading: string
   body: string
+  // Optional interactive element rendered after the section's text -- e.g.
+  // the "Manage cookie preferences" button on the Privacy Policy's Cookies
+  // section. Keeps LegalLayout's sections plain data for every other page.
+  action?: ReactNode
 }
 
 export function LegalLayout({
@@ -54,7 +59,7 @@ export function LegalLayout({
         </nav>
 
         <div className="flex flex-col gap-6">
-          {sections.map(({ heading, body }) => (
+          {sections.map(({ heading, body, action }) => (
             <RevealOnScroll key={heading}>
               <section
                 id={slugify(heading)}
@@ -69,6 +74,7 @@ export function LegalLayout({
                     {paragraph}
                   </p>
                 ))}
+                {action && <div className="mt-4">{action}</div>}
               </section>
             </RevealOnScroll>
           ))}

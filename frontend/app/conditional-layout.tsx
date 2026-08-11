@@ -17,7 +17,7 @@ const USE_APP_SHELL = true
 // state and linked to gated pages they couldn't use). Signed-in users
 // dropping to the top bar via the avatar menu's "Help & Support" link is
 // consistent with how Privacy/Terms already behave from that same menu.
-const PUBLIC_PATHS = ['/', '/about', '/blog', '/privacy', '/terms', '/pricing', '/support']
+const PUBLIC_PATHS = ['/', '/about', '/blog', '/privacy', '/terms', '/cookies', '/pricing', '/support']
 const PUBLIC_PREFIXES = ['/learn', '/docs', '/tools']
 
 export default function ConditionalLayout({ children }: { children: React.ReactNode }) {

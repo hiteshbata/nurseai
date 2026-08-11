@@ -5,10 +5,11 @@ import { usePathname } from 'next/navigation'
 import { ThemeProvider } from 'next-themes'
 import { Toaster } from 'react-hot-toast'
 import { SessionProvider, useSupabaseSession } from '@/lib/supabase'
-import { initAnalytics, identifyUser } from '@/lib/analytics'
-import { initGA } from '@/lib/ga'
-import { initClarity } from '@/lib/clarity'
-import { initMetaPixel, trackMetaEvent, setMetaUserData } from '@/lib/meta-pixel'
+import { identifyUser } from '@/lib/analytics'
+import { trackMetaEvent, setMetaUserData } from '@/lib/meta-pixel'
+import { getStoredConsent } from '@/lib/consent'
+import { applyConsent } from '@/lib/tracking'
+import { ConsentManager } from '@/components/consent/ConsentManager'
 
 // SessionProvider owns the app's one Supabase session subscription; every
 // descendant (AppShell, Navbar, page components, ...) reads it via
@@ -36,10 +37,12 @@ function ProvidersInner({ children }: { children: React.ReactNode }) {
 
     const runDeferred = () => {
       initSentryDeferred()
-      initAnalytics()
-      initGA()
-      initClarity()
-      initMetaPixel()
+      // PostHog/GA/Meta Pixel only start if the visitor already made a
+      // consent choice on a previous visit. A first-time visitor sees no
+      // trackers here at all -- ConsentManager below calls applyConsent()
+      // itself the moment they respond to the banner.
+      const consent = getStoredConsent()
+      if (consent) applyConsent(consent)
     }
 
     const hasIdleCallback = typeof window !== 'undefined' && 'requestIdleCallback' in window
@@ -81,6 +84,7 @@ function ProvidersInner({ children }: { children: React.ReactNode }) {
     <ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light">
       {children}
       <Toaster position="top-center" reverseOrder={false} />
+      <ConsentManager />
     </ThemeProvider>
   )
 }

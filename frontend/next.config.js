@@ -55,9 +55,9 @@ const nextConfig = {
       // across the app become dead clicks). Production bundles never eval, so prod
       // stays without it.
       // blob: needed for PostHog's session-recording worker, loaded as a blob: script.
-      `script-src 'self' 'unsafe-inline' blob: ${process.env.NODE_ENV !== 'production' ? "'unsafe-eval' " : ''}https://checkout.razorpay.com https://www.googletagmanager.com https://www.clarity.ms https://challenges.cloudflare.com https://data.speakoet.com https://us-assets.i.posthog.com https://static.cloudflareinsights.com https://connect.facebook.net`,
+      `script-src 'self' 'unsafe-inline' blob: ${process.env.NODE_ENV !== 'production' ? "'unsafe-eval' " : ''}https://checkout.razorpay.com https://www.googletagmanager.com https://challenges.cloudflare.com https://data.speakoet.com https://us-assets.i.posthog.com https://static.cloudflareinsights.com https://connect.facebook.net`,
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://cdn.sanity.io https://*.clarity.ms https://*.supabase.co https://www.facebook.com",
+      "img-src 'self' data: blob: https://cdn.sanity.io https://*.supabase.co https://www.facebook.com",
       // <audio> for the Listening module: clips are served from the public
       // Supabase storage bucket; blob: covers the admin's local pre-upload preview.
       "media-src 'self' blob: https://*.supabase.co",
@@ -68,7 +68,7 @@ const nextConfig = {
       // QR-handoff testing -- CSP connect-src blocks browser-initiated fetch/XHR
       // to any host not listed here (plain navigation/curl aren't affected, which
       // is why "visit the URL directly" can work while the app's own upload can't).
-      `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? `http://localhost:8000 ws://localhost:8000 ${process.env.LAN_API_ORIGIN || ''} ` : ''}https://api.speakoet.com wss://api.speakoet.com https://*.supabase.co wss://*.supabase.co https://data.speakoet.com https://us.i.posthog.com https://us-assets.i.posthog.com https://www.google-analytics.com https://www.clarity.ms https://*.clarity.ms https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://connect.facebook.net https://www.facebook.com`,
+      `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? `http://localhost:8000 ws://localhost:8000 ${process.env.LAN_API_ORIGIN || ''} ` : ''}https://api.speakoet.com wss://api.speakoet.com https://*.supabase.co wss://*.supabase.co https://data.speakoet.com https://us.i.posthog.com https://us-assets.i.posthog.com https://www.google-analytics.com https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://connect.facebook.net https://www.facebook.com`,
       "frame-src https://checkout.razorpay.com https://api.razorpay.com https://challenges.cloudflare.com",
     ].join('; ')
 

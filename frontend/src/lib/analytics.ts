@@ -40,6 +40,24 @@ export function initAnalytics() {
   }
 }
 
+// Consent-driven on/off, layered on top of initAnalytics(). Analytics
+// consent gates whether initAnalytics() ever runs at all (see tracking.ts),
+// so these only matter for a user who granted consent and later withdraws
+// it (or re-grants) within the same session, without a full page reload.
+export function disableAnalytics() {
+  if (typeof window === 'undefined' || !initialized) return
+  posthog.opt_out_capturing()
+}
+
+export function enableAnalytics() {
+  if (typeof window === 'undefined') return
+  if (!initialized) {
+    initAnalytics()
+    return
+  }
+  posthog.opt_in_capturing()
+}
+
 export function identifyUser(userId: string, props?: Record<string, unknown>) {
   if (!initialized) {
     pendingIdentify = { userId, props }
@@ -59,4 +77,12 @@ export function trackEvent(name: string, props?: Record<string, unknown>) {
     return
   }
   posthog.capture(name, props)
+}
+
+// Called once when analytics consent is explicitly declined, so identify/
+// trackEvent calls from the rest of the app stop piling up in memory for the
+// remainder of a long client-side session that never initializes PostHog.
+export function discardQueuedAnalytics() {
+  pendingIdentify = null
+  pendingEvents.length = 0
 }

@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { ShieldCheck } from 'lucide-react'
-import { LegalLayout } from '@/components/legal/LegalLayout'
+import { LegalLayout, type LegalSection } from '@/components/legal/LegalLayout'
+import { ManageCookiePreferencesButton } from '@/components/consent/ManageCookiePreferencesButton'
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
@@ -8,7 +10,7 @@ export const metadata: Metadata = {
   alternates: { canonical: '/privacy' },
 }
 
-const SECTIONS: { heading: string; body: string }[] = [
+const SECTIONS: LegalSection[] = [
   {
     heading: '1. Introduction',
     body: `Welcome to SpeakOET. At SpeakOET, we believe that preparing for the Occupational English Test (OET) should be a seamless, focused, and secure experience. We are strongly committed to protecting your personal information and your right to privacy.
@@ -67,9 +69,23 @@ When you purchase a subscription, you provide your payment information directly 
   },
   {
     heading: '6. Cookies',
-    body: `Like most modern web applications, SpeakOET uses cookies and similar simple technologies to ensure our platform functions correctly. Cookies are small text files stored on your device that help us recognize you when you return.
+    body: `Like most modern web applications, SpeakOET uses cookies and similar technologies (including browser storage) to run the platform and, where you allow it, to understand usage and measure marketing performance. We group these into three categories, and you control the last two.
 
-We primarily use essential cookies, which are strictly necessary to keep you logged in, maintain your session securely, and remember your basic preferences. We may also use basic performance cookies to understand how users interact with our application so we can make improvements. You can choose to disable non-essential cookies through your web browser settings, though doing so may limit your ability to use certain features of SpeakOET smoothly.`,
+Necessary: required for authentication, security, and core functionality, including our Supabase-powered login and Cloudflare Turnstile bot protection. These cannot be switched off, because SpeakOET cannot function securely without them.
+
+Analytics: used only with your permission, to understand how SpeakOET is used so we can improve the product. This includes PostHog and Google Analytics.
+
+Marketing: used only with your permission, to measure the effectiveness of our marketing and understand which channels help nurses discover SpeakOET. This includes Meta Pixel.
+
+Analytics and marketing technologies do not run until you actively grant consent, and you can change your choice at any time below or via "Cookie Settings" in the site footer. See our full Cookie Policy for more detail.`,
+    action: (
+      <div className="flex flex-wrap items-center gap-4">
+        <ManageCookiePreferencesButton />
+        <Link href="/cookies" className="text-sm text-[#0F2356]/80 underline hover:text-[#047857]">
+          Read the Cookie Policy
+        </Link>
+      </div>
+    ),
   },
   {
     heading: '7. Data Security',
