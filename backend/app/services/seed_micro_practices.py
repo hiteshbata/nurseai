@@ -1,15 +1,16 @@
 """Seed real micro-practice exercise content for Phase C (Reading's 4
-techniques + Listening's 4 techniques so far -- Writing/Speaking get theirs
-in a later pass). Same idempotent insert-if-missing convention as
+techniques + Listening's 4 + Writing's 3 so far -- Speaking gets theirs in a
+later pass). Same idempotent insert-if-missing convention as
 seed_techniques.py, keyed on (technique_id, title) since micro_practices has
 no unique slug column.
 
-All eight are deliberately rule_based (exact-match against `options`, via
+All eleven are deliberately rule_based (exact-match against `options`, via
 technique_grading.grade_rule_based) -- no AI-grading dependency for this
-slice. Original short passages/transcript excerpts, not real OET paper
-content. Listening has no audio pipeline yet, so each exercise presents its
-audio content as a written transcript excerpt in `content.passage` -- same
-passage/question/options shape the frontend already renders for Reading."""
+slice. Original short passages/case notes, not real OET paper content.
+Listening has no audio pipeline yet, so each exercise presents its audio
+content as a written transcript excerpt in `content.passage`. Writing
+exercises present case notes / task briefs the same way, in `content.passage`
+-- same passage/question/options shape the frontend already renders."""
 from app.core.supabase import get_supabase
 
 MICRO_PRACTICES = [
@@ -135,6 +136,57 @@ MICRO_PRACTICES = [
             ],
         },
         "expected_response": {"correct_answer": "\"...because his blood sugar readings have been all over the place\" -- this is the reason for referral, just worded differently"},
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "audience_purpose_identification",
+        "title": "Who Is This Letter For?",
+        "instructions": "Read the task brief below, then identify the correct audience and purpose -- don't pick the first option that sounds plausible.",
+        "content": {
+            "passage": "You are the ward nurse for Mr. James Cole, 68, who has been treated for a chest infection and is ready for discharge. His GP, Dr. Patel, needs to take over his ongoing care and monitor his recovery. Write a letter to Dr. Patel.",
+            "question": "Who is the audience, and what is the purpose of this letter?",
+            "options": [
+                "A GP colleague (Dr. Patel), for the purpose of handing over ongoing care and monitoring after discharge",
+                "The patient's family, to reassure them the treatment succeeded",
+                "A hospital pharmacist, to request a change in medication dosage",
+                "A specialist consultant, to request an urgent second opinion",
+            ],
+        },
+        "expected_response": {"correct_answer": "A GP colleague (Dr. Patel), for the purpose of handing over ongoing care and monitoring after discharge"},
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "case_note_selection",
+        "title": "Which Note Belongs in the Letter?",
+        "instructions": "You're writing a referral letter for the stated purpose below. Read the case notes, then decide which one does NOT belong in the letter.",
+        "content": {
+            "passage": "Case notes for Mrs. Alina Petrov, 74. You are writing a referral letter to a physiotherapist for ongoing rehabilitation of her post-stroke mobility.\n\nCase notes:\n- Right-sided weakness following stroke 3 weeks ago\n- Currently mobilising with a frame, requires supervision\n- Long-standing seasonal pollen allergy, well controlled\n- Referred for gait training and strength exercises",
+            "question": "Which case note is NOT relevant to this physiotherapy referral and should be left out of the letter?",
+            "options": [
+                "Right-sided weakness following stroke 3 weeks ago",
+                "Currently mobilising with a frame, requires supervision",
+                "Long-standing seasonal pollen allergy, well controlled",
+                "Referred for gait training and strength exercises",
+            ],
+        },
+        "expected_response": {"correct_answer": "Long-standing seasonal pollen allergy, well controlled"},
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "sentence_transformation_synthesis",
+        "title": "Turn Notes Into Professional Prose",
+        "instructions": "Read the raw case notes below, then choose the sentence that best combines them into fluent, professional clinical prose -- without adding or dropping information.",
+        "content": {
+            "passage": "Raw case notes:\nSOB on exertion\nAnkle swelling noted\nPt reports worsening over 2 weeks",
+            "question": "Which sentence best transforms these case notes for a clinical letter?",
+            "options": [
+                "The patient has been experiencing shortness of breath on exertion and ankle swelling, both of which have been worsening over the past two weeks.",
+                "SOB on exertion, ankle swelling noted, pt reports worsening over 2 weeks.",
+                "The patient has shortness of breath.",
+                "The patient has been diagnosed with heart failure and started on diuretics two weeks ago.",
+            ],
+        },
+        "expected_response": {"correct_answer": "The patient has been experiencing shortness of breath on exertion and ankle swelling, both of which have been worsening over the past two weeks."},
         "scoring_type": "rule_based",
     },
 ]

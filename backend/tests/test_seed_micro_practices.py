@@ -10,6 +10,7 @@ from app.services.technique_grading import grade_rule_based
 
 _READING_SKILL_TAGS = {"skimming", "scanning", "elimination", "textual_verification"}
 _LISTENING_SKILL_TAGS = {"pre_listening", "keyword_prediction", "signpost_tracking", "paraphrase_synonym_recognition"}
+_WRITING_SKILL_TAGS = {"audience_purpose_identification", "case_note_selection", "sentence_transformation_synthesis"}
 
 
 def test_covers_exactly_the_four_reading_techniques():
@@ -22,6 +23,12 @@ def test_covers_exactly_the_four_listening_techniques():
     listening = [mp for mp in MICRO_PRACTICES if mp["technique_skill_tag"] in _LISTENING_SKILL_TAGS]
     assert {mp["technique_skill_tag"] for mp in listening} == _LISTENING_SKILL_TAGS
     assert len(listening) == 4
+
+
+def test_covers_exactly_the_three_writing_techniques():
+    writing = [mp for mp in MICRO_PRACTICES if mp["technique_skill_tag"] in _WRITING_SKILL_TAGS]
+    assert {mp["technique_skill_tag"] for mp in writing} == _WRITING_SKILL_TAGS
+    assert len(writing) == 3
 
 
 def test_no_duplicate_titles_or_technique_slots():
@@ -94,7 +101,7 @@ def _fake_supabase(techniques, existing_micro_practices, inserted):
     return supabase
 
 
-_ALL_SKILL_TAGS = _READING_SKILL_TAGS | _LISTENING_SKILL_TAGS
+_ALL_SKILL_TAGS = _READING_SKILL_TAGS | _LISTENING_SKILL_TAGS | _WRITING_SKILL_TAGS
 
 
 def test_seed_inserts_one_row_per_technique_when_none_exist():
