@@ -9,10 +9,26 @@ from app.services.seed_micro_practices import MICRO_PRACTICES
 from app.services.technique_grading import grade_rule_based
 
 _READING_SKILL_TAGS = {"skimming", "scanning", "elimination", "textual_verification"}
+_LISTENING_SKILL_TAGS = {"pre_listening", "keyword_prediction", "signpost_tracking", "paraphrase_synonym_recognition"}
 
 
 def test_covers_exactly_the_four_reading_techniques():
-    assert {mp["technique_skill_tag"] for mp in MICRO_PRACTICES} == _READING_SKILL_TAGS
+    reading = [mp for mp in MICRO_PRACTICES if mp["technique_skill_tag"] in _READING_SKILL_TAGS]
+    assert {mp["technique_skill_tag"] for mp in reading} == _READING_SKILL_TAGS
+    assert len(reading) == 4
+
+
+def test_covers_exactly_the_four_listening_techniques():
+    listening = [mp for mp in MICRO_PRACTICES if mp["technique_skill_tag"] in _LISTENING_SKILL_TAGS]
+    assert {mp["technique_skill_tag"] for mp in listening} == _LISTENING_SKILL_TAGS
+    assert len(listening) == 4
+
+
+def test_no_duplicate_titles_or_technique_slots():
+    titles = [mp["title"] for mp in MICRO_PRACTICES]
+    assert len(titles) == len(set(titles))
+    tags = [mp["technique_skill_tag"] for mp in MICRO_PRACTICES]
+    assert len(tags) == len(set(tags))  # one practice per technique so far
 
 
 def test_every_micro_practice_is_rule_based():
@@ -78,8 +94,11 @@ def _fake_supabase(techniques, existing_micro_practices, inserted):
     return supabase
 
 
+_ALL_SKILL_TAGS = _READING_SKILL_TAGS | _LISTENING_SKILL_TAGS
+
+
 def test_seed_inserts_one_row_per_technique_when_none_exist():
-    techniques = [{"id": i + 1, "skill_tag": tag} for i, tag in enumerate(sorted(_READING_SKILL_TAGS))]
+    techniques = [{"id": i + 1, "skill_tag": tag} for i, tag in enumerate(sorted(_ALL_SKILL_TAGS))]
     inserted = []
     with patch.object(seed_micro_practices, "get_supabase", return_value=_fake_supabase(techniques, [], inserted)):
         count = seed_micro_practices.seed_micro_practices()
@@ -88,7 +107,7 @@ def test_seed_inserts_one_row_per_technique_when_none_exist():
 
 
 def test_seed_skips_a_title_that_already_exists_for_its_technique():
-    techniques = [{"id": i + 1, "skill_tag": tag} for i, tag in enumerate(sorted(_READING_SKILL_TAGS))]
+    techniques = [{"id": i + 1, "skill_tag": tag} for i, tag in enumerate(sorted(_ALL_SKILL_TAGS))]
     first = MICRO_PRACTICES[0]
     technique_id = next(t["id"] for t in techniques if t["skill_tag"] == first["technique_skill_tag"])
     existing = [{"id": 999, "technique_id": technique_id, "title": first["title"]}]

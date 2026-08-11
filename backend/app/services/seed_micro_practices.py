@@ -1,12 +1,15 @@
-"""Seed real micro-practice exercise content for the Phase C launch slice
-(Reading's 4 techniques only -- Listening/Writing/Speaking get theirs in a
-later pass). Same idempotent insert-if-missing convention as
+"""Seed real micro-practice exercise content for Phase C (Reading's 4
+techniques + Listening's 4 techniques so far -- Writing/Speaking get theirs
+in a later pass). Same idempotent insert-if-missing convention as
 seed_techniques.py, keyed on (technique_id, title) since micro_practices has
 no unique slug column.
 
-All four are deliberately rule_based (exact-match against `options`, via
+All eight are deliberately rule_based (exact-match against `options`, via
 technique_grading.grade_rule_based) -- no AI-grading dependency for this
-first slice. Original short passages, not real OET paper content."""
+slice. Original short passages/transcript excerpts, not real OET paper
+content. Listening has no audio pipeline yet, so each exercise presents its
+audio content as a written transcript excerpt in `content.passage` -- same
+passage/question/options shape the frontend already renders for Reading."""
 from app.core.supabase import get_supabase
 
 MICRO_PRACTICES = [
@@ -64,6 +67,74 @@ MICRO_PRACTICES = [
             ],
         },
         "expected_response": {"correct_answer": "Most guidelines recommend no solid food for at least 6 hours prior to surgery, and clear fluids may be permitted up to 2 hours before."},
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "pre_listening",
+        "title": "Prepare Before You Listen",
+        "instructions": "OET gives you time to read the question before the audio starts. Use it. Read the gap below and decide what TYPE of information you need to listen for -- don't try to guess the actual answer yet.",
+        "content": {
+            "passage": "You are about to hear a conversation between a practice nurse and a patient who has come in for a medication review. Here is the note-completion gap you'll need to fill in while listening:\n\nPatient reports missing doses because of: ___________",
+            "question": "Before the audio starts, what should you be listening for?",
+            "options": [
+                "A reason or cause explaining why the patient has been missing doses",
+                "The exact brand name of the patient's medication",
+                "The patient's next appointment date",
+                "The nurse's full name",
+            ],
+        },
+        "expected_response": {"correct_answer": "A reason or cause explaining why the patient has been missing doses"},
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "keyword_prediction",
+        "title": "Predict the Keywords",
+        "instructions": "Before listening, predict the words and likely synonyms that will surround the answer. Read the gap below, then choose the best keyword prediction.",
+        "content": {
+            "passage": "You are about to hear a nurse taking a patient's history. Here is the note-completion gap:\n\nKnown allergies: ___________",
+            "question": "Which is the best keyword prediction to prepare for this gap?",
+            "options": [
+                "Listen for 'allergies', and also related words like 'allergic to', 'reacts badly to', or 'sensitivity'",
+                "Listen only for the exact word 'allergies' -- nothing else will be relevant",
+                "Listen for the patient's full medical history from birth",
+                "Listen for the name of the patient's doctor",
+            ],
+        },
+        "expected_response": {"correct_answer": "Listen for 'allergies', and also related words like 'allergic to', 'reacts badly to', or 'sensitivity'"},
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "signpost_tracking",
+        "title": "Follow the Signpost",
+        "instructions": "Speakers use signpost phrases to mark a change in topic or structure. Read the transcript excerpt below, then identify what the signpost tells you.",
+        "content": {
+            "passage": "TRANSCRIPT EXCERPT -- Practice Nurse to Patient:\n\n\"...so that covers your medication history. Now, moving on to your diet -- can you tell me what a typical day's meals looks like for you?\"",
+            "question": "What does the phrase \"Now, moving on to\" signal here?",
+            "options": [
+                "The speaker is shifting to a new topic (diet) -- the medication-history questions are finished",
+                "The speaker is about to contradict what was just said",
+                "The speaker is summarising everything said so far",
+                "The speaker is asking the patient to repeat their last answer",
+            ],
+        },
+        "expected_response": {"correct_answer": "The speaker is shifting to a new topic (diet) -- the medication-history questions are finished"},
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "paraphrase_synonym_recognition",
+        "title": "Match the Meaning, Not the Words",
+        "instructions": "The question paper rarely repeats the audio word-for-word. Read the transcript excerpt below, then choose the part that answers the question -- even though the wording is different.",
+        "content": {
+            "passage": "TRANSCRIPT EXCERPT -- Doctor to Colleague:\n\n\"I'm sending him over to you because his blood sugar readings have been all over the place these past few weeks.\"",
+            "question": "The question paper asks: \"What is the reason for referral?\" Which part of the transcript answers this?",
+            "options": [
+                "\"...because his blood sugar readings have been all over the place\" -- this is the reason for referral, just worded differently",
+                "\"these past few weeks\" -- this states the referral date",
+                "\"I'm sending him over to you\" alone, without a reason",
+                "The transcript does not mention a reason for referral",
+            ],
+        },
+        "expected_response": {"correct_answer": "\"...because his blood sugar readings have been all over the place\" -- this is the reason for referral, just worded differently"},
         "scoring_type": "rule_based",
     },
 ]
