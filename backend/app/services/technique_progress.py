@@ -15,9 +15,31 @@ logger = logging.getLogger(__name__)
 MIN_SCORE = 0
 MAX_SCORE = 6
 
+# Mirrors skill_graph.WEAKNESS_MIN_ATTEMPTS / WEAKNESS_BAND_CEILING -- same
+# "don't brand a skill off one lucky attempt" reasoning, applied to the
+# learner-facing mastery bucket instead of the weakness list.
+MASTERY_MIN_ATTEMPTS = 2
+MASTERY_STRONG_BAND_FLOOR = 5.0
+MASTERY_IMPROVING_BAND_FLOOR = 3.0
+
 
 def technique_skill_tag(skill_tag: str) -> str:
     return f"technique:{skill_tag}"
+
+
+def mastery_level(attempts: int, ema_score: Optional[float]) -> str:
+    """Pure. Not Started -> Practicing -> Improving -> Strong, bucketed off
+    the same user_skill_stats attempts/ema_score skill_graph already tracks
+    -- no new progress table, just a read of the existing numbers."""
+    if attempts <= 0 or ema_score is None:
+        return "not_started"
+    if attempts < MASTERY_MIN_ATTEMPTS:
+        return "practicing"
+    if ema_score >= MASTERY_STRONG_BAND_FLOOR:
+        return "strong"
+    if ema_score >= MASTERY_IMPROVING_BAND_FLOOR:
+        return "improving"
+    return "practicing"
 
 
 def _log_observation_sync(user_id: str, tag: str, score: float) -> None:

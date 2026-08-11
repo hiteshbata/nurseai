@@ -12,6 +12,7 @@ import {
   BookOpen,
   Headphones,
   ClipboardCheck,
+  GraduationCap,
   Settings,
   LogOut,
   Gift,
@@ -92,6 +93,7 @@ const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
   {
     heading: 'Practice',
     items: [
+      { href: '/practice/technique', label: 'Technique Practice', icon: GraduationCap },
       { href: '/practice/listening', label: 'Listening', icon: Headphones },
       { href: '/practice/reading', label: 'Reading', icon: BookOpen },
       { href: '/practice/writing', label: 'Writing', icon: PenLine, gatedPlans: WRITING_PLANS },

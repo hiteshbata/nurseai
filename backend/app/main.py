@@ -8,7 +8,7 @@ from app.core.supabase import get_supabase
 from app.core.redis_client import get_redis
 from app.core import circuit_breaker
 from app.core.request_id import RequestIDMiddleware, RequestIDLogFilter
-from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, admin_ai_models, admin_content_studio, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads, reading, listening, hub, vocab, mock, referrals, tools
+from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, admin_ai_models, admin_content_studio, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads, reading, listening, hub, vocab, mock, referrals, tools, technique
 from app.services.oet_questions import oet_service
 from app.services.seed_scenarios import seed_scenarios
 
@@ -153,6 +153,7 @@ app.include_router(vocab.router)
 app.include_router(mock.router)
 app.include_router(referrals.router)
 app.include_router(tools.router)
+app.include_router(technique.router)
 
 @app.get("/")
 def read_root():

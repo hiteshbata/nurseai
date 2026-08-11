@@ -14,6 +14,29 @@ def test_technique_skill_tag_format():
     assert technique_progress.technique_skill_tag("skimming") == "technique:skimming"
 
 
+def test_mastery_zero_attempts_is_not_started():
+    assert technique_progress.mastery_level(0, None) == "not_started"
+    assert technique_progress.mastery_level(0, 6.0) == "not_started"
+
+
+def test_mastery_none_score_is_not_started_even_with_attempts():
+    assert technique_progress.mastery_level(3, None) == "not_started"
+
+
+def test_mastery_below_min_attempts_caps_at_practicing_even_with_a_high_score():
+    # One lucky attempt shouldn't read as mastery -- same reasoning as
+    # skill_graph.WEAKNESS_MIN_ATTEMPTS.
+    assert technique_progress.mastery_level(1, 6.0) == "practicing"
+
+
+def test_mastery_buckets_by_band_once_min_attempts_reached():
+    assert technique_progress.mastery_level(2, 2.9) == "practicing"
+    assert technique_progress.mastery_level(2, 3.0) == "improving"
+    assert technique_progress.mastery_level(2, 4.9) == "improving"
+    assert technique_progress.mastery_level(2, 5.0) == "strong"
+    assert technique_progress.mastery_level(5, 6.0) == "strong"
+
+
 class RecordTechniqueProgressTests(unittest.IsolatedAsyncioTestCase):
     async def test_writes_exactly_one_technique_tagged_observation(self):
         with patch.object(technique_progress.skill_graph, "record_skill_observations", new=AsyncMock()) as record_mock, \
