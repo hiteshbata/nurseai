@@ -1,16 +1,18 @@
 """Seed real micro-practice exercise content for Phase C (Reading's 4
-techniques + Listening's 4 + Writing's 3 so far -- Speaking gets theirs in a
-later pass). Same idempotent insert-if-missing convention as
-seed_techniques.py, keyed on (technique_id, title) since micro_practices has
-no unique slug column.
+techniques + Listening's 4 + Writing's 3 + Speaking's 3). Same idempotent
+insert-if-missing convention as seed_techniques.py, keyed on (technique_id,
+title) since micro_practices has no unique slug column.
 
-All eleven are deliberately rule_based (exact-match against `options`, via
+All fourteen are deliberately rule_based (exact-match against `options`, via
 technique_grading.grade_rule_based) -- no AI-grading dependency for this
 slice. Original short passages/case notes, not real OET paper content.
 Listening has no audio pipeline yet, so each exercise presents its audio
 content as a written transcript excerpt in `content.passage`. Writing
 exercises present case notes / task briefs the same way, in `content.passage`
--- same passage/question/options shape the frontend already renders."""
+-- same passage/question/options shape the frontend already renders. Speaking
+exercises are small controlled choose-the-best-response drills (not full
+roleplays) using the same passage/question/options shape -- `content.passage`
+sets the scenario, `content.question` asks which spoken response is best."""
 from app.core.supabase import get_supabase
 
 MICRO_PRACTICES = [
@@ -187,6 +189,58 @@ MICRO_PRACTICES = [
             ],
         },
         "expected_response": {"correct_answer": "The patient has been experiencing shortness of breath on exertion and ankle swelling, both of which have been worsening over the past two weeks."},
+        "scoring_type": "rule_based",
+    },
+    # ── SPEAKING ──
+    {
+        "technique_skill_tag": "setting_context",
+        "title": "Open the Conversation Professionally",
+        "instructions": "You're about to start a consultation with a patient you haven't met before. Choose the best opening before asking any clinical questions.",
+        "content": {
+            "passage": "You are a nurse in a general practice clinic. Mrs. Chen, 58, has just been called in for a scheduled blood pressure review. You have never met her before. You open the door and greet her.",
+            "question": "Which opening is the best way to start this interaction?",
+            "options": [
+                "Hello, are you Mrs. Chen? I'm one of the nurses here -- I'll be doing your blood pressure review today. Is that alright with you?",
+                "So, have you been taking your blood pressure tablets every day?",
+                "Hey there! Come on in, take a seat.",
+                "Right, let's get started then.",
+            ],
+        },
+        "expected_response": {"correct_answer": "Hello, are you Mrs. Chen? I'm one of the nurses here -- I'll be doing your blood pressure review today. Is that alright with you?"},
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "empathy_validation",
+        "title": "Respond to the Patient's Worry",
+        "instructions": "A patient shares a concern. Choose the response that best acknowledges their feelings before moving forward.",
+        "content": {
+            "passage": "TRANSCRIPT EXCERPT -- Patient to Nurse:\n\n\"I've been waiting three weeks for these results and I keep thinking the worst. I barely slept last night.\"",
+            "question": "What is the most patient-centred way to respond?",
+            "options": [
+                "That sounds like such an anxious few weeks for you, waiting and not knowing. Let's go through the results together now.",
+                "Try not to worry, I'm sure it's nothing.",
+                "Okay, well let's talk about your medication instead.",
+                "Your results show a normal white cell count and mild inflammation markers.",
+            ],
+        },
+        "expected_response": {"correct_answer": "That sounds like such an anxious few weeks for you, waiting and not knowing. Let's go through the results together now."},
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "chunking_signposting",
+        "title": "Organise the Explanation Into Clear Chunks",
+        "instructions": "You need to explain a multi-part discharge plan to a patient. Choose the best way to structure what you say.",
+        "content": {
+            "passage": "You are discharging Mr. Osei after a minor surgical procedure. You need to cover: (1) wound care, (2) medication, (3) follow-up appointment.",
+            "question": "Which is the best way to deliver this information?",
+            "options": [
+                "There are three things I want to go through before you leave -- first, looking after your wound, then your medication, and finally your follow-up appointment. Let's start with the wound.",
+                "So you need to keep the wound clean and dry and change the dressing every two days and take the antibiotics twice a day with food and don't miss any doses and your follow-up is in ten days at the same clinic and bring your discharge letter.",
+                "Keep the wound dry. Your appointment is in ten days. Take these tablets.",
+                "You need to look after your wound. Looking after your wound is really important. Please look after your wound carefully.",
+            ],
+        },
+        "expected_response": {"correct_answer": "There are three things I want to go through before you leave -- first, looking after your wound, then your medication, and finally your follow-up appointment. Let's start with the wound."},
         "scoring_type": "rule_based",
     },
 ]
