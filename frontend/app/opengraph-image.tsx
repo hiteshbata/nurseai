@@ -4,6 +4,15 @@ import { SITE_DESCRIPTION } from '@/lib/site'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
 
+// The Node runtime's next/og build resolves a malformed `file:` URL for its
+// default font at *import time* on Windows (ERR_INVALID_URL), crashing dev
+// and the build's static-generation step outright -- unrelated to anything
+// in this route. The edge runtime build loads that same default font via
+// fetch() instead of fs/path, sidestepping the bug. Same PNG output; this
+// route now renders per-request on Vercel's Edge Network instead of being
+// prerendered once at build time.
+export const runtime = 'edge'
+
 export default function OpengraphImage() {
   return new ImageResponse(
     (
