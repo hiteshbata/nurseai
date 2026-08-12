@@ -89,6 +89,14 @@ export async function middleware(request: NextRequest) {
   // one, so the two are kept mutually exclusive by path there.
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
   request.headers.set('x-nonce', nonce)
+  // See next.config.js for why this is derived from NEXT_PUBLIC_API_URL
+  // rather than hardcoded -- keeps QA/other non-prod builds able to reach
+  // their own backend instead of being CSP-blocked to the prod API only.
+  let apiOrigin = 'https://api.speakoet.com'
+  try {
+    apiOrigin = new URL(process.env.NEXT_PUBLIC_API_URL || apiOrigin).origin
+  } catch {}
+  const apiWsOrigin = apiOrigin.replace(/^http/, 'ws')
   const cspHeader = [
     "default-src 'self'",
     "frame-ancestors 'none'",
@@ -100,7 +108,7 @@ export async function middleware(request: NextRequest) {
     "img-src 'self' data: blob: https://cdn.sanity.io https://*.supabase.co https://www.facebook.com",
     "media-src 'self' blob: https://*.supabase.co",
     "font-src 'self' data:",
-    `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? `http://localhost:8000 ws://localhost:8000 ${process.env.LAN_API_ORIGIN || ''} ` : ''}https://api.speakoet.com wss://api.speakoet.com https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://www.google-analytics.com https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://connect.facebook.net https://www.facebook.com`,
+    `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? `http://localhost:8000 ws://localhost:8000 ${process.env.LAN_API_ORIGIN || ''} ` : ''}${apiOrigin} ${apiWsOrigin} https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://www.google-analytics.com https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://connect.facebook.net https://www.facebook.com`,
     "frame-src https://checkout.razorpay.com https://api.razorpay.com",
   ].join('; ')
 

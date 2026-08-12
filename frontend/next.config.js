@@ -45,6 +45,16 @@ const nextConfig = {
     // mutually exclusive by path/host below.
     const protectedPathPattern = 'dashboard|profile|practice|onboarding|admin|upgrade|mock-test'
 
+    // Derived from NEXT_PUBLIC_API_URL (falls back to the prod API domain)
+    // so CSP connect-src matches whichever backend this build actually calls --
+    // without this, a non-prod build (e.g. QA, pointed at *.onrender.com) has
+    // its own backend calls silently blocked by a CSP still locked to prod.
+    let apiOrigin = 'https://api.speakoet.com'
+    try {
+      apiOrigin = new URL(process.env.NEXT_PUBLIC_API_URL || apiOrigin).origin
+    } catch {}
+    const apiWsOrigin = apiOrigin.replace(/^http/, 'ws')
+
     const publicCsp = [
       "default-src 'self'",
       "frame-ancestors 'none'",
@@ -62,13 +72,13 @@ const nextConfig = {
       // Supabase storage bucket; blob: covers the admin's local pre-upload preview.
       "media-src 'self' blob: https://*.supabase.co",
       "font-src 'self' data:",
-      // localhost:8000 only in dev, so a local backend can be called; prod stays locked to api.speakoet.com.
+      // localhost:8000 only in dev, so a local backend can be called; other builds stay locked to apiOrigin above.
       // LAN_API_ORIGIN (dev-only, set in .env.local, never in prod) additionally
       // allows a phone on the same Wi-Fi to call the backend directly during
       // QR-handoff testing -- CSP connect-src blocks browser-initiated fetch/XHR
       // to any host not listed here (plain navigation/curl aren't affected, which
       // is why "visit the URL directly" can work while the app's own upload can't).
-      `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? `http://localhost:8000 ws://localhost:8000 ${process.env.LAN_API_ORIGIN || ''} ` : ''}https://api.speakoet.com wss://api.speakoet.com https://*.supabase.co wss://*.supabase.co https://data.speakoet.com https://us.i.posthog.com https://us-assets.i.posthog.com https://www.google-analytics.com https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://connect.facebook.net https://www.facebook.com`,
+      `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? `http://localhost:8000 ws://localhost:8000 ${process.env.LAN_API_ORIGIN || ''} ` : ''}${apiOrigin} ${apiWsOrigin} https://*.supabase.co wss://*.supabase.co https://data.speakoet.com https://us.i.posthog.com https://us-assets.i.posthog.com https://www.google-analytics.com https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://connect.facebook.net https://www.facebook.com`,
       "frame-src https://checkout.razorpay.com https://api.razorpay.com https://challenges.cloudflare.com",
     ].join('; ')
 
