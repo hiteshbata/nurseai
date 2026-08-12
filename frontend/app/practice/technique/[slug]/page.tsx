@@ -25,12 +25,16 @@ interface PracticeContent {
   options?: string[]
 }
 
+type Stage = 'guided' | 'independent' | 'exam_style'
+
 interface Practice {
   id: number
   title: string
   instructions: string
   content: PracticeContent
   scoring_type: 'rule_based' | 'ai'
+  difficulty: 'beginner' | 'intermediate' | 'exam'
+  stage: Stage
 }
 
 interface Mastery {
@@ -50,13 +54,14 @@ interface TechniqueDetail {
   difficulty: string
   estimated_minutes: number | null
   practice: Practice | null
+  practices: Practice[]
   mastery: Mastery
 }
 
 interface AttemptResult {
   score: number | null
   feedback: Record<string, any>
-  mistakes: Array<{ reason?: string; expected?: string; given?: string }>
+  mistakes: Array<{ reason?: string; expected?: string; given?: string; mistake_type?: string; explanation?: string }>
   provider_failure: boolean
   mastery: Mastery
 }
@@ -66,6 +71,12 @@ const MASTERY_LABELS: Record<Mastery['level'], string> = {
   practicing: 'Practicing',
   improving: 'Improving',
   strong: 'Strong',
+}
+
+const STAGE_LABELS: Record<Stage, string> = {
+  guided: 'Guided',
+  independent: 'Independent',
+  exam_style: 'Exam-style',
 }
 
 type Phase = 'lesson' | 'practice' | 'result'
@@ -81,11 +92,15 @@ export default function TechniqueDetailPage() {
   const [answer, setAnswer] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [result, setResult] = useState<AttemptResult | null>(null)
+  const [activePracticeId, setActivePracticeId] = useState<number | null>(null)
 
   const load = () => {
     setIsLoading(true)
     api.get(`/techniques/${params.slug}`)
-      .then((res) => setTechnique(res.data))
+      .then((res) => {
+        setTechnique(res.data)
+        setActivePracticeId(res.data.practice?.id ?? null)
+      })
       .catch(() => setError(true))
       .finally(() => setIsLoading(false))
   }
@@ -98,21 +113,27 @@ export default function TechniqueDetailPage() {
     if (status === 'authenticated') load()
   }, [status, params.slug])
 
-  const startPractice = () => {
+  const practices = technique?.practices ?? []
+  const activePractice = practices.find((p) => p.id === activePracticeId) ?? technique?.practice ?? null
+  const activeIndex = activePractice ? practices.findIndex((p) => p.id === activePractice.id) : -1
+  const nextPractice = activeIndex >= 0 ? practices[activeIndex + 1] ?? null : null
+
+  const startPractice = (practiceId?: number) => {
+    if (practiceId !== undefined) setActivePracticeId(practiceId)
     setAnswer(null)
     setResult(null)
     setPhase('practice')
   }
 
   const submitAttempt = async () => {
-    if (!technique?.practice || answer === null) {
+    if (!technique || !activePractice || answer === null) {
       toast.error('Please choose an answer first')
       return
     }
     setIsSubmitting(true)
     try {
       const res = await api.post(`/techniques/${technique.slug}/attempts`, {
-        micro_practice_id: technique.practice.id,
+        micro_practice_id: activePractice.id,
         answer,
       })
       setResult(res.data)
@@ -178,7 +199,12 @@ export default function TechniqueDetailPage() {
               {technique.practice ? (
                 <>
                   <p className="text-gray-600 mb-4">Ready to try it yourself?</p>
-                  <Button onClick={startPractice}>Start Practice</Button>
+                  <Button onClick={() => startPractice(technique.practice!.id)}>Start Practice</Button>
+                  {practices.length > 1 && (
+                    <p className="text-xs text-gray-400 mt-3">
+                      {practices.length} practices available · starting with {STAGE_LABELS[technique.practice.stage]}
+                    </p>
+                  )}
                 </>
               ) : (
                 <p className="text-gray-500">Practice for this technique is launching soon.</p>
@@ -187,24 +213,29 @@ export default function TechniqueDetailPage() {
           </div>
         )}
 
-        {phase === 'practice' && technique.practice && (
+        {phase === 'practice' && activePractice && (
           <Card className="p-8 mt-8">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">{technique.practice.title}</h3>
-            <p className="text-sm text-gray-500 mb-6">{technique.practice.instructions}</p>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <h3 className="text-lg font-bold text-gray-900">{activePractice.title}</h3>
+              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-gray-100 text-gray-600 shrink-0">
+                {STAGE_LABELS[activePractice.stage]}
+              </span>
+            </div>
+            <p className="text-sm text-gray-500 mb-6">{activePractice.instructions}</p>
 
-            {technique.practice.content.passage && (
+            {activePractice.content.passage && (
               <p className="text-gray-700 leading-relaxed whitespace-pre-line bg-gray-50 rounded-xl p-4 mb-6">
-                {technique.practice.content.passage}
+                {activePractice.content.passage}
               </p>
             )}
-            {(technique.practice.content.question || technique.practice.content.claim) && (
+            {(activePractice.content.question || activePractice.content.claim) && (
               <p className="font-semibold text-gray-800 mb-4">
-                {technique.practice.content.question || `Claim: ${technique.practice.content.claim}`}
+                {activePractice.content.question || `Claim: ${activePractice.content.claim}`}
               </p>
             )}
 
             <div className="space-y-2">
-              {(technique.practice.content.options || []).map((opt, i) => {
+              {(activePractice.content.options || []).map((opt, i) => {
                 const selected = answer === opt
                 return (
                   <label
@@ -246,6 +277,14 @@ export default function TechniqueDetailPage() {
                 Correct answer: {result.feedback.correct_answer}
               </div>
             )}
+            {result.feedback.explanation && (
+              <p className="text-sm text-gray-600 mb-2">{result.feedback.explanation}</p>
+            )}
+            {!result.feedback.is_correct && result.mistakes[0]?.explanation && (
+              <div className="rounded-xl bg-amber-50 text-amber-800 text-sm px-4 py-3 mb-4">
+                {result.mistakes[0].explanation}
+              </div>
+            )}
             {result.feedback.reasoning && (
               <p className="text-sm text-gray-600 mb-2">{result.feedback.reasoning}</p>
             )}
@@ -256,7 +295,13 @@ export default function TechniqueDetailPage() {
             )}
 
             <div className="flex gap-4 mt-6">
-              <Button className="flex-1" onClick={startPractice}>Try Again</Button>
+              {result.feedback.is_correct && nextPractice ? (
+                <Button className="flex-1" onClick={() => startPractice(nextPractice.id)}>
+                  Next Practice ({STAGE_LABELS[nextPractice.stage]})
+                </Button>
+              ) : (
+                <Button className="flex-1" onClick={() => startPractice()}>Try Again</Button>
+              )}
               <Button variant="outline" className="flex-1" onClick={() => router.push('/practice/technique')}>
                 Back to Techniques
               </Button>

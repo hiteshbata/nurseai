@@ -37,6 +37,65 @@ def test_rule_based_wrong_answer_gives_zero_band_and_records_mistake():
     assert result["mistakes"] == [{"reason": "incorrect_selection", "expected": "B", "given": "A"}]
 
 
+def test_rule_based_correct_answer_includes_explanation_when_content_supplies_one():
+    result = technique_grading.grade_rule_based(
+        {"correct_answer": "B", "explanation": "B is correct because..."}, {"answer": "B"},
+    )
+    assert result["feedback"]["explanation"] == "B is correct because..."
+
+
+def test_rule_based_wrong_answer_with_no_distractor_metadata_stays_the_old_shape():
+    # No `distractors` on expected_response -- must not fabricate a mistake_type.
+    result = technique_grading.grade_rule_based(
+        {"correct_answer": "B"}, {"answer": "A"},
+    )
+    assert result["mistakes"] == [{"reason": "incorrect_selection", "expected": "B", "given": "A"}]
+    assert "mistake_type" not in result["mistakes"][0]
+
+
+def test_rule_based_wrong_answer_with_distractor_metadata_includes_mistake_type_and_explanation():
+    expected_response = {
+        "correct_answer": "B",
+        "distractors": [
+            {"option": "A", "mistake_type": "distractor_confusion", "explanation": "A sounds plausible but..."},
+        ],
+    }
+    result = technique_grading.grade_rule_based(expected_response, {"answer": "A"})
+    assert result["mistakes"] == [{
+        "reason": "incorrect_selection", "expected": "B", "given": "A",
+        "mistake_type": "distractor_confusion", "explanation": "A sounds plausible but...",
+    }]
+
+
+def test_rule_based_wrong_answer_for_an_untagged_option_omits_mistake_type():
+    # distractors metadata exists for the technique but not for the option
+    # this particular learner picked -- still must not guess.
+    expected_response = {
+        "correct_answer": "B",
+        "distractors": [{"option": "C", "mistake_type": "vocabulary", "explanation": "..."}],
+    }
+    result = technique_grading.grade_rule_based(expected_response, {"answer": "A"})
+    assert result["mistakes"] == [{"reason": "incorrect_selection", "expected": "B", "given": "A"}]
+
+
+def test_rule_based_wrong_answer_with_null_distractors_falls_back_safely():
+    expected_response = {"correct_answer": "B", "distractors": None}
+    result = technique_grading.grade_rule_based(expected_response, {"answer": "A"})
+    assert result["mistakes"] == [{"reason": "incorrect_selection", "expected": "B", "given": "A"}]
+
+
+def test_rule_based_wrong_answer_with_non_dict_distractor_items_falls_back_safely():
+    expected_response = {"correct_answer": "B", "distractors": ["bad", None]}
+    result = technique_grading.grade_rule_based(expected_response, {"answer": "A"})
+    assert result["mistakes"] == [{"reason": "incorrect_selection", "expected": "B", "given": "A"}]
+
+
+def test_rule_based_wrong_answer_with_malformed_distractor_shape_falls_back_safely():
+    expected_response = {"correct_answer": "B", "distractors": [{"unexpected": "shape"}]}
+    result = technique_grading.grade_rule_based(expected_response, {"answer": "A"})
+    assert result["mistakes"] == [{"reason": "incorrect_selection", "expected": "B", "given": "A"}]
+
+
 def test_grade_micro_practice_dispatches_rule_based_without_calling_ai():
     mp = _mp(scoring_type="rule_based", expected_response={"correct_answer": "B"})
     with patch.object(technique_grading, "_call_ai", new=AsyncMock()) as ai_mock:

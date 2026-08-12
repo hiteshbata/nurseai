@@ -30,6 +30,7 @@ _attempt_rate_limiter = SlidingWindowRateLimiter(30, 600, name="techniques:attem
 
 _CATALOG_FIELDS = ("id", "module", "slug", "name", "description", "learning_objective", "difficulty", "estimated_minutes")
 _DETAIL_FIELDS = _CATALOG_FIELDS + ("lesson_content",)
+_PRACTICE_FIELDS = "id, title, instructions, content, scoring_type, difficulty, stage"
 
 
 def _mastery_by_tag(user_db: Client, user_id: str, tags: List[str]) -> Dict[str, dict]:
@@ -81,10 +82,18 @@ def get_technique(
     current_user: UserInfo = Depends(get_current_user),
     user_db: Client = Depends(get_user_supabase),
 ):
-    """Lesson content + the practice prompt if one has been seeded yet
-    (expected_response withheld). Not every technique has a micro-practice
-    seeded yet -- `practice` is null in that case; the frontend shows a
-    "practice coming soon" state rather than erroring."""
+    """Lesson content + the available practice exercises if any have been
+    seeded yet (expected_response withheld). Not every technique has a
+    micro-practice seeded yet -- `practices` is [] and `practice` is null in
+    that case; the frontend shows a "practice coming soon" state rather than
+    erroring.
+
+    A technique can have several practices at different stage/difficulty
+    (Phase D) -- `practices` lists all of them in progression order
+    (sort_order), and `practice` is the one recommended next, picked off the
+    learner's own mastery bucket via technique_progress.recommended_stage.
+    `practice` keeps the exact shape it had pre-Phase D so a frontend that
+    hasn't picked up `practices` yet keeps working unchanged."""
     supabase = get_supabase()
     t = supabase.table("techniques").select(
         ", ".join(("skill_tag",) + _DETAIL_FIELDS)
@@ -93,17 +102,24 @@ def get_technique(
         raise HTTPException(status_code=404, detail="Technique not found")
     technique = t.data[0]
 
-    mp = supabase.table("micro_practices").select(
-        "id, title, instructions, content, scoring_type"
-    ).eq("technique_id", technique["id"]).eq("active", True).order("id").limit(1).execute()
-    practice = mp.data[0] if mp.data else None
+    mp = supabase.table("micro_practices").select(_PRACTICE_FIELDS).eq(
+        "technique_id", technique["id"]
+    ).eq("active", True).order("sort_order").order("id").execute()
+    practices = mp.data
 
     tag = technique_progress.technique_skill_tag(technique["skill_tag"])
     mastery_row = _mastery_by_tag(user_db, current_user.id, [tag]).get(tag)
 
+    stage = technique_progress.recommended_stage(
+        mastery_row["attempts"] if mastery_row else 0,
+        float(mastery_row["ema_score"]) if mastery_row else None,
+    )
+    practice = next((p for p in practices if p["stage"] == stage), practices[0] if practices else None)
+
     return {
         **{k: technique[k] for k in _DETAIL_FIELDS},
         "practice": practice,
+        "practices": practices,
         "mastery": _mastery_payload(mastery_row),
     }
 

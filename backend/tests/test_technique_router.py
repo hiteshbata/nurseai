@@ -87,8 +87,8 @@ _TECHNIQUES = [
 
 _MICRO_PRACTICES = [
     {"id": 10, "technique_id": 1, "title": "Skim it", "instructions": "go", "active": True,
-     "content": {"passage": "p", "options": ["A", "B"]},
-     "expected_response": {"correct_answer": "A"}, "scoring_type": "rule_based"},
+     "content": {"passage": "p", "options": ["A", "B"]}, "difficulty": "beginner", "stage": "guided",
+     "sort_order": 0, "expected_response": {"correct_answer": "A"}, "scoring_type": "rule_based"},
 ]
 
 _STATS = [
@@ -129,6 +129,51 @@ def test_get_technique_without_seeded_practice_returns_null_practice_not_an_erro
     with patch.object(technique, "get_supabase", return_value=supabase):
         result = technique.get_technique("pre-listening", current_user=_USER, user_db=supabase)
     assert result["practice"] is None
+    assert result["practices"] == []
+
+
+_MULTI_STAGE_PRACTICES = [
+    {"id": 10, "technique_id": 1, "title": "Skim it (guided)", "instructions": "go", "active": True,
+     "content": {"passage": "p", "options": ["A", "B"]}, "difficulty": "beginner", "stage": "guided",
+     "sort_order": 0, "expected_response": {"correct_answer": "A"}, "scoring_type": "rule_based"},
+    {"id": 11, "technique_id": 1, "title": "Skim it (independent)", "instructions": "go", "active": True,
+     "content": {"passage": "p2", "options": ["A", "B"]}, "difficulty": "intermediate", "stage": "independent",
+     "sort_order": 10, "expected_response": {"correct_answer": "A"}, "scoring_type": "rule_based"},
+    {"id": 12, "technique_id": 1, "title": "Skim it (exam)", "instructions": "go", "active": True,
+     "content": {"passage": "p3", "options": ["A", "B"]}, "difficulty": "exam", "stage": "exam_style",
+     "sort_order": 20, "expected_response": {"correct_answer": "A"}, "scoring_type": "rule_based"},
+]
+
+
+def test_get_technique_lists_every_practice_in_sort_order():
+    supabase = _fake(_tables(micro_practices=_MULTI_STAGE_PRACTICES), {})
+    with patch.object(technique, "get_supabase", return_value=supabase):
+        result = technique.get_technique("skimming", current_user=_USER, user_db=supabase)
+    assert [p["id"] for p in result["practices"]] == [10, 11, 12]
+
+
+def test_get_technique_recommends_the_guided_practice_for_a_new_learner():
+    supabase = _fake(_tables(micro_practices=_MULTI_STAGE_PRACTICES, stats=[]), {})
+    with patch.object(technique, "get_supabase", return_value=supabase):
+        result = technique.get_technique("skimming", current_user=_USER, user_db=supabase)
+    assert result["practice"]["id"] == 10
+    assert result["practice"]["stage"] == "guided"
+
+
+def test_get_technique_recommends_the_independent_practice_once_improving():
+    stats = [{"user_id": "student-1", "skill_tag": "technique:skimming", "attempts": 2, "ema_score": 3.5}]
+    supabase = _fake(_tables(micro_practices=_MULTI_STAGE_PRACTICES, stats=stats), {})
+    with patch.object(technique, "get_supabase", return_value=supabase):
+        result = technique.get_technique("skimming", current_user=_USER, user_db=supabase)
+    assert result["practice"]["id"] == 11
+
+
+def test_get_technique_recommends_the_exam_style_practice_once_strong():
+    stats = [{"user_id": "student-1", "skill_tag": "technique:skimming", "attempts": 3, "ema_score": 5.5}]
+    supabase = _fake(_tables(micro_practices=_MULTI_STAGE_PRACTICES, stats=stats), {})
+    with patch.object(technique, "get_supabase", return_value=supabase):
+        result = technique.get_technique("skimming", current_user=_USER, user_db=supabase)
+    assert result["practice"]["id"] == 12
 
 
 def test_get_technique_unknown_slug_404s():

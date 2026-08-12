@@ -42,6 +42,23 @@ def mastery_level(attempts: int, ema_score: Optional[float]) -> str:
     return "practicing"
 
 
+_STAGE_BY_MASTERY_LEVEL = {
+    "not_started": "guided",
+    "practicing": "guided",
+    "improving": "independent",
+    "strong": "exam_style",
+}
+
+
+def recommended_stage(attempts: int, ema_score: Optional[float]) -> str:
+    """Pure. Which micro_practices.stage a learner should attempt next for a
+    technique, reusing mastery_level's existing attempts/ema_score buckets
+    instead of a second scoring scheme (V2 progression is deterministic and
+    explainable by design -- see Phase D architecture notes; an adaptive
+    Learner Brain can replace this later without changing its callers)."""
+    return _STAGE_BY_MASTERY_LEVEL[mastery_level(attempts, ema_score)]
+
+
 def _log_observation_sync(user_id: str, tag: str, score: float) -> None:
     get_supabase().table("skill_observations").insert({
         "user_id": user_id,

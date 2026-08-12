@@ -37,6 +37,22 @@ def test_mastery_buckets_by_band_once_min_attempts_reached():
     assert technique_progress.mastery_level(5, 6.0) == "strong"
 
 
+def test_recommended_stage_is_guided_before_any_attempts():
+    assert technique_progress.recommended_stage(0, None) == "guided"
+
+
+def test_recommended_stage_stays_guided_below_min_attempts_even_with_a_high_score():
+    assert technique_progress.recommended_stage(1, 6.0) == "guided"
+
+
+def test_recommended_stage_matches_mastery_buckets():
+    assert technique_progress.recommended_stage(2, 2.9) == "guided"
+    assert technique_progress.recommended_stage(2, 3.0) == "independent"
+    assert technique_progress.recommended_stage(2, 4.9) == "independent"
+    assert technique_progress.recommended_stage(2, 5.0) == "exam_style"
+    assert technique_progress.recommended_stage(5, 6.0) == "exam_style"
+
+
 class RecordTechniqueProgressTests(unittest.IsolatedAsyncioTestCase):
     async def test_writes_exactly_one_technique_tagged_observation(self):
         with patch.object(technique_progress.skill_graph, "record_skill_observations", new=AsyncMock()) as record_mock, \

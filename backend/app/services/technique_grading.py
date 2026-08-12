@@ -19,20 +19,46 @@ class InvalidScoringType(ValueError):
 def grade_rule_based(expected_response: Dict[str, Any], response: Dict[str, Any]) -> Dict[str, Any]:
     """Exact-match grading for objective micro-practices (elimination,
     scanning, keyword matching, ...) -- reuses mcq_grading's exact-match
-    primitive on a single synthetic question instead of a new comparator."""
+    primitive on a single synthetic question instead of a new comparator.
+
+    `explanation` (why the correct answer is correct) and per-wrong-option
+    `distractors` are both optional, content-authored fields on
+    expected_response (Phase D) -- static, not AI-generated, so a rule-based
+    exercise never needs an AI call just to explain itself. Both are additive:
+    a micro_practice without them grades exactly as it did before Phase D."""
     expected_answer = expected_response.get("correct_answer")
+    given = response.get("answer")
     result = mcq_grading.grade_exact_match(
         {0: {"id": 0, "correct_answer": expected_answer}},
-        [{"questionId": 0, "selectedOption": response.get("answer")}],
+        [{"questionId": 0, "selectedOption": given}],
     )
     is_correct = result["graded"] > 0 and result["correct"] == result["graded"]
-    return {
-        "score": result["band"],
-        "feedback": {"is_correct": is_correct, "correct_answer": expected_answer},
-        "mistakes": [] if is_correct else [
-            {"reason": "incorrect_selection", "expected": expected_answer, "given": response.get("answer")}
-        ],
-    }
+
+    feedback = {"is_correct": is_correct, "correct_answer": expected_answer}
+    explanation = expected_response.get("explanation")
+    if explanation:
+        feedback["explanation"] = explanation
+
+    mistakes = []
+    if not is_correct:
+        mistake = {"reason": "incorrect_selection", "expected": expected_answer, "given": given}
+        # Never invent a mistake_type the content didn't actually supply --
+        # only look it up, don't guess one when no distractor metadata exists.
+        # Distractor entries are content-authored and may be malformed
+        # (null list, non-dict items) -- skip anything that isn't a dict
+        # instead of ever letting bad content 500 a submission.
+        distractors = expected_response.get("distractors") or []
+        distractor = next(
+            (d for d in distractors if isinstance(d, dict) and d.get("option") == given), None,
+        )
+        if distractor:
+            if distractor.get("mistake_type"):
+                mistake["mistake_type"] = distractor["mistake_type"]
+            if distractor.get("explanation"):
+                mistake["explanation"] = distractor["explanation"]
+        mistakes = [mistake]
+
+    return {"score": result["band"], "feedback": feedback, "mistakes": mistakes}
 
 
 def _build_prompt(micro_practice: Dict[str, Any], response: Dict[str, Any]) -> str:

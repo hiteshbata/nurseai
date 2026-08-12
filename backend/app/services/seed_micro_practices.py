@@ -1,9 +1,14 @@
-"""Seed real micro-practice exercise content for Phase C (Reading's 4
-techniques + Listening's 4 + Writing's 3 + Speaking's 3). Same idempotent
-insert-if-missing convention as seed_techniques.py, keyed on (technique_id,
-title) since micro_practices has no unique slug column.
+"""Seed real micro-practice exercise content. Phase C seeded one rule_based
+exercise per technique (Reading's 4 + Listening's 4 + Writing's 3 + Speaking's
+3, all still present below unchanged). Phase D adds a small representative
+slice of *additional* practices on top of that -- proving the architecture
+genuinely supports multiple practices per technique, difficulty/stage, and
+static explanation/mistake-type content -- without rewriting all 14 techniques
+(see docs, Phase D scope limits). Same idempotent insert-if-missing
+convention as seed_techniques.py, keyed on (technique_id, title) since
+micro_practices has no unique slug column.
 
-All fourteen are deliberately rule_based (exact-match against `options`, via
+All practices are deliberately rule_based (exact-match against `options`, via
 technique_grading.grade_rule_based) -- no AI-grading dependency for this
 slice. Original short passages/case notes, not real OET paper content.
 Listening has no audio pipeline yet, so each exercise presents its audio
@@ -12,7 +17,12 @@ exercises present case notes / task briefs the same way, in `content.passage`
 -- same passage/question/options shape the frontend already renders. Speaking
 exercises are small controlled choose-the-best-response drills (not full
 roleplays) using the same passage/question/options shape -- `content.passage`
-sets the scenario, `content.question` asks which spoken response is best."""
+sets the scenario, `content.question` asks which spoken response is best.
+
+`difficulty`/`stage`/`sort_order` are omitted on the original 14 entries
+(they take the column defaults: beginner/guided/0) -- only the new Phase D
+entries set them explicitly, so they always sort after the originals within
+their technique."""
 from app.core.supabase import get_supabase
 
 MICRO_PRACTICES = [
@@ -243,6 +253,161 @@ MICRO_PRACTICES = [
         "expected_response": {"correct_answer": "There are three things I want to go through before you leave -- first, looking after your wound, then your medication, and finally your follow-up appointment. Let's start with the wound."},
         "scoring_type": "rule_based",
     },
+    # ── PHASE D: progression sample -- proves multiple practices/difficulty/
+    # stage/explanations/mistake-types work end to end, on a small slice
+    # (1 Reading technique gets the full guided->independent->exam_style
+    # ladder; Listening/Writing/Speaking each get one extra practice to prove
+    # the architecture generalizes across modules). See module docstring.
+    {
+        "technique_skill_tag": "textual_verification",
+        "title": "Find the Proof (Second Pass)",
+        "instructions": "Same skill, a new passage. Which sentence actually proves the claim below?",
+        "difficulty": "beginner", "stage": "guided", "sort_order": 10,
+        "content": {
+            "passage": "The hospital's infection control policy requires all staff to perform hand hygiene before and after every patient contact. Alcohol-based hand rub is the preferred method unless hands are visibly soiled, in which case soap and water must be used. Compliance is audited monthly across all wards.",
+            "claim": "Soap and water should be used instead of alcohol-based hand rub when hands are visibly dirty.",
+            "options": [
+                "The hospital's infection control policy requires all staff to perform hand hygiene before and after every patient contact.",
+                "Alcohol-based hand rub is the preferred method unless hands are visibly soiled, in which case soap and water must be used.",
+                "Compliance is audited monthly across all wards.",
+            ],
+        },
+        "expected_response": {
+            "correct_answer": "Alcohol-based hand rub is the preferred method unless hands are visibly soiled, in which case soap and water must be used.",
+            "explanation": "This sentence is the only one that states the soap-and-water exception for visibly soiled hands -- the exact condition in the claim.",
+            "distractors": [
+                {
+                    "option": "The hospital's infection control policy requires all staff to perform hand hygiene before and after every patient contact.",
+                    "mistake_type": "missed_evidence",
+                    "explanation": "This confirms hand hygiene is required, but says nothing about soap vs. alcohol rub -- it doesn't prove this specific claim.",
+                },
+                {
+                    "option": "Compliance is audited monthly across all wards.",
+                    "mistake_type": "distractor_confusion",
+                    "explanation": "This is about auditing, not about which hand-hygiene method to use -- unrelated to the claim.",
+                },
+            ],
+        },
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "textual_verification",
+        "title": "Find the Proof (Independent Practice)",
+        "instructions": "No hints this time. Read the passage, then find the sentence that proves the claim.",
+        "difficulty": "intermediate", "stage": "independent", "sort_order": 20,
+        "content": {
+            "passage": "Warfarin requires regular INR monitoring because its effect varies with diet, other medications, and individual metabolism. Patients are usually tested weekly when a dose is first started, moving to monthly once a stable INR is achieved. A sudden increase in green leafy vegetable intake can reduce warfarin's effect.",
+            "claim": "Testing frequency for warfarin decreases once the patient's INR has stabilized.",
+            "options": [
+                "Warfarin requires regular INR monitoring because its effect varies with diet, other medications, and individual metabolism.",
+                "Patients are usually tested weekly when a dose is first started, moving to monthly once a stable INR is achieved.",
+                "A sudden increase in green leafy vegetable intake can reduce warfarin's effect.",
+            ],
+        },
+        "expected_response": {
+            "correct_answer": "Patients are usually tested weekly when a dose is first started, moving to monthly once a stable INR is achieved.",
+            "explanation": "This sentence directly states the change from weekly to monthly testing -- a drop in frequency -- once INR is stable.",
+            "distractors": [
+                {
+                    "option": "Warfarin requires regular INR monitoring because its effect varies with diet, other medications, and individual metabolism.",
+                    "mistake_type": "missed_evidence",
+                    "explanation": "This explains why monitoring is needed at all, not how the frequency changes over time.",
+                },
+                {
+                    "option": "A sudden increase in green leafy vegetable intake can reduce warfarin's effect.",
+                    "mistake_type": "reasoning",
+                    "explanation": "This is a fact about diet affecting warfarin, unrelated to testing frequency.",
+                },
+            ],
+        },
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "textual_verification",
+        "title": "Find the Proof (Exam-Style)",
+        "instructions": "Exam pace: one read-through, then answer. Which sentence proves the claim?",
+        "difficulty": "exam", "stage": "exam_style", "sort_order": 30,
+        "content": {
+            "passage": "Pressure ulcers develop most rapidly over bony prominences where sustained pressure restricts blood flow to the skin and underlying tissue. Repositioning patients with limited mobility at least every two hours is the standard preventive measure, though higher-risk patients may need repositioning more frequently. Nutritional status also affects skin integrity and healing capacity.",
+            "claim": "Patients at higher risk of pressure ulcers may need to be repositioned more often than every two hours.",
+            "options": [
+                "Pressure ulcers develop most rapidly over bony prominences where sustained pressure restricts blood flow to the skin and underlying tissue.",
+                "Repositioning patients with limited mobility at least every two hours is the standard preventive measure, though higher-risk patients may need repositioning more frequently.",
+                "Nutritional status also affects skin integrity and healing capacity.",
+            ],
+        },
+        "expected_response": {
+            "correct_answer": "Repositioning patients with limited mobility at least every two hours is the standard preventive measure, though higher-risk patients may need repositioning more frequently.",
+            "explanation": "This is the only sentence that mentions higher-risk patients needing more frequent repositioning than the every-two-hours standard.",
+            "distractors": [
+                {
+                    "option": "Pressure ulcers develop most rapidly over bony prominences where sustained pressure restricts blood flow to the skin and underlying tissue.",
+                    "mistake_type": "reasoning",
+                    "explanation": "This explains why pressure ulcers form, not the repositioning schedule for higher-risk patients.",
+                },
+                {
+                    "option": "Nutritional status also affects skin integrity and healing capacity.",
+                    "mistake_type": "distractor_confusion",
+                    "explanation": "This is about nutrition, not repositioning frequency -- unrelated to the claim.",
+                },
+            ],
+        },
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "keyword_prediction",
+        "title": "Predict the Keywords (Independent Practice)",
+        "instructions": "Predict the vocabulary before listening -- no hints this time.",
+        "difficulty": "intermediate", "stage": "independent", "sort_order": 10,
+        "content": {
+            "passage": "You are about to hear a nurse discussing a patient's discharge plan with a colleague. Here is the note-completion gap:\n\nFollow-up arranged with: ___________",
+            "question": "Which is the best keyword prediction to prepare for this gap?",
+            "options": [
+                "Listen for a role or place -- e.g. 'GP', 'the practice nurse', 'the outpatient clinic' -- and also phrasing like 'follow up with' or 'see him again at'",
+                "Listen only for a person's first name",
+                "Listen for the patient's date of birth",
+                "Listen for the ward name",
+            ],
+        },
+        "expected_response": {"correct_answer": "Listen for a role or place -- e.g. 'GP', 'the practice nurse', 'the outpatient clinic' -- and also phrasing like 'follow up with' or 'see him again at'"},
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "case_note_selection",
+        "title": "Which Note Belongs in the Letter? (Independent Practice)",
+        "instructions": "Read the case notes, then decide which one does NOT belong in the letter -- no hints this time.",
+        "difficulty": "intermediate", "stage": "independent", "sort_order": 10,
+        "content": {
+            "passage": "Case notes for Mr. David Okafor, 45. You are writing a referral letter to a cardiologist for investigation of recurrent chest pain.\n\nCase notes:\n- Recurrent central chest pain on exertion, 3 episodes in 2 weeks\n- Family history of ischemic heart disease (father, MI age 52)\n- Works as a primary school teacher\n- Blood pressure 148/92 at last visit",
+            "question": "Which case note is NOT relevant to this cardiology referral and should be left out of the letter?",
+            "options": [
+                "Recurrent central chest pain on exertion, 3 episodes in 2 weeks",
+                "Family history of ischemic heart disease (father, MI age 52)",
+                "Works as a primary school teacher",
+                "Blood pressure 148/92 at last visit",
+            ],
+        },
+        "expected_response": {"correct_answer": "Works as a primary school teacher"},
+        "scoring_type": "rule_based",
+    },
+    {
+        "technique_skill_tag": "empathy_validation",
+        "title": "Respond to the Patient's Worry (Independent Practice)",
+        "instructions": "Choose the response that best acknowledges the patient's feelings -- no hints this time.",
+        "difficulty": "intermediate", "stage": "independent", "sort_order": 10,
+        "content": {
+            "passage": "TRANSCRIPT EXCERPT -- Patient to Nurse:\n\n\"I don't think I can cope with another round of this treatment. I'm exhausted, and I'm not sure it's even worth it anymore.\"",
+            "question": "What is the most patient-centred way to respond?",
+            "options": [
+                "It sounds like you're feeling really worn down by all of this -- can we talk about what's making it feel like too much right now?",
+                "You have to keep going, the treatment is working.",
+                "Let's just focus on scheduling your next session.",
+                "Lots of patients feel that way, it's completely normal.",
+            ],
+        },
+        "expected_response": {"correct_answer": "It sounds like you're feeling really worn down by all of this -- can we talk about what's making it feel like too much right now?"},
+        "scoring_type": "rule_based",
+    },
 ]
 
 
@@ -271,6 +436,9 @@ def seed_micro_practices():
             "content": mp["content"],
             "expected_response": mp["expected_response"],
             "scoring_type": mp["scoring_type"],
+            "difficulty": mp.get("difficulty", "beginner"),
+            "stage": mp.get("stage", "guided"),
+            "sort_order": mp.get("sort_order", 0),
         }).execute()
         count += 1
         print(f"  [OK] Added: {mp['title']}")

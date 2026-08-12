@@ -14,35 +14,44 @@ _WRITING_SKILL_TAGS = {"audience_purpose_identification", "case_note_selection",
 _SPEAKING_SKILL_TAGS = {"setting_context", "empathy_validation", "chunking_signposting"}
 
 
-def test_covers_exactly_the_four_reading_techniques():
+
+def test_covers_every_reading_technique_with_at_least_one_practice():
     reading = [mp for mp in MICRO_PRACTICES if mp["technique_skill_tag"] in _READING_SKILL_TAGS]
     assert {mp["technique_skill_tag"] for mp in reading} == _READING_SKILL_TAGS
-    assert len(reading) == 4
+    # Phase D: the original 4 (one per technique) + a 3-practice guided ->
+    # independent -> exam_style ladder added to textual_verification.
+    assert len(reading) == 7
 
 
-def test_covers_exactly_the_four_listening_techniques():
+def test_covers_every_listening_technique_with_at_least_one_practice():
     listening = [mp for mp in MICRO_PRACTICES if mp["technique_skill_tag"] in _LISTENING_SKILL_TAGS]
     assert {mp["technique_skill_tag"] for mp in listening} == _LISTENING_SKILL_TAGS
-    assert len(listening) == 4
+    assert len(listening) == 5  # Phase D: +1 on keyword_prediction
 
 
-def test_covers_exactly_the_three_writing_techniques():
+def test_covers_every_writing_technique_with_at_least_one_practice():
     writing = [mp for mp in MICRO_PRACTICES if mp["technique_skill_tag"] in _WRITING_SKILL_TAGS]
     assert {mp["technique_skill_tag"] for mp in writing} == _WRITING_SKILL_TAGS
-    assert len(writing) == 3
+    assert len(writing) == 4  # Phase D: +1 on case_note_selection
 
 
-def test_covers_exactly_the_three_speaking_techniques():
+def test_covers_every_speaking_technique_with_at_least_one_practice():
     speaking = [mp for mp in MICRO_PRACTICES if mp["technique_skill_tag"] in _SPEAKING_SKILL_TAGS]
     assert {mp["technique_skill_tag"] for mp in speaking} == _SPEAKING_SKILL_TAGS
-    assert len(speaking) == 3
+    assert len(speaking) == 4  # Phase D: +1 on empathy_validation
 
 
-def test_no_duplicate_titles_or_technique_slots():
+def test_no_duplicate_titles():
     titles = [mp["title"] for mp in MICRO_PRACTICES]
     assert len(titles) == len(set(titles))
-    tags = [mp["technique_skill_tag"] for mp in MICRO_PRACTICES]
-    assert len(tags) == len(set(tags))  # one practice per technique so far
+
+
+def test_at_least_one_technique_has_multiple_practices_across_all_three_stages():
+    # Proves the architecture genuinely supports a full progression ladder,
+    # not just "more than one row" -- see Phase D scope.
+    tv = [mp for mp in MICRO_PRACTICES if mp["technique_skill_tag"] == "textual_verification"]
+    assert len(tv) > 1
+    assert {mp.get("stage", "guided") for mp in tv} == {"guided", "independent", "exam_style"}
 
 
 def test_every_micro_practice_is_rule_based():
@@ -71,6 +80,35 @@ def test_selecting_a_wrong_option_grades_incorrect():
         wrong = next(o for o in mp["content"]["options"] if o != mp["expected_response"]["correct_answer"])
         result = grade_rule_based(mp["expected_response"], {"answer": wrong})
         assert result["feedback"]["is_correct"] is False, mp["title"]
+
+
+def test_every_difficulty_and_stage_value_is_a_valid_enum_member():
+    valid_difficulty = {"beginner", "intermediate", "exam"}
+    valid_stage = {"guided", "independent", "exam_style"}
+    for mp in MICRO_PRACTICES:
+        assert mp.get("difficulty", "beginner") in valid_difficulty, mp["title"]
+        assert mp.get("stage", "guided") in valid_stage, mp["title"]
+
+
+def test_every_distractor_option_is_one_of_its_own_practice_options():
+    # A distractor tagged for an option that isn't actually offered would
+    # silently never match a learner's answer -- catch that at seed-content
+    # time, not by finding out live in the app.
+    for mp in MICRO_PRACTICES:
+        options = set(mp["content"]["options"])
+        for distractor in mp["expected_response"].get("distractors", []):
+            assert distractor["option"] in options, mp["title"]
+
+
+def test_wrong_answer_on_a_tagged_distractor_returns_its_mistake_type_and_explanation():
+    for mp in MICRO_PRACTICES:
+        distractors = mp["expected_response"].get("distractors", [])
+        if not distractors:
+            continue
+        distractor = distractors[0]
+        result = grade_rule_based(mp["expected_response"], {"answer": distractor["option"]})
+        assert result["mistakes"][0]["mistake_type"] == distractor["mistake_type"], mp["title"]
+        assert result["mistakes"][0]["explanation"] == distractor["explanation"], mp["title"]
 
 
 class _FakeQuery:
