@@ -3,11 +3,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.core.config import settings
+from app.core.env_guard import verify_production_isolation
 from app.core.supabase import get_supabase
 from app.core.redis_client import get_redis
 from app.core import circuit_breaker
-from app.core.request_id import RequestIDMiddleware, RequestIDLogFilter
+from app.core.request_id import RequestIDMiddleware, RequestIDLogFilter, get_request_id
 from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, admin_ai_models, admin_content_studio, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads, reading, listening, hub, vocab, mock, referrals, tools, technique
 from app.services.oet_questions import oet_service
 from app.services.seed_scenarios import seed_scenarios
@@ -19,6 +21,12 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [%(request_id)s] %(name)s: %(message)s",
     handlers=[_log_handler],
 )
+logger = logging.getLogger(__name__)
+
+# Fail closed: refuse to boot a qa/development ENVIRONMENT against the
+# production Supabase project. No-ops until PRODUCTION_SUPABASE_PROJECT_REF
+# is configured (see app/core/env_guard.py).
+verify_production_isolation(settings.ENVIRONMENT, settings.SUPABASE_URL, settings.PRODUCTION_SUPABASE_PROJECT_REF)
 
 # Mirrors the frontend's dev skip (frontend/app/providers.tsx) -- default
 # SENTRY_ENVIRONMENT stays "production" so an unset var never silently
@@ -78,6 +86,64 @@ app = FastAPI(
     redoc_url="/redoc" if _docs_enabled else None,
     openapi_url="/openapi.json" if _docs_enabled else None,
 )
+
+class UnhandledExceptionMiddleware:
+    """Catches anything a route/dependency raises that FastAPI's own routing
+    doesn't turn into a response (HTTPException/RequestValidationError are
+    already handled inside ExceptionMiddleware and never reach here).
+
+    This has to be a middleware, not @app.exception_handler(Exception): FastAPI
+    special-cases a handler registered for Exception (or status 500) by wiring
+    it into Starlette's ServerErrorMiddleware instead of ExceptionMiddleware
+    (see FastAPI.build_middleware_stack), and ServerErrorMiddleware sits
+    OUTSIDE CORSMiddleware -- so that response never gets CORS headers, which
+    is exactly the bug this exists to fix (browsers report it as a
+    network/CORS failure instead of a readable error). A plain middleware
+    added here, before CORSMiddleware below, ends up INSIDE it (Starlette
+    middleware added earlier ends up closer to the router), so the JSON
+    response built here still passes back out through CORSMiddleware and
+    gets normal CORS headers.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        response_started = False
+
+        async def send_wrapper(message):
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        except Exception as exc:
+            if response_started:
+                # Body already streaming -- headers are long gone, nothing
+                # safe left to do but let Starlette's default handling apply.
+                raise
+            request_id = get_request_id()
+            logger.error(
+                "[UNHANDLED_EXCEPTION] method=%s path=%s request_id=%s",
+                scope.get("method"), scope.get("path"), request_id, exc_info=exc,
+            )
+            response = JSONResponse(
+                status_code=500,
+                content={
+                    "error": "internal_server_error",
+                    "message": "Something went wrong. Please try again.",
+                    "request_id": request_id,
+                },
+            )
+            await response(scope, receive, send)
+
+
+app.add_middleware(UnhandledExceptionMiddleware)
 
 origins = settings.ALLOWED_ORIGINS.split(",")
 app.add_middleware(
