@@ -7,6 +7,7 @@ const DISALLOW = [
   '/practice/mock',
   '/practice/reading',
   '/practice/speaking',
+  '/practice/technique',
   '/practice/vocab',
   '/practice/writing',
   '/mock-test',
