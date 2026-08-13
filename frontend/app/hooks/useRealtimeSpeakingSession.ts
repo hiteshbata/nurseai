@@ -393,8 +393,8 @@ export function useRealtimeSpeakingSession({
             reject(new Error('handled'))
             return
           }
-          if (parsed.type === 'session.ready' && typeof parsed.session_id === 'number') {
-            setSessionId(parsed.session_id)
+          if (parsed.type === 'session.ready') {
+            setSessionId(typeof parsed.session_id === 'number' ? parsed.session_id : null)
             inputSampleRateRef.current = parsed.input_sample_rate || DEFAULT_SAMPLE_RATE
             outputSampleRateRef.current = parsed.output_sample_rate || DEFAULT_SAMPLE_RATE
             sendBatchSamplesRef.current = Math.round((inputSampleRateRef.current * SEND_BATCH_MS) / 1000)
