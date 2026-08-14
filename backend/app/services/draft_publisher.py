@@ -57,6 +57,12 @@ class AlreadyPublishedError(Exception):
     succeeded but mark_published() failed) cannot create another one."""
 
 
+class InvalidPartError(Exception):
+    """content['part'] isn't one of the values the target table's CHECK
+    constraint allows -- raised here so publish fails loudly instead of
+    silently coercing to a default part."""
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -90,15 +96,17 @@ def _scenario_payload(draft: Dict[str, Any]) -> Dict[str, Any]:
     return payload
 
 
+_READING_PARTS = ("A", "B", "C")  # matches reading_passages_part_check (20260724000200_reading_part_a.sql)
+
+
 def _reading_payload(draft: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     content = draft["generated_content"]
     part = content.get("part")
+    if part not in _READING_PARTS:
+        raise InvalidPartError(f"Reading draft has invalid part {part!r}; must be one of {_READING_PARTS}.")
     passage = {
-        # reading_passages.part CHECK only allows B/C -- the AI schema
-        # (prompt_builder.build_reading_prompt) offers A/B/C, so clamp here
-        # rather than let an occasional 'A' 500 the insert.
         "title": _title(draft, content),
-        "part": part if part in ("B", "C") else "C",
+        "part": part,
         "difficulty": content.get("difficulty", "intermediate"),
         "body": content.get("body", ""),
         # Starts inactive: with test_id left null (Test Builder deferred),

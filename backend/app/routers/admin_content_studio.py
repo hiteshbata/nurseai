@@ -277,7 +277,7 @@ def get_publish_preview(draft_id: int, current_user: UserInfo = Depends(require_
         raise HTTPException(status_code=409, detail="Only approved drafts can be published")
     try:
         return draft_publisher.build_preview(draft)
-    except draft_publisher.NotPublishableError as e:
+    except (draft_publisher.NotPublishableError, draft_publisher.InvalidPartError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -292,7 +292,7 @@ def publish_draft(draft_id: int, current_user: UserInfo = Depends(require_owner)
         raise HTTPException(status_code=409, detail="Only approved drafts can be published")
     try:
         result = draft_publisher.publish(draft, current_user.id)
-    except draft_publisher.NotPublishableError as e:
+    except (draft_publisher.NotPublishableError, draft_publisher.InvalidPartError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (draft_publisher.DuplicateTitleError, draft_publisher.AlreadyPublishedError) as e:
         raise HTTPException(status_code=409, detail=str(e))
