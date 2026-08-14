@@ -66,12 +66,14 @@ function describePayload(data: unknown): string | undefined {
   return typeof data
 }
 
-// A 403 with this shape means the user hit a plan gate, not a real failure --
-// every page should show the same upgrade prompt instead of its own
-// "failed to load" / empty-state fallback. See isUpgradeRequiredError below.
+// A 403 (plan gate) or 429 (session-quota exhausted) with this shape means
+// the user needs to upgrade, not a real failure -- every page should show
+// the same upgrade prompt instead of its own "failed to load" / empty-state
+// fallback. See isUpgradeRequiredError below.
 function upgradeDetail(error: AxiosError): { upgrade_required: true; current_plan?: string } | null {
+  const status = error.response?.status
   const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
-  if (error.response?.status === 403 && detail && typeof detail === 'object' && (detail as any).upgrade_required) {
+  if ((status === 403 || status === 429) && detail && typeof detail === 'object' && (detail as any).upgrade_required) {
     return detail as { upgrade_required: true; current_plan?: string }
   }
   return null
