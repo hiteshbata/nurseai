@@ -103,12 +103,12 @@ export async function middleware(request: NextRequest) {
     "object-src 'none'",
     "base-uri 'self'",
     // blob: needed for PostHog's session-recording worker, loaded as a blob: script.
-    `script-src 'self' 'nonce-${nonce}' blob: ${process.env.NODE_ENV !== 'production' ? "'unsafe-eval' " : ''}https://checkout.razorpay.com https://www.googletagmanager.com https://connect.facebook.net`,
+    `script-src 'self' 'nonce-${nonce}' blob: ${process.env.NODE_ENV !== 'production' ? "'unsafe-eval' " : ''}https://checkout.razorpay.com https://www.googletagmanager.com https://data.speakoet.com https://connect.facebook.net`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://cdn.sanity.io https://*.supabase.co https://www.facebook.com",
     "media-src 'self' blob: https://*.supabase.co",
     "font-src 'self' data:",
-    `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? `http://localhost:8000 ws://localhost:8000 ${process.env.LAN_API_ORIGIN || ''} ` : ''}${apiOrigin} ${apiWsOrigin} https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://www.google-analytics.com https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://connect.facebook.net https://www.facebook.com`,
+    `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? `http://localhost:8000 ws://localhost:8000 ${process.env.LAN_API_ORIGIN || ''} ` : ''}${apiOrigin} ${apiWsOrigin} https://*.supabase.co wss://*.supabase.co https://data.speakoet.com https://us.i.posthog.com https://www.google-analytics.com https://api.razorpay.com https://lumberjack.razorpay.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://connect.facebook.net https://www.facebook.com`,
     "frame-src https://checkout.razorpay.com https://api.razorpay.com",
   ].join('; ')
 
