@@ -3,6 +3,7 @@ backend/scripts/.banner_test_backup.json
 # Environment files with secrets
 .env
 backend/.env
+backend/.env.qa
 frontend/.env.local
 
 # Dependency directories

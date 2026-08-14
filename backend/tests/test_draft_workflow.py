@@ -267,13 +267,51 @@ def test_writing_payload_maps_case_notes_task_and_key_points():
     assert payload["module"] == "writing"
 
 
-def test_reading_payload_clamps_invalid_part_to_c():
+def test_reading_payload_preserves_part_a():
     draft = _draft(module="reading", generated_content={
         "title": "A passage", "part": "A", "body": "text", "questions": [],
     })
     passage, questions = draft_publisher._reading_payload(draft)
-    assert passage["part"] == "C"
+    assert passage["part"] == "A"
     assert questions == []
+
+
+def test_reading_payload_preserves_part_b():
+    draft = _draft(module="reading", generated_content={
+        "title": "A passage", "part": "B", "body": "text", "questions": [],
+    })
+    passage, _ = draft_publisher._reading_payload(draft)
+    assert passage["part"] == "B"
+
+
+def test_reading_payload_preserves_part_c():
+    draft = _draft(module="reading", generated_content={
+        "title": "A passage", "part": "C", "body": "text", "questions": [],
+    })
+    passage, _ = draft_publisher._reading_payload(draft)
+    assert passage["part"] == "C"
+
+
+def test_reading_payload_rejects_invalid_part_instead_of_silently_converting():
+    draft = _draft(module="reading", generated_content={
+        "title": "A passage", "part": "D", "body": "text", "questions": [],
+    })
+    try:
+        draft_publisher._reading_payload(draft)
+        assert False, "expected InvalidPartError"
+    except draft_publisher.InvalidPartError:
+        pass
+
+
+def test_reading_payload_rejects_missing_part():
+    draft = _draft(module="reading", generated_content={
+        "title": "A passage", "body": "text", "questions": [],
+    })
+    try:
+        draft_publisher._reading_payload(draft)
+        assert False, "expected InvalidPartError"
+    except draft_publisher.InvalidPartError:
+        pass
 
 
 def test_listening_payload_defaults_missing_part_to_b():
