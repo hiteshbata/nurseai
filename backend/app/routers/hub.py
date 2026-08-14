@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app.core.threading import run_sync
 from app.routers.auth import get_current_user, get_user_supabase, UserInfo
+from app.services.skill_graph import get_weakness
 from supabase import Client
 
 logger = logging.getLogger(__name__)
@@ -95,11 +96,11 @@ async def get_today(
     attempted_modules = {s["module"] for s in subs.data if s.get("module") in MODULES}
     streak = compute_streak(activity_dates, today)
 
-    skills = await run_sync(
-        supabase.table("user_skill_stats").select("skill_tag, ema_score, attempts")
-        .eq("user_id", current_user.id).order("ema_score").execute
+    weakest = await get_weakness(supabase, current_user.id, "")
+    plan = build_daily_plan(
+        [{"skill_tag": w["skill"], "ema_score": w["band"], "attempts": w["attempts"]} for w in weakest],
+        attempted_modules,
     )
-    plan = build_daily_plan(skills.data, attempted_modules)
 
     completions = await run_sync(
         supabase.table("daily_goal_completions").select("task_key")
@@ -126,11 +127,11 @@ async def get_revision_queue(
     current_user: UserInfo = Depends(get_current_user),
     supabase: Client = Depends(get_user_supabase),
 ):
-    skills = await run_sync(
-        supabase.table("user_skill_stats").select("skill_tag, ema_score, attempts")
-        .eq("user_id", current_user.id).order("ema_score").limit(REVISION_QUEUE_LIMIT).execute
-    )
-    return [{**describe_skill_tag(row["skill_tag"]), "ema_score": row["ema_score"], "attempts": row["attempts"]} for row in skills.data]
+    weakest = await get_weakness(supabase, current_user.id, "")
+    return [
+        {**describe_skill_tag(w["skill"]), "ema_score": w["band"], "attempts": w["attempts"]}
+        for w in weakest[:REVISION_QUEUE_LIMIT]
+    ]
 
 
 class GoalCompleteRequest(BaseModel):
