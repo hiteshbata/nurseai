@@ -1,15 +1,46 @@
-﻿from pathlib import Path
+﻿import os
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=str(Path(__file__).resolve().parent.parent.parent / ".env"), extra="ignore"
-    )
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 
+# Which dotenv backs each ENVIRONMENT. Read from the real process env (never
+# from a dotenv) since this decides *which* dotenv to load -- Render/Vercel
+# set ENVIRONMENT as a real env var for QA/production; local dev falls back
+# to "production" to match this repo's existing convention of backend/.env
+# doubling as the local-dev config source. qa intentionally has its own
+# entry so backend/.env.qa is the ONLY dotenv read for ENVIRONMENT=qa --
+# backend/.env (which holds production secrets like GEMINI_API_KEY /
+# TURNSTILE_SECRET_KEY) must never be consulted as a fallback, or a QA
+# process would silently inherit production credentials it never asked for.
+_ENV_FILENAMES = {"production": ".env", "qa": ".env.qa", "development": ".env"}
+
+
+def _resolve_env_file(environment: str, backend_dir: Path = _BACKEND_DIR) -> Path:
+    return backend_dir / _ENV_FILENAMES.get((environment or "").strip().lower(), ".env")
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=str(_resolve_env_file(os.environ.get("ENVIRONMENT", "production"))), extra="ignore")
+
+    # production | qa | development -- which backend deployment this is.
+    # Distinct from SENTRY_ENVIRONMENT (development/rc1/production, a Sentry
+    # tag only). Used by app.core.env_guard to fail startup closed if a
+    # non-production environment is accidentally pointed at the production
+    # Supabase project. Defaults to "production" so existing deployments
+    # that don't set this var yet keep today's behavior.
+    ENVIRONMENT: str = "production"
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_ANON_KEY: str = ""
+    # Project ref (the "xxxxx" in https://xxxxx.supabase.co) of the
+    # PRODUCTION Supabase project. Not secret on its own -- it's just an
+    # id, not a credential -- but every environment's .env should set it so
+    # app.core.env_guard can recognize "this is production" and refuse to
+    # boot a qa/development environment against it. Leave unset to skip the
+    # check (e.g. before QA is provisioned).
+    PRODUCTION_SUPABASE_PROJECT_REF: str = ""
     # Project Settings -> API -> JWT Secret in the Supabase dashboard. Used to
     # verify access-token signatures locally (see app/routers/auth.py
     # get_current_user) instead of round-tripping to Supabase Auth on every

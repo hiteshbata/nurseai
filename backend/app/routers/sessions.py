@@ -183,7 +183,66 @@ def check_and_increment_session(
         "session_id": session_id,
         "sessions_used": usage["sessions_used"] + (0 if spending_bonus else 1),
         "sessions_remaining": usage["sessions_remaining"] - 1,
+        "spent_bonus": spending_bonus,
     }
+
+
+def release_session_charge(user_id: str, session_id: int, spent_bonus: bool) -> None:
+    """Refund a session credit that check_and_increment_session charged at
+    session start when the AI call it was meant to pay for never actually
+    succeeded (provider failure on session init) -- otherwise a student loses
+    a real session credit for a conversation that never happened. Mirrors the
+    increment's compare-and-swap so a concurrent request touching the same
+    counter can't be clobbered. Also deletes the session_usage row so a
+    retry can't reuse a session_id that was never really charged, and
+    is_first_ever_session/validate_session don't see a session that
+    officially never started."""
+    supabase = get_supabase()
+    for _ in range(MAX_INCREMENT_RETRIES):
+        profile = supabase.table("user_profiles").select(
+            "sessions_used_this_month, bonus_sessions"
+        ).eq("user_id", user_id).execute()
+        if not profile.data:
+            break
+        profile_data = profile.data[0]
+
+        if spent_bonus:
+            current = profile_data.get("bonus_sessions", 0)
+            result = (
+                supabase.table("user_profiles")
+                .update({"bonus_sessions": current + 1})
+                .eq("user_id", user_id)
+                .eq("bonus_sessions", current)
+                .execute()
+            )
+        else:
+            current = profile_data.get("sessions_used_this_month", 0)
+            if current <= 0:
+                # Already at 0 (e.g. month rolled over between charge and
+                # release) -- nothing to refund.
+                break
+            result = (
+                supabase.table("user_profiles")
+                .update({"sessions_used_this_month": current - 1})
+                .eq("user_id", user_id)
+                .eq("sessions_used_this_month", current)
+                .execute()
+            )
+        if result.data:
+            break
+    else:
+        logger.error(
+            "release_session_charge: gave up refunding after retries | user_id=%s session_id=%s",
+            user_id, session_id,
+        )
+
+    try:
+        supabase.table("session_usage").delete().eq("id", session_id).eq("user_id", user_id).execute()
+    except Exception:
+        logger.exception(
+            "release_session_charge: failed to delete session_usage row | user_id=%s session_id=%s",
+            user_id, session_id,
+        )
 
 
 def validate_session(user_id: str, session_id: int) -> bool:

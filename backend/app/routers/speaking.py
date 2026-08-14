@@ -38,7 +38,7 @@ from app.services.plan_gating import (
 from app.services import tts_service
 from app.services.cost_tracking import increment_session_cost, log_ai_usage
 from app.services.realtime.pricing import estimate_tts_cost
-from app.routers.sessions import check_and_increment_session, validate_session, is_first_ever_session, claim_session_for_scoring
+from app.routers.sessions import check_and_increment_session, validate_session, is_first_ever_session, claim_session_for_scoring, release_session_charge
 import websockets.exceptions as ws_exc
 
 logger = logging.getLogger(__name__)
@@ -817,13 +817,22 @@ async def chat_with_patient(
     missing or unrecognized session_id (whether forged or genuinely absent)
     always triggers a fresh quota check — the client's self-reported `history`
     is never trusted for billing purposes.
+
+    The quota is charged at session start (first turn), before the AI call --
+    if that first-turn AI call then fails, the charge is refunded via
+    release_session_charge so a provider outage never burns a real session
+    credit. A failure on a later turn of an already-charged session doesn't
+    touch quota at all, since no new charge was made for that turn.
     """
     session_id = request.session_id
     if session_id is not None and not await run_sync(validate_session, current_user.id, session_id):
         session_id = None
+    started_new_session = session_id is None
+    spent_bonus = False
     if session_id is None:
         usage = await run_sync(check_and_increment_session, current_user, user_db)
         session_id = usage["session_id"]
+        spent_bonus = usage["spent_bonus"]
 
     supabase = get_supabase()
 
@@ -842,15 +851,37 @@ async def chat_with_patient(
     # Build conversation history
     history = [{"role": msg.role, "content": msg.content} for msg in request.history]
 
-    # Get AI patient response
-    patient_reply = await get_patient_response(
-        interlocutor_card=interlocutor_card,
-        conversation_history=history,
-        nurse_message=request.message,
-        supabase=supabase,
-        user_id=current_user.id,
-        session_id=session_id,
-    )
+    # Get AI patient response. get_patient_response already converts expected
+    # provider errors into (reply, provider_failure=True) rather than raising --
+    # the except below is defense against a genuinely unexpected exception
+    # elsewhere in that path, so it never reaches the client as a raw 500.
+    try:
+        patient_reply, provider_failure = await get_patient_response(
+            interlocutor_card=interlocutor_card,
+            conversation_history=history,
+            nurse_message=request.message,
+            supabase=supabase,
+            user_id=current_user.id,
+            session_id=session_id,
+        )
+    except Exception:
+        logger.exception(
+            "chat_with_patient: unexpected AI failure | user_id=%s scenario_id=%s session_id=%s",
+            current_user.id, request.scenario_id, session_id,
+        )
+        provider_failure = True
+        patient_reply = None
+
+    if provider_failure:
+        if started_new_session:
+            await run_sync(release_session_charge, current_user.id, session_id, spent_bonus)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "ai_unavailable",
+                "message": "The AI patient is temporarily unavailable. Please try again in a moment.",
+            },
+        )
 
     # Update history
     updated_history = request.history + [
