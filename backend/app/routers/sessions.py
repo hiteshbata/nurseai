@@ -165,7 +165,7 @@ def check_and_increment_session(
             detail="Could not record session usage due to a conflicting request — please try again.",
         )
 
-    session_row = user_db.table("session_usage").insert({
+    session_row = supabase.table("session_usage").insert({
         "user_id": current_user.id,
         "session_type": "speaking",
         "created_at": datetime.now(timezone.utc).isoformat(),

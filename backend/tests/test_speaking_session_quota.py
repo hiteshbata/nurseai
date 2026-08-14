@@ -185,6 +185,32 @@ def test_check_and_increment_session_charges_one_credit(monkeypatch):
     assert len(state["session_usage"]) == 1
 
 
+class _PoisonUserDb:
+    """A user_db whose session_usage insert always raises, standing in for
+    the real authenticated client hitting RLS 42501 (no INSERT policy for
+    authenticated on session_usage). Asserts check_and_increment_session
+    performs the session_usage insert on the service-role `supabase` client
+    passed via get_supabase, not on the JWT-scoped user_db dependency."""
+
+    def table(self, name):
+        if name == "session_usage":
+            raise AssertionError("session_usage insert must not use user_db (RLS blocks authenticated INSERT)")
+        raise AssertionError(f"unexpected table {name!r} on user_db")
+
+
+def test_check_and_increment_session_inserts_via_service_role_client(monkeypatch):
+    state = _fresh_state(sessions_used=0)
+    fake = FakeSupabase(state)
+    monkeypatch.setattr(sessions_module, "get_supabase", lambda: fake)
+
+    usage = sessions_module.check_and_increment_session(
+        UserInfo(id="user-1", email="n@example.com"), _PoisonUserDb()
+    )
+
+    assert usage["allowed"] is True
+    assert len(state["session_usage"]) == 1
+
+
 def test_release_session_charge_refunds_plan_quota(monkeypatch):
     state = _fresh_state(sessions_used=1)
     state["session_usage"] = [{"id": 7, "user_id": "user-1", "session_type": "speaking"}]
