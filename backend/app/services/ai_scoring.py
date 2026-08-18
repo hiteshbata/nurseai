@@ -193,7 +193,7 @@ async def _call_ai(
 
         text = dispatched["text"]
         if json_mode:
-            parsed = _try_parse_json(candidate.model_name, text)
+            parsed = _try_parse_json(candidate.provider, candidate.model_name, text, dispatched.get("finish_reason"))
             result = parsed if parsed is not None else {"raw_feedback": text}
         else:
             result = {"raw_feedback": text}
@@ -229,19 +229,74 @@ def _raw_decode_object(text: str) -> dict:
     return parsed
 
 
-def _try_parse_json(model: str, content: str) -> dict | None:
+# Chars of context kept on each side of the JSON error position. Fixed and
+# small on purpose -- this is a diagnostic record, not a response backup;
+# raising it doesn't get you the failure any faster, it just puts more of
+# the AI response into log storage.
+_PARSE_DIAGNOSTIC_CONTEXT_RADIUS = 40
+
+
+def _build_parse_diagnostic(
+    provider: str, model: str, content: str, exc: json.JSONDecodeError, finish_reason: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Bounded, secret-safe record of a JSON parse failure -- never the full
+    response, just enough to find the failure next time: where it broke,
+    what shape the response had, and a hash to correlate against provider-
+    side logs without storing the response itself. Pure function (no I/O,
+    no logging) so its output size/contents can be asserted on directly in
+    tests, independent of the logging call site."""
+    pos = exc.pos
+    window_start = max(0, pos - _PARSE_DIAGNOSTIC_CONTEXT_RADIUS)
+    window_end = min(len(content), pos + _PARSE_DIAGNOSTIC_CONTEXT_RADIUS)
+    # redact_api_keys is defense in depth, not an admission this field is
+    # expected to contain secrets -- content here is always AI-generated
+    # draft/scoring text, never a credential.
+    context = redact_api_keys(content[window_start:window_end])
+    return {
+        "provider": provider,
+        "model": model,
+        "finish_reason": finish_reason,
+        "response_length": len(content),
+        "parse_error": exc.msg,
+        "error_pos": pos,
+        "context": context,
+        "truncated": not content.rstrip().endswith(("}", "]")),
+        "response_sha256": hashlib.sha256(content.encode("utf-8", errors="replace")).hexdigest(),
+    }
+
+
+def _log_parse_failure(
+    provider: str, model: str, content: str, exc: json.JSONDecodeError,
+    finish_reason: Optional[str] = None, note: str = "",
+) -> None:
+    """DIAGNOSTIC (local only -- see backend/tests/test_json_parse_diagnostics.py).
+    Logs only the bounded record from _build_parse_diagnostic -- the full
+    response is never logged, at any level, here or anywhere else in this
+    function."""
+    diagnostic = _build_parse_diagnostic(provider, model, content, exc, finish_reason)
+    logger.error("[SCORING_PARSE_FAILURE]%s %s", f" note={note}" if note else "", diagnostic)
+
+
+def _try_parse_json(provider: str, model: str, content: str, finish_reason: Optional[str] = None) -> dict | None:
     """Try to parse JSON from an AI response. Handles markdown code fences
-    and trailing content after a valid top-level JSON object."""
+    and trailing content after a valid top-level JSON object.
+
+    provider/finish_reason are for the failure-path diagnostic record only
+    (_build_parse_diagnostic) -- they don't affect what gets parsed or how;
+    the parsing logic below is unchanged from before they were added."""
     # First attempt: bare JSON (tolerating trailing data after the object)
+    stripped = content.strip()
     try:
-        parsed = _raw_decode_object(content.strip())
+        parsed = _raw_decode_object(stripped)
         logger.debug("[SCORING_PARSE_SUCCESS] model=%s keys=%s", model, list(parsed.keys()))
         return parsed
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError as first_exc:
+        # `except ... as e` deletes `e` when the block exits (Python behavior,
+        # not a bug here) -- rebind to a plain local so it survives to the
+        # diagnostic log call below.
+        bare_exc = first_exc
 
     # Second attempt: strip markdown code fences (```json ... ``` or ``` ... ```)
-    stripped = content.strip()
     if stripped.startswith("```"):
         lines = stripped.splitlines()
         # Remove first fence line (```json or ```)
@@ -258,13 +313,11 @@ def _try_parse_json(model: str, content: str) -> dict | None:
                 model, list(parsed.keys()),
             )
             return parsed
-        except json.JSONDecodeError:
-            logger.error("[SCORING_PARSE_FAILURE] model=%s fence_stripped_also_failed", model)
-            logger.debug("[SCORING_PARSE_FAILURE] raw_content=%s", content)
+        except json.JSONDecodeError as second_exc:
+            _log_parse_failure(provider, model, de_fenced, second_exc, finish_reason, note="fence_stripped_also_failed")
             return None
 
-    logger.error("[SCORING_PARSE_FAILURE] model=%s", model)
-    logger.debug("[SCORING_PARSE_FAILURE] raw_content=%s", content)
+    _log_parse_failure(provider, model, stripped, bare_exc, finish_reason)
     return None
 
 

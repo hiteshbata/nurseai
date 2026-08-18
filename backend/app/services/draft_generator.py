@@ -424,7 +424,15 @@ async def generate_draft(
     if result.get("provider_failure"):
         raise DraftGenerationError("The AI service is temporarily unavailable. Please try again.")
     if "raw_feedback" in result:
-        logger.warning("[draft_generator] JSON parse failed | module=%s raw_head=%s", module, str(result["raw_feedback"])[:500])
+        # DIAGNOSTIC (local only): the bounded parse-failure record (provider,
+        # model, finish_reason, length, error position/context, response
+        # hash) is already logged by ai_scoring._try_parse_json as
+        # [SCORING_PARSE_FAILURE] -- this just marks where in the request
+        # flow it surfaced. Deliberately no response content here: no
+        # raw_head, no full raw_feedback -- that content-bearing diagnostic
+        # exists in exactly one place (the bounded record above it), not
+        # duplicated across log lines.
+        logger.warning("[draft_generator] JSON parse failed | module=%s", module)
         raise DraftGenerationError("The AI response could not be read as valid content. Please try again.")
 
     content = {k: v for k, v in result.items() if k != "finish_reason"}
