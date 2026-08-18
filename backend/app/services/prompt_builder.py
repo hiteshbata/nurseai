@@ -64,7 +64,222 @@ def build_speaking_prompt(difficulty: str, specialty: str, topic: str, objective
     return _SYSTEM_HEADER, user
 
 
-def build_reading_prompt(difficulty: str, specialty: str, topic: str, objectives: Optional[str] = None, instructions: Optional[str] = None) -> Tuple[str, str]:
+
+# Part A's data contract (four texts, matching MCQs over the text labels,
+# short_answer word/phrase questions) mirrors the extraction contract proven
+# in READING_EXTRACT_PROMPT (backend/app/routers/reading.py). Reproduced here
+# rather than imported so the prompt builder doesn't couple to router code --
+# see Phase 3B-2 audit.
+#
+# Phase 3B-6A: the first controlled generation used inline "Text A: ..."
+# headers here, which PART_A_HEADER (backend/app/routers/reading.py) doesn't
+# match -- that regex requires the header on its own line, nothing after it
+# but optional punctuation. The schema/instructions below now demonstrate the
+# actual parser-compatible standalone-header form, and the question-count
+# guidance was tightened from "roughly 20" to the exact locked distribution
+# _validate_reading_part_a (app/services/draft_generator.py) enforces.
+_READING_PART_A_SCHEMA = """{
+  "title": "short descriptive title for this passage",
+  "part": "A",
+  "difficulty": "beginner|intermediate|advanced",
+  "body": "Text A\\n[Text A content]\\n\\nText B\\n[Text B content]\\n\\nText C\\n[Text C content]\\n\\nText D\\n[Text D content]",
+  "questions": [
+    {"content": "In which text can you find information about...?", "type": "mcq", "options": ["Text A", "Text B", "Text C", "Text D"], "correct_answer": "Text B"},
+    {"content": "sentence-completion or short-answer question text", "type": "short_answer", "options": [], "correct_answer": "reference answer text"}
+  ]
+}"""
+
+_READING_PART_A_INSTRUCTIONS = (
+    "Create an original OET Reading Part A task -- a distinct multi-text task, NOT a single passage like Part B "
+    "or C. Part A consists of FOUR separate short texts on a shared clinical topic, labelled Text A, Text B, "
+    "Text C and Text D. Put all four in \"body\", concatenated in order. Each text's header MUST be on its own "
+    "line by itself -- just \"Text A\" (or \"Text B\"/\"Text C\"/\"Text D\"), nothing else on that line, no colon, "
+    "no content appended after it. The text's content starts on the NEXT line. Example body structure:\n\n"
+    "Text A\n[Text A content]\n\nText B\n[Text B content]\n\nText C\n[Text C content]\n\nText D\n[Text D content]\n\n"
+    "Do NOT put a colon or any content on the header line itself, and do NOT start the text on the same line as "
+    "the header -- a header sharing its line with content is rejected. "
+    "Each text should be original, authentic healthcare content (e.g. extracts from clinical guidelines, drug "
+    "information, hospital policy, or care protocols) in the requested specialty/topic.\n\n"
+    "Text heading wording: do NOT give a text a heading/title that echoes the wording of the matching question "
+    "written about it -- e.g. if a question asks about \"acceptable blood glucose targets\", do not title that "
+    "text \"Inpatient Glycaemic Targets\". A candidate must not be able to answer a matching question by keyword-"
+    "matching the heading alone; the requested information must still be clearly present in the text's body, just "
+    "not restated in its heading.\n\n"
+    "Source/style diversity: vary the four texts' presentation style so they read like they came from different "
+    "real healthcare sources rather than four copies of the same bullet-point protocol -- e.g. a guideline "
+    "extract, hospital policy excerpt, medication/drug information sheet, patient-management protocol, a "
+    "table-like reference, a clinical memo, or a checklist, as naturally fits the topic. Do not force every style "
+    "every time and do not add decorative formatting purely for variety -- only use structure that would "
+    "realistically occur in that kind of source. All four texts must still cohere around the same clinical "
+    "topic.\n\n"
+    "Generate EXACTLY 20 questions total, all answerable from the four texts, in this EXACT order and distribution:\n\n"
+    "Q1-Q5: EXACTLY 5 matching MCQs (\"In which text can you find information about...?\" / \"Which text "
+    "mentions...?\"). type=\"mcq\", options exactly [\"Text A\", \"Text B\", \"Text C\", \"Text D\"], "
+    "correct_answer one of those four labels. Phrase each question as a paraphrase or description of information "
+    "found in the text, not a copy of its heading.\n"
+    "Q6-Q13: EXACTLY 8 sentence-completion short-answer questions (a sentence with a gap, answered with a word or "
+    "short phrase from one of the texts). type=\"short_answer\", options=[] (empty array), correct_answer = the "
+    "reference word or phrase as plain text. Before finalizing each one, check that QUESTION + CORRECT_ANSWER "
+    "reads as one grammatically natural sentence when the answer is inserted into the blank -- reword the gap if "
+    "it doesn't.\n"
+    "Q14-Q20: EXACTLY 7 direct short-answer questions (a direct question answered with a word or short phrase "
+    "from one of the texts). type=\"short_answer\", options=[] (empty array), correct_answer = the reference word "
+    "or phrase as plain text.\n\n"
+    "Unique answers (Q6-Q20): every short_answer question must have exactly one reasonably defensible "
+    "correct_answer from the texts. If the text supports more than one valid answer (e.g. \"give the medication "
+    "intramuscularly or subcutaneously\"), do NOT write a question whose blank only one of those would fill -- "
+    "either ask for the full phrase covering all valid options (\"which two routes...?\", answer \"intramuscularly "
+    "or subcutaneously\") or ask about a different, single-valued detail instead. Never let correct_answer be just "
+    "one of several possible answers the text supports.\n\n"
+    "Do NOT generate additional MCQs beyond Q1-Q5. Do NOT change this order. Do NOT merge or split these three "
+    "groups. Final distribution must be exactly 5 mcq + 15 short_answer = 20 questions -- not 6, not 7, not "
+    "approximately 20.\n\n"
+    "Do not invent a different Part A format or question type -- use only \"mcq\" (matching) and \"short_answer\" "
+    "as described above."
+)
+
+# Part B's data contract (Phase 4A): SIX independent short extracts, each its
+# own passage with exactly one 3-option mcq question. Container shape ("part"
+# + "passages": [...]) is deliberately NOT the flat title/body/questions shape
+# every other module builder uses -- one Part B generation is six independent
+# production rows (matching how PDF extraction already saves Part B: six
+# separate reading_passages rows, see READING_EXTRACT_PROMPT in
+# app/routers/reading.py), not one row like Part A's four-texts-in-one-body
+# packing. _validate_reading_part_b (app/services/draft_generator.py) enforces
+# this shape structurally. Publishing six rows from one draft is out of scope
+# for this phase -- see draft_generator.py's Part B section for details.
+_READING_PART_B_SCHEMA = """{
+  "part": "B",
+  "passages": [
+    {
+      "title": "short descriptive title for this extract",
+      "body": "the short independent workplace-healthcare text extract",
+      "questions": [
+        {"content": "the single question about this extract", "type": "mcq", "options": ["option A text", "option B text", "option C text"], "correct_answer": "must match one option exactly"}
+      ]
+    }
+  ]
+}"""
+
+_READING_PART_B_INSTRUCTIONS = (
+    "Create an original OET Reading Part B task -- EXACTLY 6 independent short workplace-healthcare extracts, "
+    "NOT one long passage like Part C or the default reading task, and NOT four texts sharing one topic like "
+    "Part A. Return them as 6 separate entries in \"passages\", each with its own \"title\", \"body\", and "
+    "\"questions\" array.\n\n"
+    "Each extract is a short standalone workplace document, roughly 80-150 words. Vary the source style across "
+    "the six extracts rather than repeating the same style -- appropriate styles include a hospital policy "
+    "excerpt, clinical guideline extract, medication information sheet, workplace memo, instruction/procedure "
+    "sheet, notice, checklist, or professional communication (e.g. an email or handover note). Do not force "
+    "decorative formatting that wouldn't naturally occur in that kind of real document. Keep each extract fully "
+    "independent -- do not make one extract necessary to understand or answer another.\n\n"
+    "Each extract is followed by EXACTLY ONE question, in that extract's own \"questions\" array (a list of "
+    "exactly 1 item). Every question has type=\"mcq\" with EXACTLY 3 options representing choices A, B and C, and "
+    "correct_answer must exactly match one of those 3 option strings, character for character. No short_answer "
+    "questions anywhere in Part B.\n\n"
+    "Each question must test understanding, application, or inference of its own extract's content -- not a "
+    "detail copied verbatim, and not answerable from outside knowledge. The correct option must not be obvious "
+    "merely from a heading or label; a candidate must read the extract's body to distinguish the correct option "
+    "from the other two. Exactly one option may be defensible as correct -- avoid wording that leaves two options "
+    "both arguably right. Do not repeat the same question, extract topic, or answer content across the six "
+    "extracts.\n\n"
+    "Return exactly 6 passages, each with exactly 1 mcq question and exactly 3 options -- not 5, not 7, not a "
+    "different question or option count."
+)
+
+
+# Part C's data contract (Phase 4C-3): exactly 2 independent long-form
+# texts, each its own passage with exactly 8 mcq questions (4 options each).
+# Shape mirrors Part B's container ("part" + a list of entries), not Part A's
+# single-body packing -- one Part C generation is two independent production
+# rows (reading_passages, passage_seq 0/1), reusing the multi-passage
+# publishing architecture Part B already established. See
+# _validate_reading_part_c (draft_generator.py) for the structural gate and
+# draft_publisher.py's _reading_part_c_payloads for the publish mapping.
+_READING_PART_C_SCHEMA = """{
+  "part": "C",
+  "texts": [
+    {
+      "title": "short descriptive title for this text",
+      "body": "the first independent journalistic/feature-style healthcare text",
+      "questions": [
+        {"content": "question text", "type": "mcq", "options": ["option 1", "option 2", "option 3", "option 4"], "correct_answer": "must match one option exactly"}
+      ]
+    },
+    {
+      "title": "short descriptive title for this text",
+      "body": "the second independent journalistic/feature-style healthcare text, on a different topic",
+      "questions": [
+        {"content": "question text", "type": "mcq", "options": ["option 1", "option 2", "option 3", "option 4"], "correct_answer": "must match one option exactly"}
+      ]
+    }
+  ]
+}"""
+
+_READING_PART_C_INSTRUCTIONS = (
+    "Create an original OET Reading Part C task -- EXACTLY 2 independent long-form texts, NOT one long passage "
+    "shared between them, and NOT six short extracts like Part B. Return them as 2 separate entries in \"texts\", "
+    "each with its own \"title\", \"body\", and \"questions\" array. The two texts must cover distinct topics and "
+    "must not duplicate each other's subject matter -- do not write two angles on the same story.\n\n"
+    "Write each text in an authentic journalistic/feature-style healthcare register -- e.g. a magazine feature, "
+    "professional-body news article, or health-affairs commentary -- not a clinical guideline or textbook extract. "
+    "Aim for approximately 800-1000 words per text as a general target; this is guidance for realistic length, not "
+    "an exact figure to hit precisely. You may bold or otherwise mark a phrase in the text where it naturally helps "
+    "a reader locate an answer, but do not force a fixed number of marked phrases -- use them only where useful, "
+    "including not at all.\n\n"
+    "Each text is followed by EXACTLY 8 questions, in that text's own \"questions\" array. Questions 1-7 MUST "
+    "progress strictly forward through the text in chronological order -- question 1 targets the earliest "
+    "paragraph its information appears in, and each subsequent question up to question 7 targets a paragraph at "
+    "the same position or later than the one before it. Once a question targets a later paragraph, no later "
+    "question among Q1-Q7 may go back to an earlier paragraph.\n\n"
+    "Question 8 is different: it MUST be a whole-text question assessing the overall purpose, main theme, central "
+    "argument, overall conclusion, or the author's overall message of the ENTIRE text -- not a detail from any "
+    "single paragraph. Question 8 must NOT refer to a specific paragraph, the final paragraph, a specific "
+    "sentence, a specific example, or a specific person or study named in the text. Do not phrase question 8 as "
+    "\"In the final paragraph...\", \"According to paragraph 7...\", \"What does the author say about X in "
+    "paragraph...\", or any other wording that points to a specific paragraph or location in the text. Question 8 "
+    "must remain the last question in the array.\n\n"
+    "Every question has type=\"mcq\" with EXACTLY 4 options, and correct_answer must "
+    "exactly match one of those 4 option strings, character for character. Never write a question about one text "
+    "that requires information from the other text -- each text's questions must be answerable from that text "
+    "alone.\n\n"
+    "Mix question types across each text's 8 questions -- retrieval of a specific detail, inference, the purpose "
+    "of a statement or paragraph, the significance of a fact, and reference (what a word/phrase refers back to) -- "
+    "rather than making all 8 direct detail lookups. Do not write pure vocabulary questions that only ask what a "
+    "word means in isolation; every question must test understanding of the text's content. The correct option "
+    "must not be guessable from a heading alone, and distractors must be plausible, paragraph-level near-misses "
+    "(drawn from real content elsewhere in the same paragraph or text) rather than obviously wrong filler. Exactly "
+    "one option may be defensible as correct per question -- avoid wording that leaves two options both arguably "
+    "right.\n\n"
+    "Return exactly 2 texts, each with exactly 8 mcq questions and exactly 4 options per question -- not 1, not 3, "
+    "not a different question or option count. 2 texts x 8 questions = 16 questions total."
+)
+
+
+def build_reading_prompt(difficulty: str, specialty: str, topic: str, objectives: Optional[str] = None, instructions: Optional[str] = None, part: Optional[str] = None) -> Tuple[str, str]:
+    if part == "A":
+        user = (
+            f"{_READING_PART_A_INSTRUCTIONS}\n"
+            f"{_shared_context(difficulty, specialty, topic, objectives, instructions)}\n\n{_DIVERSITY_HINT}"
+            f"\n\nReturn ONLY this JSON:\n{_READING_PART_A_SCHEMA}"
+        )
+        return _SYSTEM_HEADER, user
+
+    if part == "B":
+        user = (
+            f"{_READING_PART_B_INSTRUCTIONS}\n"
+            f"{_shared_context(difficulty, specialty, topic, objectives, instructions)}\n\n{_DIVERSITY_HINT}"
+            f"\n\nReturn ONLY this JSON:\n{_READING_PART_B_SCHEMA}"
+        )
+        return _SYSTEM_HEADER, user
+
+    if part == "C":
+        user = (
+            f"{_READING_PART_C_INSTRUCTIONS}\n"
+            f"{_shared_context(difficulty, specialty, topic, objectives, instructions)}\n\n{_DIVERSITY_HINT}"
+            f"\n\nReturn ONLY this JSON:\n{_READING_PART_C_SCHEMA}"
+        )
+        return _SYSTEM_HEADER, user
+
     schema = """{
   "title": "short descriptive title for this passage",
   "part": "A, B, or C",
@@ -176,8 +391,12 @@ BUILDERS: Dict[str, Callable[..., Tuple[str, str]]] = {
 }
 
 
-def build_prompt(module: str, difficulty: str, specialty: str, topic: str, objectives: Optional[str] = None, instructions: Optional[str] = None) -> Tuple[str, str]:
+def build_prompt(module: str, difficulty: str, specialty: str, topic: str, objectives: Optional[str] = None, instructions: Optional[str] = None, part: Optional[str] = None) -> Tuple[str, str]:
     builder = BUILDERS.get(module)
     if builder is None:
         raise ValueError(f"Unknown module: {module}")
+    # Only build_reading_prompt accepts `part` -- every other module builder's
+    # signature is unchanged, so `part` must not reach them.
+    if module == "reading":
+        return builder(difficulty, specialty, topic, objectives, instructions, part=part)
     return builder(difficulty, specialty, topic, objectives, instructions)

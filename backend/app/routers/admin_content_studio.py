@@ -20,7 +20,7 @@ untouched, still admin-only.
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.supabase import get_supabase
@@ -65,6 +65,12 @@ def get_item(module: str, item_id: int, current_user: UserInfo = Depends(require
 
 # ── AI DRAFT GENERATOR (RC3.2) ────────────────────────────────────────
 
+# "A", "B", and "C" are wired to real prompt branches/validators (Phase
+# 3B-5, 4A, 4C-3) -- reject anything else rather than silently dropping or
+# coercing it.
+_VALID_READING_PARTS = {"A", "B", "C"}
+
+
 class GenerateDraftsRequest(BaseModel):
     module: str
     difficulty: str = Field(min_length=1, max_length=50)
@@ -73,6 +79,13 @@ class GenerateDraftsRequest(BaseModel):
     objectives: Optional[str] = Field(default=None, max_length=1000)
     instructions: Optional[str] = Field(default=None, max_length=1000)
     count: int = Field(default=1, ge=1, le=3)
+    part: Optional[str] = Field(default=None, max_length=1)
+
+    @model_validator(mode="after")
+    def _validate_reading_part(self):
+        if self.module == "reading" and self.part is not None and self.part not in _VALID_READING_PARTS:
+            raise ValueError(f"part must be one of {sorted(_VALID_READING_PARTS)} for reading; got '{self.part}'")
+        return self
 
 
 @router.post("/generate")
@@ -91,7 +104,7 @@ async def generate_drafts(req: GenerateDraftsRequest, current_user: UserInfo = D
             draft = await draft_generator.generate_draft(
                 module=req.module, difficulty=req.difficulty, specialty=req.specialty,
                 topic=req.topic, objectives=req.objectives, instructions=req.instructions,
-                admin_user_id=current_user.id,
+                admin_user_id=current_user.id, part=req.part,
             )
             results.append({"success": True, **draft})
         except draft_generator.DraftGenerationError as e:
@@ -100,7 +113,7 @@ async def generate_drafts(req: GenerateDraftsRequest, current_user: UserInfo = D
     _write_audit_log(
         supabase, current_user, "draft_generated", "generated_content_draft",
         target_label=req.topic,
-        detail={"module": req.module, "count": req.count, "difficulty": req.difficulty, "specialty": req.specialty},
+        detail={"module": req.module, "count": req.count, "difficulty": req.difficulty, "specialty": req.specialty, "part": req.part},
     )
     return {"results": results}
 

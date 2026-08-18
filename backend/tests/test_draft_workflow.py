@@ -3,6 +3,7 @@ and the publish payload mapping (draft_publisher). Uses a minimal in-memory
 fake of the Supabase query builder -- enough to exercise the branch logic
 without a real DB.
 """
+import json
 import sys
 from pathlib import Path
 
@@ -28,10 +29,11 @@ class _NotProxy:
 
 
 class FakeQuery:
-    def __init__(self, rows, table_name=None, enforce_source_draft_unique=False, supabase=None):
+    def __init__(self, rows, table_name=None, enforce_source_draft_unique=False, unique_cols=("source_draft_id",), supabase=None):
         self._rows = rows
         self._table_name = table_name
         self._enforce_source_draft_unique = enforce_source_draft_unique
+        self._unique_cols = unique_cols
         self._supabase = supabase
         self._filters = []
         self._in_filters = []
@@ -100,14 +102,26 @@ class FakeQuery:
                 if fail_at is not None and counts[self._table_name] == fail_at:
                     raise Exception(f"simulated insert failure on {self._table_name} (call #{fail_at})")
             # Mirrors reading_passages_source_draft_uidx / listening_sections_source_draft_uidx
-            # (20260808050000_draft_review_workflow.sql) -- a partial unique index on
-            # source_draft_id, null-safe (legacy rows with no source_draft_id never conflict).
+            # (20260808050000_draft_review_workflow.sql, widened by
+            # 20260816000000_reading_part_b_multi_passage.sql) -- a partial unique index,
+            # null-safe (legacy rows with no source_draft_id never conflict). reading_passages'
+            # index is (source_draft_id, passage_seq) so a Part B draft's 6 passages (seq 0-5)
+            # can share one source_draft_id; listening_sections stays source_draft_id alone.
             if self._enforce_source_draft_unique:
                 sdid = self._payload.get("source_draft_id")
-                if sdid is not None and any(r.get("source_draft_id") == sdid for r in self._rows):
-                    raise Exception(
-                        f'duplicate key value violates unique constraint "{self._table_name}_source_draft_uidx"'
-                    )
+                if sdid is not None:
+                    if self._unique_cols == ("source_draft_id", "passage_seq"):
+                        seq = self._payload.get("passage_seq", 0)
+                        conflict = any(
+                            r.get("source_draft_id") == sdid and r.get("passage_seq", 0) == seq
+                            for r in self._rows
+                        )
+                    else:
+                        conflict = any(r.get("source_draft_id") == sdid for r in self._rows)
+                    if conflict:
+                        raise Exception(
+                            f'duplicate key value violates unique constraint "{self._table_name}_source_draft_uidx"'
+                        )
             new_id = max([r.get("id", 0) for r in self._rows], default=0) + 1
             row = {"id": new_id, **self._payload}
             self._rows.append(row)
@@ -129,7 +143,10 @@ class FakeSupabase:
     # Only these two tables get the new partial unique index -- scenarios
     # stays protected by its existing title uniqueness instead (see the
     # migration comment), so it's deliberately not in this set.
-    UNIQUE_SOURCE_DRAFT_TABLES = {"reading_passages", "listening_sections"}
+    UNIQUE_SOURCE_DRAFT_TABLES = {
+        "reading_passages": ("source_draft_id", "passage_seq"),
+        "listening_sections": ("source_draft_id",),
+    }
 
     def __init__(self):
         self.tables = {}
@@ -142,6 +159,7 @@ class FakeSupabase:
         return FakeQuery(
             self.tables[name], table_name=name, supabase=self,
             enforce_source_draft_unique=name in self.UNIQUE_SOURCE_DRAFT_TABLES,
+            unique_cols=self.UNIQUE_SOURCE_DRAFT_TABLES.get(name, ("source_draft_id",)),
         )
 
 
@@ -276,20 +294,26 @@ def test_reading_payload_preserves_part_a():
     assert questions == []
 
 
-def test_reading_payload_preserves_part_b():
+def test_reading_payload_rejects_part_b_as_a_single_combined_passage():
+    """Part B is 6 independent passages (_reading_part_b_payloads), never
+    one -- _reading_payload must refuse it instead of silently combining
+    the 6 into a single row."""
     draft = _draft(module="reading", generated_content={
-        "title": "A passage", "part": "B", "body": "text", "questions": [],
+        "part": "B", "passages": [],
     })
-    passage, _ = draft_publisher._reading_payload(draft)
-    assert passage["part"] == "B"
+    try:
+        draft_publisher._reading_payload(draft)
+        assert False, "expected InvalidPartError"
+    except draft_publisher.InvalidPartError:
+        pass
 
 
 def test_reading_payload_preserves_part_c():
     draft = _draft(module="reading", generated_content={
-        "title": "A passage", "part": "C", "body": "text", "questions": [],
+        "title": "A passage", "part": "A", "body": "text", "questions": [],
     })
     passage, _ = draft_publisher._reading_payload(draft)
-    assert passage["part"] == "C"
+    assert passage["part"] == "A"
 
 
 def test_reading_payload_rejects_invalid_part_instead_of_silently_converting():
@@ -331,7 +355,7 @@ def test_listening_payload_defaults_missing_part_to_b():
 
 def test_reading_payload_starts_inactive():
     draft = _draft(module="reading", generated_content={
-        "title": "A passage", "part": "B", "body": "text", "questions": [],
+        "title": "A passage", "part": "A", "body": "text", "questions": [],
     })
     passage, _ = draft_publisher._reading_payload(draft)
     assert passage["is_active"] is False
@@ -362,7 +386,7 @@ def test_published_reading_content_starts_inactive_and_hidden_from_students(monk
     fake = FakeSupabase()
     monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
     draft = _draft(module="reading", generated_content={
-        "title": "New passage", "part": "B", "body": "text",
+        "title": "New passage", "part": "A", "body": "text",
         "questions": [{"type": "mcq", "content": "q1", "options": ["a", "b"], "correct_answer": "a"}],
     })
     result = draft_publisher.publish(draft, "admin-1")
@@ -408,7 +432,7 @@ def test_reading_publish_succeeds_first_time(monkeypatch):
     fake = FakeSupabase()
     monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
     draft = _draft(module="reading", generated_content={
-        "title": "First publish", "part": "B", "body": "text", "questions": [],
+        "title": "First publish", "part": "A", "body": "text", "questions": [],
     })
     result = draft_publisher.publish(draft, "admin-1")
     assert result["table"] == "reading_passages"
@@ -427,7 +451,7 @@ def test_reading_republish_of_unchanged_draft_updates_not_duplicates(monkeypatch
     fake = FakeSupabase()
     monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
     draft = _draft(id=42, module="reading", generated_content={
-        "title": "Race condition", "part": "B", "body": "text", "questions": [],
+        "title": "Race condition", "part": "A", "body": "text", "questions": [],
     })
     first = draft_publisher.publish(draft, "admin-1")
     second = draft_publisher.publish(draft, "admin-2")
@@ -464,7 +488,7 @@ def test_legacy_rows_with_null_source_draft_id_unaffected(monkeypatch):
     monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
 
     reading_draft = _draft(id=44, module="reading", generated_content={
-        "title": "New passage", "part": "B", "body": "text", "questions": [],
+        "title": "New passage", "part": "A", "body": "text", "questions": [],
     })
     listening_draft = _draft(id=45, module="listening", generated_content={
         "title": "New section", "transcript": [], "questions": [],
@@ -565,7 +589,7 @@ def test_reading_full_republish_lifecycle(monkeypatch):
     fake.tables["generated_content_drafts"] = [_draft(
         id=1, status="approved", module="reading",
         generated_content={
-            "title": "V1", "part": "B", "body": "first version",
+            "title": "V1", "part": "A", "body": "first version",
             "questions": [{"type": "mcq", "content": "q1", "options": ["a", "b"], "correct_answer": "a"}],
         },
     )]
@@ -581,7 +605,7 @@ def test_reading_full_republish_lifecycle(monkeypatch):
     fake.tables["reading_passages"][0]["is_active"] = True
 
     updated = draft_store.update_content(1, generated_content={
-        "title": "V2", "part": "B", "body": "corrected version",
+        "title": "V2", "part": "A", "body": "corrected version",
         "questions": [{"type": "mcq", "content": "q1-fixed", "options": ["a", "b"], "correct_answer": "b"}],
     }, editor_id="analyst-1")
     assert updated["status"] == "review"
@@ -740,7 +764,7 @@ def test_replace_questions_normal_swap_keeps_only_new(monkeypatch):
         {"id": 101, "passage_id": 1, "content": "old-2"},
     ]
     draft = _draft(id=9, module="reading", generated_content={
-        "title": "T", "part": "B", "body": "b",
+        "title": "T", "part": "A", "body": "b",
         "questions": [{"type": "mcq", "content": "new-1", "options": ["a", "b"], "correct_answer": "a"}],
     })
     result = draft_publisher.publish(draft, "owner-1")
@@ -759,7 +783,7 @@ def test_replace_questions_fails_on_first_insert_leaves_old_intact(monkeypatch):
     ]
     fake.fail_insert_on_call["questions"] = 1  # the very first new-question insert fails
     draft = _draft(id=9, module="reading", generated_content={
-        "title": "T", "part": "B", "body": "b",
+        "title": "T", "part": "A", "body": "b",
         "questions": [{"type": "mcq", "content": "new-1", "options": ["a"], "correct_answer": "a"}],
     })
     try:
@@ -781,7 +805,7 @@ def test_replace_questions_fails_halfway_cleans_up_partial_new_rows(monkeypatch)
     ]
     fake.fail_insert_on_call["questions"] = 3  # A, B succeed; C fails
     draft = _draft(id=9, module="reading", generated_content={
-        "title": "T", "part": "B", "body": "b",
+        "title": "T", "part": "A", "body": "b",
         "questions": [
             {"type": "mcq", "content": "new-A", "options": ["a"], "correct_answer": "a"},
             {"type": "mcq", "content": "new-B", "options": ["a"], "correct_answer": "a"},
@@ -808,7 +832,7 @@ def test_replace_questions_fails_deleting_old_cleans_up_new_rows(monkeypatch):
     ]
     fake.fail_next_delete.add("questions")  # old-set delete fails, after the new set is fully inserted
     draft = _draft(id=9, module="reading", generated_content={
-        "title": "T", "part": "B", "body": "b",
+        "title": "T", "part": "A", "body": "b",
         "questions": [{"type": "mcq", "content": "new-1", "options": ["a"], "correct_answer": "a"}],
     })
     try:
@@ -846,6 +870,457 @@ def test_replace_questions_listening_fails_halfway_cleans_up_partial_new_rows(mo
         assert "simulated insert failure" in str(e)
     remaining = sorted(q["content"] for q in fake.tables["questions"] if q["section_id"] == 1)
     assert remaining == ["old-1", "old-2"]
+
+
+# ── Part B: 6 independent passages from one draft (Phase 4B) ───────────
+# reading_passages_source_draft_uidx is now (source_draft_id, passage_seq)
+# (20260816000000_reading_part_b_multi_passage.sql) instead of source_draft_id
+# alone, specifically so these 6 rows can share one source_draft_id without
+# the Model-A guard above (Blocker 1) rejecting the 2nd..6th insert. Part A
+# is untouched: its passage_seq is always the DB default (0), so it still
+# gets exactly the one-row-per-draft guarantee the old index gave. Part C
+# (Phase 4C-3) reuses this same multi-passage architecture -- see the Part C
+# section further below.
+
+def _part_b_passages(n=6):
+    return [
+        {
+            "title": f"Extract {i + 1}",
+            "body": f"Body text for extract {i + 1}.",
+            "questions": [{
+                "type": "mcq",
+                "content": f"What does extract {i + 1} say?",
+                "options": ["Option A", "Option B", "Option C"],
+                "correct_answer": "Option B",
+            }],
+        }
+        for i in range(n)
+    ]
+
+
+def _part_b_content(passages=None):
+    return {"part": "B", "passages": _part_b_passages() if passages is None else passages}
+
+
+def test_part_b_payloads_builds_six_passages_with_seq_and_content_preserved():
+    draft = _draft(id=50, module="reading", generated_content=_part_b_content())
+    payloads = draft_publisher._reading_part_b_payloads(draft)
+    assert len(payloads) == 6
+    for i, (passage, questions) in enumerate(payloads):
+        assert passage["part"] == "B"
+        assert passage["passage_seq"] == i
+        assert passage["title"] == f"Extract {i + 1}"
+        assert passage["body"] == f"Body text for extract {i + 1}."
+        assert passage["source_draft_id"] == 50
+        assert passage["is_active"] is False
+        assert len(questions) == 1
+        assert questions[0]["options"] == ["Option A", "Option B", "Option C"]
+        assert questions[0]["correct_answer"] == "Option B"
+
+
+def test_part_b_payloads_rejects_wrong_passage_count():
+    """Proves a malformed draft (wrong passage count) can't reach the
+    publisher successfully -- it fails loudly at the payload-building step,
+    same as _reading_payload's InvalidPartError for Part A/C."""
+    draft = _draft(module="reading", generated_content=_part_b_content(_part_b_passages(5)))
+    try:
+        draft_publisher._reading_part_b_payloads(draft)
+        assert False, "expected InvalidPartError"
+    except draft_publisher.InvalidPartError:
+        pass
+
+
+def test_part_b_publish_creates_exactly_six_passages_all_part_b(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=60, module="reading", generated_content=_part_b_content())
+
+    result = draft_publisher.publish(draft, "owner-1")
+
+    rows = fake.tables["reading_passages"]
+    assert len(rows) == 6
+    assert {r["part"] for r in rows} == {"B"}
+    assert sorted(r["passage_seq"] for r in rows) == [0, 1, 2, 3, 4, 5]
+    assert result["table"] == "reading_passages"
+    assert result["action"] == "created"
+    assert len(result["passages"]) == 6
+
+
+def test_part_b_publish_each_passage_has_exactly_one_question_with_three_options(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=61, module="reading", generated_content=_part_b_content())
+    draft_publisher.publish(draft, "owner-1")
+
+    for passage in fake.tables["reading_passages"]:
+        qs = [q for q in fake.tables["questions"] if q.get("passage_id") == passage["id"]]
+        assert len(qs) == 1
+        assert len(json.loads(qs[0]["options"])) == 3
+
+
+def test_part_b_publish_correct_answer_survives_unchanged(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    passages = _part_b_passages()
+    passages[3]["questions"][0]["correct_answer"] = "Option C"
+    draft = _draft(id=62, module="reading", generated_content=_part_b_content(passages))
+    draft_publisher.publish(draft, "owner-1")
+
+    by_seq = {r["passage_seq"]: r["id"] for r in fake.tables["reading_passages"]}
+    q = next(q for q in fake.tables["questions"] if q["passage_id"] == by_seq[3])
+    assert q["correct_answer"] == "Option C"
+
+
+def test_part_b_publish_titles_and_bodies_survive_unchanged(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=63, module="reading", generated_content=_part_b_content())
+    draft_publisher.publish(draft, "owner-1")
+
+    rows_by_seq = {r["passage_seq"]: r for r in fake.tables["reading_passages"]}
+    for i in range(6):
+        assert rows_by_seq[i]["title"] == f"Extract {i + 1}"
+        assert rows_by_seq[i]["body"] == f"Body text for extract {i + 1}."
+
+
+def test_part_b_publish_questions_linked_to_their_own_passage_only(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=64, module="reading", generated_content=_part_b_content())
+    draft_publisher.publish(draft, "owner-1")
+
+    rows_by_seq = {r["passage_seq"]: r for r in fake.tables["reading_passages"]}
+    for i in range(6):
+        qs = [q for q in fake.tables["questions"] if q.get("passage_id") == rows_by_seq[i]["id"]]
+        assert len(qs) == 1
+        assert qs[0]["content"] == f"What does extract {i + 1} say?"
+
+
+def test_part_b_publish_all_six_share_same_source_draft_id(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=65, module="reading", generated_content=_part_b_content())
+    draft_publisher.publish(draft, "owner-1")
+
+    assert all(r["source_draft_id"] == 65 for r in fake.tables["reading_passages"])
+
+
+def test_part_a_publish_still_creates_exactly_one_row(monkeypatch):
+    """Part A is untouched by the Part B changes -- still one row, one draft."""
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=66, module="reading", generated_content={
+        "title": "Part A passage", "part": "A", "body": "text", "questions": [],
+    })
+    result = draft_publisher.publish(draft, "owner-1")
+    assert len(fake.tables["reading_passages"]) == 1
+    assert result["action"] == "created"
+
+
+def test_reading_payload_rejects_part_c_as_a_single_combined_passage():
+    """Phase 4C-3 -- Part C is now 2 independent passages (like Part B), not
+    one combined passage; _reading_payload must reject it just like Part B."""
+    draft = _draft(id=67, module="reading", generated_content={
+        "title": "Part C passage", "part": "C", "body": "text", "questions": [],
+    })
+    try:
+        draft_publisher._reading_payload(draft)
+        assert False, "expected InvalidPartError"
+    except draft_publisher.InvalidPartError:
+        pass
+
+
+def test_part_b_publish_preview_returns_all_six_passages(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=68, module="reading", generated_content=_part_b_content())
+
+    preview = draft_publisher.build_preview(draft)
+
+    passage_records = [r for r in preview["records"] if r["table"] == "reading_passages"]
+    assert len(passage_records) == 6
+    assert all(r["fields"]["part"] == "B" for r in passage_records)
+    assert all(r["action"] == "create" for r in passage_records)
+    assert sorted(r["fields"]["passage_seq"] for r in passage_records) == [0, 1, 2, 3, 4, 5]
+    assert len(fake.tables["reading_passages"]) == 0  # preview writes nothing
+
+
+def test_part_b_republish_of_unchanged_draft_updates_not_duplicates(monkeypatch):
+    """Same idempotency guarantee as the single-passage Blocker-1 tests above,
+    extended to all 6 rows -- a double-click/retry publish must UPDATE the
+    same 6 rows, never create a 2nd set of 6."""
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=69, module="reading", generated_content=_part_b_content())
+
+    first = draft_publisher.publish(draft, "admin-1")
+    second = draft_publisher.publish(draft, "admin-2")
+
+    assert first["action"] == "created"
+    assert second["action"] == "updated"
+    assert len(fake.tables["reading_passages"]) == 6  # still 6, not 12
+    first_ids = sorted(p["id"] for p in first["passages"])
+    second_ids = sorted(p["id"] for p in second["passages"])
+    assert first_ids == second_ids
+
+
+def test_part_b_republish_after_edit_updates_all_six_rows_in_place(monkeypatch):
+    fake = _shared_fake(monkeypatch)
+    fake.tables["generated_content_drafts"] = [_draft(
+        id=70, status="approved", module="reading", generated_content=_part_b_content(),
+    )]
+
+    draft = draft_store.get_draft(70)
+    first = draft_publisher.publish(draft, "owner-1")
+    draft_store.mark_published(70, "owner-1")
+    assert len(fake.tables["reading_passages"]) == 6
+
+    edited_passages = _part_b_passages()
+    edited_passages[0]["title"] = "Extract 1 (revised)"
+    edited_passages[0]["questions"][0]["correct_answer"] = "Option A"
+    draft_store.update_content(70, generated_content=_part_b_content(edited_passages), editor_id="analyst-1")
+    draft_store.approve(70, "admin-1")
+
+    draft = draft_store.get_draft(70)
+    second = draft_publisher.publish(draft, "owner-1")
+
+    assert second["action"] == "updated"
+    assert len(fake.tables["reading_passages"]) == 6  # still 6, no duplicates
+    row0 = next(r for r in fake.tables["reading_passages"] if r["passage_seq"] == 0)
+    assert row0["title"] == "Extract 1 (revised)"
+    q0 = next(q for q in fake.tables["questions"] if q["passage_id"] == row0["id"])
+    assert q0["correct_answer"] == "Option A"
+
+
+def test_part_b_publish_failure_partway_leaves_no_partial_passages(monkeypatch):
+    """Atomicity per the Phase 4B brief: if any one passage/question in a
+    first publish fails, none of that publish's passages survive -- not a
+    partial set of 2 or 3 out of 6."""
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    fake.fail_insert_on_call["questions"] = 3  # passages 0,1 succeed; passage 2's question fails
+    draft = _draft(id=71, module="reading", generated_content=_part_b_content())
+
+    try:
+        draft_publisher.publish(draft, "owner-1")
+        assert False, "expected the simulated insert failure to propagate"
+    except Exception as e:
+        assert "simulated insert failure" in str(e)
+
+    assert len(fake.tables["reading_passages"]) == 0
+
+
+# ── Part C: 2 independent long-form texts from one draft (Phase 4C-3) ──
+# Reuses the exact same multi-passage architecture Part B established --
+# reading_passages_source_draft_uidx is (source_draft_id, passage_seq), so
+# Part C's 2 rows share one source_draft_id the same way Part B's 6 do.
+
+def _part_c_texts(n=2):
+    return [
+        {
+            "title": f"Feature {i + 1}",
+            "body": f"Long-form journalistic body text for feature {i + 1}.",
+            "questions": [{
+                "type": "mcq",
+                "content": f"Feature {i + 1} question {q + 1}?",
+                "options": ["Option A", "Option B", "Option C", "Option D"],
+                "correct_answer": "Option B",
+            } for q in range(8)],
+        }
+        for i in range(n)
+    ]
+
+
+def _part_c_content(texts=None):
+    return {"part": "C", "texts": _part_c_texts() if texts is None else texts}
+
+
+def test_part_c_payloads_builds_two_passages_with_seq_and_content_preserved():
+    draft = _draft(id=80, module="reading", generated_content=_part_c_content())
+    payloads = draft_publisher._reading_part_c_payloads(draft)
+    assert len(payloads) == 2
+    for i, (passage, questions) in enumerate(payloads):
+        assert passage["part"] == "C"
+        assert passage["passage_seq"] == i
+        assert passage["title"] == f"Feature {i + 1}"
+        assert passage["body"] == f"Long-form journalistic body text for feature {i + 1}."
+        assert passage["source_draft_id"] == 80
+        assert passage["is_active"] is False
+        assert len(questions) == 8
+        assert questions[0]["options"] == ["Option A", "Option B", "Option C", "Option D"]
+        assert questions[0]["correct_answer"] == "Option B"
+
+
+def test_part_c_payloads_rejects_wrong_text_count():
+    draft = _draft(module="reading", generated_content=_part_c_content(_part_c_texts(1)))
+    try:
+        draft_publisher._reading_part_c_payloads(draft)
+        assert False, "expected InvalidPartError"
+    except draft_publisher.InvalidPartError:
+        pass
+
+
+def test_part_c_publish_creates_exactly_two_passages_all_part_c(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=81, module="reading", generated_content=_part_c_content())
+
+    result = draft_publisher.publish(draft, "owner-1")
+
+    rows = fake.tables["reading_passages"]
+    assert len(rows) == 2
+    assert {r["part"] for r in rows} == {"C"}
+    assert sorted(r["passage_seq"] for r in rows) == [0, 1]
+    assert result["table"] == "reading_passages"
+    assert result["action"] == "created"
+    assert len(result["passages"]) == 2
+
+
+def test_part_c_publish_each_passage_has_exactly_eight_questions_with_four_options(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=82, module="reading", generated_content=_part_c_content())
+    draft_publisher.publish(draft, "owner-1")
+
+    for passage in fake.tables["reading_passages"]:
+        qs = [q for q in fake.tables["questions"] if q.get("passage_id") == passage["id"]]
+        assert len(qs) == 8
+        for q in qs:
+            assert len(json.loads(q["options"])) == 4
+
+
+def test_part_c_publish_correct_answers_survive_unchanged(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    texts = _part_c_texts()
+    texts[1]["questions"][3]["correct_answer"] = "Option D"
+    draft = _draft(id=83, module="reading", generated_content=_part_c_content(texts))
+    draft_publisher.publish(draft, "owner-1")
+
+    by_seq = {r["passage_seq"]: r["id"] for r in fake.tables["reading_passages"]}
+    q = next(q for q in fake.tables["questions"] if q["passage_id"] == by_seq[1] and q["content"] == "Feature 2 question 4?")
+    assert q["correct_answer"] == "Option D"
+
+
+def test_part_c_publish_all_two_share_same_source_draft_id(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=84, module="reading", generated_content=_part_c_content())
+    draft_publisher.publish(draft, "owner-1")
+
+    assert all(r["source_draft_id"] == 84 for r in fake.tables["reading_passages"])
+
+
+def test_part_c_publish_preview_returns_both_passages(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=85, module="reading", generated_content=_part_c_content())
+
+    preview = draft_publisher.build_preview(draft)
+
+    passage_records = [r for r in preview["records"] if r["table"] == "reading_passages"]
+    assert len(passage_records) == 2
+    assert all(r["fields"]["part"] == "C" for r in passage_records)
+    assert all(r["action"] == "create" for r in passage_records)
+    assert sorted(r["fields"]["passage_seq"] for r in passage_records) == [0, 1]
+    assert len(fake.tables["reading_passages"]) == 0  # preview writes nothing
+
+
+def test_part_c_republish_of_unchanged_draft_updates_not_duplicates(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=86, module="reading", generated_content=_part_c_content())
+
+    first = draft_publisher.publish(draft, "admin-1")
+    second = draft_publisher.publish(draft, "admin-2")
+
+    assert first["action"] == "created"
+    assert second["action"] == "updated"
+    assert len(fake.tables["reading_passages"]) == 2  # still 2, not 4
+    first_ids = sorted(p["id"] for p in first["passages"])
+    second_ids = sorted(p["id"] for p in second["passages"])
+    assert first_ids == second_ids
+
+
+def test_part_c_republish_after_edit_updates_both_rows_in_place(monkeypatch):
+    fake = _shared_fake(monkeypatch)
+    fake.tables["generated_content_drafts"] = [_draft(
+        id=87, status="approved", module="reading", generated_content=_part_c_content(),
+    )]
+
+    draft = draft_store.get_draft(87)
+    draft_publisher.publish(draft, "owner-1")
+    draft_store.mark_published(87, "owner-1")
+    assert len(fake.tables["reading_passages"]) == 2
+
+    edited_texts = _part_c_texts()
+    edited_texts[0]["title"] = "Feature 1 (revised)"
+    edited_texts[0]["questions"][0]["correct_answer"] = "Option A"
+    draft_store.update_content(87, generated_content=_part_c_content(edited_texts), editor_id="analyst-1")
+    draft_store.approve(87, "admin-1")
+
+    draft = draft_store.get_draft(87)
+    second = draft_publisher.publish(draft, "owner-1")
+
+    assert second["action"] == "updated"
+    assert len(fake.tables["reading_passages"]) == 2  # still 2, no duplicates
+    row0 = next(r for r in fake.tables["reading_passages"] if r["passage_seq"] == 0)
+    assert row0["title"] == "Feature 1 (revised)"
+    q0 = next(q for q in fake.tables["questions"] if q["passage_id"] == row0["id"] and q["content"] == "Feature 1 question 1?")
+    assert q0["correct_answer"] == "Option A"
+
+
+def test_part_c_publish_failure_partway_leaves_no_partial_passages(monkeypatch):
+    """If the second passage's questions fail to insert, the first passage
+    (already inserted this call) must be rolled back too -- a failed Publish
+    never leaves 1 of 2 Part C passages behind."""
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    fake.fail_insert_on_call["questions"] = 9  # passage 0's 8 questions succeed; passage 1's 1st question fails
+    draft = _draft(id=88, module="reading", generated_content=_part_c_content())
+
+    try:
+        draft_publisher.publish(draft, "owner-1")
+        assert False, "expected the simulated insert failure to propagate"
+    except Exception as e:
+        assert "simulated insert failure" in str(e)
+
+    assert len(fake.tables["reading_passages"]) == 0
+
+
+def test_part_c_unpublish_deactivates_both_passages(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=89, module="reading", generated_content=_part_c_content())
+    draft_publisher.publish(draft, "owner-1")
+
+    result = draft_publisher.unpublish(draft)
+
+    assert result["table"] == "reading_passages"
+    assert len(result["ids"]) == 2
+    assert all(r["is_active"] is False for r in fake.tables["reading_passages"])
+
+
+def test_part_a_publish_unaffected_by_part_c(monkeypatch):
+    """Part A is untouched by the Part C changes -- still one row, one draft."""
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=90, module="reading", generated_content={
+        "title": "Part A passage", "part": "A", "body": "text", "questions": [],
+    })
+    result = draft_publisher.publish(draft, "owner-1")
+    assert len(fake.tables["reading_passages"]) == 1
+    assert result["action"] == "created"
+
+
+def test_part_b_publish_unaffected_by_part_c(monkeypatch):
+    """Part B is untouched by the Part C changes -- still 6 rows, one draft."""
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=91, module="reading", generated_content=_part_b_content())
+    result = draft_publisher.publish(draft, "owner-1")
+    assert len(fake.tables["reading_passages"]) == 6
+    assert result["action"] == "created"
 
 
 if __name__ == "__main__":

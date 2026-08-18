@@ -40,6 +40,7 @@ interface DraftCardState {
 
 export default function AiDraftGeneratorPage() {
   const [module, setModule] = useState('speaking')
+  const [part, setPart] = useState('')
   const [difficulty, setDifficulty] = useState('intermediate')
   const [specialty, setSpecialty] = useState('general')
   const [topic, setTopic] = useState('')
@@ -74,6 +75,7 @@ export default function AiDraftGeneratorPage() {
         objectives: objectives.trim() || undefined,
         instructions: instructions.trim() || undefined,
         count,
+        part: module === 'reading' && part ? part : undefined,
       })
       const newResults: DraftResult[] = res.data.results
       setResults(newResults)
@@ -145,6 +147,16 @@ export default function AiDraftGeneratorPage() {
                 ))}
               </select>
             </Field>
+            {module === 'reading' && (
+              <Field label="Part">
+                <select value={part} onChange={(e) => setPart(e.target.value)} className="w-full px-3 py-2 border rounded-lg" data-testid="field-part">
+                  <option value="">Default</option>
+                  <option value="A">Part A</option>
+                  <option value="B">Part B</option>
+                  <option value="C">Part C</option>
+                </select>
+              </Field>
+            )}
             <Field label="Difficulty">
               <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className="w-full px-3 py-2 border rounded-lg" data-testid="field-difficulty">
                 {DIFFICULTY_OPTIONS.map((v) => <option key={v} value={v}>{v}</option>)}

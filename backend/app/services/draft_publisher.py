@@ -23,6 +23,18 @@ One draft is at most one production row (Model A). First publish INSERTs;
 republishing an edited, re-approved draft UPDATEs that same row in place --
 it never creates a second one. See publish()'s docstring for what a
 republish does and doesn't touch.
+
+Reading Part B and Part C are Model A's deliberate exceptions (Phase 4B,
+4C-3): their generated_content is several independent passages, not 1, so
+each publishes multiple reading_passages rows per draft (6 for Part B, 2 for
+Part C) instead of 1 -- see _reading_part_b_payloads/_reading_part_c_payloads
+and the shared _publish_multi_passage_reading. Each of those rows still has
+its own one-row-per-slot guarantee (reading_passages_source_draft_uidx is
+(source_draft_id, passage_seq), not source_draft_id alone --
+20260816000000_reading_part_b_multi_passage.sql), so a republish still
+UPDATEs the same rows rather than duplicating them. Part A is unaffected:
+passage_seq defaults to 0, so it keeps exactly the old one-row-per-draft
+behavior.
 """
 import json
 import logging
@@ -97,13 +109,24 @@ def _scenario_payload(draft: Dict[str, Any]) -> Dict[str, Any]:
 
 
 _READING_PARTS = ("A", "B", "C")  # matches reading_passages_part_check (20260724000200_reading_part_a.sql)
+_PART_B_PASSAGE_COUNT = 6  # locked contract, matches the Part B structural validator
+_PART_C_TEXT_COUNT = 2  # locked contract, matches the Part C structural validator
 
 
 def _reading_payload(draft: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """Part A: one passage, one row. Part B and Part C are NOT handled here
+    -- they're several independent passages, not one payload -- see
+    _reading_part_b_payloads / _reading_part_c_payloads. Routing a Part B/C
+    draft through here would silently combine its passages into a single
+    row, which is exactly the shape publish() must never produce."""
     content = draft["generated_content"]
     part = content.get("part")
     if part not in _READING_PARTS:
         raise InvalidPartError(f"Reading draft has invalid part {part!r}; must be one of {_READING_PARTS}.")
+    if part == "B":
+        raise InvalidPartError("Part B publishes as 6 separate passages, not one combined passage.")
+    if part == "C":
+        raise InvalidPartError("Part C publishes as 2 separate passages, not one combined passage.")
     passage = {
         "title": _title(draft, content),
         "part": part,
@@ -134,6 +157,66 @@ def _listening_payload(draft: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict
         "source_draft_id": draft["id"],
     }
     return section, content.get("questions", [])
+
+
+def _reading_part_b_payloads(draft: Dict[str, Any]) -> List[Tuple[Dict[str, Any], List[Dict[str, Any]]]]:
+    """Part B's 6 independent extracts, each its own reading_passages row
+    (part='B', one 3-option MCQ). passage_seq (0-5, generation order) is
+    what lets all 6 share source_draft_id despite reading_passages_source_draft_uidx
+    now being a (source_draft_id, passage_seq) composite -- see
+    20260816000000_reading_part_b_multi_passage.sql."""
+    content = draft["generated_content"]
+    passages = content.get("passages")
+    if not isinstance(passages, list) or len(passages) != _PART_B_PASSAGE_COUNT:
+        got = len(passages) if isinstance(passages, list) else type(passages).__name__
+        raise InvalidPartError(f"Part B draft must have exactly {_PART_B_PASSAGE_COUNT} passages; got {got}.")
+    out: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]] = []
+    for seq, p in enumerate(passages):
+        passage = {
+            "title": str(p.get("title") or "").strip(),
+            "part": "B",
+            "difficulty": content.get("difficulty", "intermediate"),
+            "body": p.get("body", ""),
+            "passage_seq": seq,
+            # Starts inactive -- see matching comment in _reading_payload.
+            "is_active": False,
+            "source_draft_id": draft["id"],
+        }
+        out.append((passage, p.get("questions", [])))
+    return out
+
+
+def _reading_part_c_payloads(draft: Dict[str, Any]) -> List[Tuple[Dict[str, Any], List[Dict[str, Any]]]]:
+    """Part C's 2 independent long-form texts, each its own reading_passages
+    row (part='C', 8 4-option MCQs). Same passage_seq (0-1, generation order)
+    mechanism as Part B -- see _reading_part_b_payloads."""
+    content = draft["generated_content"]
+    texts = content.get("texts")
+    if not isinstance(texts, list) or len(texts) != _PART_C_TEXT_COUNT:
+        got = len(texts) if isinstance(texts, list) else type(texts).__name__
+        raise InvalidPartError(f"Part C draft must have exactly {_PART_C_TEXT_COUNT} texts; got {got}.")
+    out: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]] = []
+    for seq, t in enumerate(texts):
+        passage = {
+            "title": str(t.get("title") or "").strip(),
+            "part": "C",
+            "difficulty": content.get("difficulty", "intermediate"),
+            "body": t.get("body", ""),
+            "passage_seq": seq,
+            # Starts inactive -- see matching comment in _reading_payload.
+            "is_active": False,
+            "source_draft_id": draft["id"],
+        }
+        out.append((passage, t.get("questions", [])))
+    return out
+
+
+def _existing_multi_passage_production_ids(supabase, draft_id: int) -> Dict[int, Any]:
+    """seq -> production row id, for whichever of this draft's Part B/C
+    passages already exist (republish) -- vs. _existing_production_id's
+    single id, since Part B/C publish several rows, not 1."""
+    rows = supabase.table("reading_passages").select("id, passage_seq").eq("source_draft_id", draft_id).execute().data
+    return {r["passage_seq"]: r["id"] for r in rows if r.get("passage_seq") is not None}
 
 
 def _existing_production_id(supabase, table: str, draft_id: int) -> Any:
@@ -177,6 +260,18 @@ def build_preview(draft: Dict[str, Any]) -> Dict[str, Any]:
         payload = _scenario_payload(draft)
         warnings = _duplicate_warning(supabase, "scenarios", payload["title"], {"module": module}, exclude_id=existing_id)
         return {"records": [{"table": "scenarios", "fields": payload, "action": action, "id": existing_id}], "warnings": warnings}
+
+    if module == "reading" and draft["generated_content"].get("part") in ("B", "C"):
+        payloads = _reading_part_b_payloads(draft) if draft["generated_content"]["part"] == "B" else _reading_part_c_payloads(draft)
+        existing = _existing_multi_passage_production_ids(supabase, draft["id"])
+        records: List[Dict[str, Any]] = []
+        warnings: List[str] = []
+        for seq, (passage, questions) in enumerate(payloads):
+            existing_id = existing.get(seq)
+            warnings += _duplicate_warning(supabase, "reading_passages", passage["title"], {}, exclude_id=existing_id)
+            records.append({"table": "reading_passages", "fields": passage, "action": "update" if existing_id else "create", "id": existing_id})
+            records.append({"table": "questions", "count": len(questions)})
+        return {"records": records, "warnings": warnings}
 
     if module == "reading":
         passage, questions = _reading_payload(draft)
@@ -255,6 +350,58 @@ def _replace_questions(supabase, module: str, questions: List[Dict[str, Any]], l
     return len(questions)
 
 
+def _publish_multi_passage_reading(supabase, draft: Dict[str, Any], now: str, payloads: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]]) -> Dict[str, Any]:
+    """Shared by Part B (6 passages) and Part C (2 passages) -- either
+    publishes several passages, not 1 -- see _reading_part_b_payloads /
+    _reading_part_c_payloads. Each gets the same insert-or-update-by-seq
+    treatment publish()'s single-passage branch gives its one row (create on
+    first publish, update in place on republish -- never a second row for a
+    seq that already has one). There's no cross-row DB transaction available
+    here (supabase-py is one REST call per insert/update, same constraint
+    the single-passage rollback below already lives with), so atomicity is
+    application-level: every passage *this call* newly inserts is tracked,
+    and if any later passage/question in the same call fails, all of them
+    are torn back down (ON DELETE CASCADE takes their questions with them)
+    before the exception propagates -- a failed Publish never leaves a
+    partial set. A republish only UPDATEs rows that already existed before
+    this call started, so there's nothing to unwind for it."""
+    existing = _existing_multi_passage_production_ids(supabase, draft["id"])
+    results: List[Dict[str, Any]] = []
+    created_ids: List[Any] = []
+    try:
+        for seq, (passage, questions) in enumerate(payloads):
+            existing_id = existing.get(seq)
+            if existing_id:
+                passage.pop("is_active", None)
+                row = supabase.table("reading_passages").update(passage).eq("id", existing_id).execute().data[0]
+                questions_created = _replace_questions(supabase, "reading", questions, "passage_id", existing_id)
+                results.append({"id": row["id"], "title": row["title"], "questions_created": questions_created, "action": "updated"})
+                continue
+            passage["published_at"] = now
+            try:
+                row = supabase.table("reading_passages").insert(passage).execute().data[0]
+            except Exception as e:
+                if "duplicate key" in str(e).lower():
+                    raise AlreadyPublishedError(f"Draft {draft['id']} has already been published to reading_passages.")
+                raise
+            created_ids.append(row["id"])
+            _insert_questions(supabase, "reading", questions, "passage_id", row["id"])
+            results.append({"id": row["id"], "title": row["title"], "questions_created": len(questions), "action": "created"})
+    except Exception:
+        for pid in created_ids:
+            try:
+                supabase.table("reading_passages").delete().eq("id", pid).execute()
+            except Exception:
+                logger.exception(
+                    "Multi-passage reading publish for draft=%s failed and rollback of "
+                    "newly-created passage id=%s also failed -- it (and any cascaded "
+                    "questions) may be orphaned and need manual removal.", draft["id"], pid,
+                )
+        raise
+    action = "created" if not existing else ("updated" if len(existing) >= len(payloads) else "mixed")
+    return {"table": "reading_passages", "passages": results, "questions_created": sum(r["questions_created"] for r in results), "action": action}
+
+
 def publish(draft: Dict[str, Any], published_by: str) -> Dict[str, Any]:
     """First publish INSERTs a new production row. Republish (this draft
     already has one, found via source_draft_id -- see _existing_production_id)
@@ -287,6 +434,12 @@ def publish(draft: Dict[str, Any], published_by: str) -> Dict[str, Any]:
                 raise DuplicateTitleError(f'A {module} scenario titled "{payload["title"]}" already exists.')
             raise
         return {"table": "scenarios", "id": row["id"], "title": row["title"], "action": action}
+
+    if module == "reading" and draft["generated_content"].get("part") == "B":
+        return _publish_multi_passage_reading(supabase, draft, now, _reading_part_b_payloads(draft))
+
+    if module == "reading" and draft["generated_content"].get("part") == "C":
+        return _publish_multi_passage_reading(supabase, draft, now, _reading_part_c_payloads(draft))
 
     if module == "reading":
         passage, questions = _reading_payload(draft)
@@ -333,9 +486,11 @@ def publish(draft: Dict[str, Any], published_by: str) -> Dict[str, Any]:
 
 
 def unpublish(draft: Dict[str, Any]) -> Dict[str, Any]:
-    """Sets is_active=false on the production row this draft published --
-    no manual DB access required. The row (and its published_at) stays;
-    only visibility to learners changes."""
+    """Sets is_active=false on every production row this draft published --
+    no manual DB access required. The row(s) (and their published_at) stay;
+    only visibility to learners changes. Every module but Part B reading
+    publishes at most one row per draft; a Part B draft publishes 6
+    (_reading_part_b_payloads), and all 6 must go dark together."""
     module = draft["module"]
     table = _PUBLISH_TABLE.get(module)
     if not table:
@@ -344,6 +499,7 @@ def unpublish(draft: Dict[str, Any]) -> Dict[str, Any]:
     rows = supabase.table(table).select("id").eq("source_draft_id", draft["id"]).execute().data
     if not rows:
         raise LookupError("This draft has no published production record to unpublish.")
-    row_id = rows[0]["id"]
-    supabase.table(table).update({"is_active": False}).eq("id", row_id).execute()
-    return {"table": table, "id": row_id, "is_active": False}
+    ids = [r["id"] for r in rows]
+    for row_id in ids:
+        supabase.table(table).update({"is_active": False}).eq("id", row_id).execute()
+    return {"table": table, "ids": ids, "is_active": False}
