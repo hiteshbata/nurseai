@@ -399,16 +399,82 @@ function WritingEditor({ content, set, disabled }: { content: any; set: SetFn; d
   )
 }
 
+// Reading generated_content has three shapes depending on OET Part:
+//   Part A (or legacy/default): flat { title, body, questions }
+//   Part B: { part: "B", passages: ReadingPassage[] }  (6 passages)
+//   Part C: { part: "C", texts: ReadingPassage[] }      (2 texts)
+// draft_generator/draft_publisher persist and read these verbatim -- the
+// editor below is the only place that needs to know about all three shapes.
+interface ReadingQuestion {
+  content?: string
+  type?: string
+  options?: string[]
+  correct_answer?: string
+}
+
+interface ReadingPassage {
+  title?: string
+  body?: string
+  questions?: ReadingQuestion[]
+}
+
 function ReadingEditor({ content, set, disabled }: { content: any; set: SetFn; disabled: boolean }) {
+  if (content.part === 'B') {
+    return (
+      <ReadingPassageSetEditor
+        label="Passage" items={content.passages || []}
+        onChange={(v) => set('passages', v)} disabled={disabled}
+      />
+    )
+  }
+  if (content.part === 'C') {
+    return (
+      <ReadingPassageSetEditor
+        label="Text" items={content.texts || []}
+        onChange={(v) => set('texts', v)} disabled={disabled}
+      />
+    )
+  }
   return (
     <div className="space-y-4">
-      <TextInput label="Title" value={content.title || ''} onChange={(v) => set('title', v)} disabled={disabled} />
+      <TextInput label="Title" value={content.title || ''} onChange={(v) => set('title', v)} disabled={disabled} testId="reading-title" />
       <div className="grid grid-cols-2 gap-4">
         <SelectInput label="Part" value={content.part || 'C'} options={['A', 'B', 'C']} onChange={(v) => set('part', v)} disabled={disabled} />
         <SelectInput label="Difficulty" value={content.difficulty || 'intermediate'} options={['beginner', 'intermediate', 'advanced']} onChange={(v) => set('difficulty', v)} disabled={disabled} />
       </div>
-      <TextArea label="Passage" value={content.body || ''} onChange={(v) => set('body', v)} disabled={disabled} rows={14} />
+      <TextArea label="Passage" value={content.body || ''} onChange={(v) => set('body', v)} disabled={disabled} rows={14} testId="reading-body" />
       <QuestionsEditor label="Questions" questions={content.questions || []} onChange={(v) => set('questions', v)} disabled={disabled} />
+    </div>
+  )
+}
+
+function ReadingPassageSetEditor({ label, items, onChange, disabled }: {
+  label: string; items: ReadingPassage[]; onChange: (items: ReadingPassage[]) => void; disabled: boolean
+}) {
+  const updateItem = (i: number, patch: Partial<ReadingPassage>) => {
+    const next = items.slice()
+    next[i] = { ...next[i], ...patch }
+    onChange(next)
+  }
+  return (
+    <div className="space-y-6">
+      {items.map((item, i) => (
+        <div key={i} className="border rounded-lg p-4 space-y-4" data-testid={`reading-${label.toLowerCase()}-${i}`}>
+          <SectionLabel>{label} {i + 1}</SectionLabel>
+          <TextInput
+            label="Title" value={item.title || ''} onChange={(v) => updateItem(i, { title: v })} disabled={disabled}
+            testId={`reading-${label.toLowerCase()}-${i}-title`}
+          />
+          <TextArea
+            label="Body" value={item.body || ''} onChange={(v) => updateItem(i, { body: v })} disabled={disabled} rows={10}
+            testId={`reading-${label.toLowerCase()}-${i}-body`}
+          />
+          <QuestionsEditor
+            label="Questions" questions={item.questions || []}
+            onChange={(v) => updateItem(i, { questions: v })} disabled={disabled}
+          />
+        </div>
+      ))}
     </div>
   )
 }
@@ -551,23 +617,23 @@ function StringListEditor({ label, items, onChange, disabled }: {
   )
 }
 
-function TextInput({ label, value, onChange, disabled }: { label: string; value: string; onChange: (v: string) => void; disabled: boolean }) {
+function TextInput({ label, value, onChange, disabled, testId }: { label: string; value: string; onChange: (v: string) => void; disabled: boolean; testId?: string }) {
   return (
     <div>
       <label className="block text-sm text-gray-500 mb-1">{label}</label>
-      <input value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className="w-full px-3 py-2 border rounded-lg disabled:bg-gray-50" />
+      <input value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} data-testid={testId} className="w-full px-3 py-2 border rounded-lg disabled:bg-gray-50" />
     </div>
   )
 }
 
-function TextArea({ label, value, onChange, disabled, rows = 3, mono }: {
-  label: string; value: string; onChange: (v: string) => void; disabled: boolean; rows?: number; mono?: boolean
+function TextArea({ label, value, onChange, disabled, rows = 3, mono, testId }: {
+  label: string; value: string; onChange: (v: string) => void; disabled: boolean; rows?: number; mono?: boolean; testId?: string
 }) {
   return (
     <div>
       <label className="block text-sm text-gray-500 mb-1">{label}</label>
       <textarea
-        value={value} disabled={disabled} rows={rows} onChange={(e) => onChange(e.target.value)}
+        value={value} disabled={disabled} rows={rows} onChange={(e) => onChange(e.target.value)} data-testid={testId}
         className={`w-full px-3 py-2 border rounded-lg disabled:bg-gray-50 ${mono ? 'font-mono text-sm whitespace-pre-wrap' : ''}`}
       />
     </div>
