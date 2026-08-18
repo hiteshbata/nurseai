@@ -59,6 +59,19 @@ _TITLE_FIELD = {
 _MAX_TOKENS_OVERRIDE = {"reading": 6000, "listening": 6000, "grammar": 6000}
 _DEFAULT_MAX_TOKENS = 3000
 
+# Part A production incident: finish_reason=MAX_TOKENS, response truncated
+# mid-questions-array at the module-level 6000 ceiling above. Part A is
+# structurally the largest Reading generation -- 4 texts + 20 questions --
+# unlike Part B (6 short extracts) and Part C (2 texts), which fit 6000
+# comfortably and are deliberately left there.
+_READING_PART_MAX_TOKENS_OVERRIDE = {"A": 9000}
+
+
+def _resolve_max_tokens(module: str, part: Optional[str]) -> int:
+    if module == "reading" and part in _READING_PART_MAX_TOKENS_OVERRIDE:
+        return _READING_PART_MAX_TOKENS_OVERRIDE[part]
+    return _MAX_TOKENS_OVERRIDE.get(module, _DEFAULT_MAX_TOKENS)
+
 
 class DraftGenerationError(Exception):
     """A friendly, user-facing generation failure (AI outage, malformed
@@ -415,7 +428,7 @@ async def generate_draft(
             {"role": "user", "content": user_prompt},
         ],
         purpose=PURPOSE,
-        max_tokens=_MAX_TOKENS_OVERRIDE.get(module, _DEFAULT_MAX_TOKENS),
+        max_tokens=_resolve_max_tokens(module, part),
         json_mode=True,
         temperature=0.4,
         user_id=admin_user_id,
