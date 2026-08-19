@@ -15,6 +15,7 @@ from app.services import draft_store, draft_publisher
 class FakeResult:
     def __init__(self, data):
         self.data = data
+        self.count = len(data)
 
 
 class _NotProxy:
@@ -57,6 +58,9 @@ class FakeQuery:
         return self
 
     def limit(self, *_a):
+        return self
+
+    def range(self, *_a):
         return self
 
     def order(self, *_a, **_k):
