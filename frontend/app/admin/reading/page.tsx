@@ -509,6 +509,17 @@ export default function AdminReadingPage() {
     }
   }
 
+  // Detach = assignPassage(id, null) with a confirm() gate -- same endpoint the
+  // "No test (standalone)" dropdown option already calls, just from inside the
+  // test drill-down. Only test_id changes; is_active/questions/body untouched.
+  const detachPassage = (p: { id: number; is_active: boolean }) => {
+    const warning = p.is_active
+      ? "This passage is currently active. Detaching it removes it from the test's live composition. Existing published test versions are not modified."
+      : 'This will remove the passage from this test but will not delete the passage or its questions.'
+    if (!confirm(`Detach passage from test?\n\n${warning}`)) return
+    assignPassage(p.id, null)
+  }
+
   const handleExtract = async () => {
     if (files.length === 0) {
       toast.error('Choose at least one PDF first')
@@ -1001,6 +1012,7 @@ export default function AdminReadingPage() {
                                       <div className="flex items-center gap-2 shrink-0 text-xs font-semibold">
                                         <button onClick={() => openEdit(p.id)} className="text-blue-600 hover:underline">Edit</button>
                                         <button onClick={() => togglePassageActive(p)} className="text-gray-500 hover:text-gray-700">{p.is_active ? 'Hide' : 'Show'}</button>
+                                        <button onClick={() => detachPassage(p)} className="text-amber-600 hover:text-amber-800">Detach</button>
                                         <button onClick={() => deletePassage(p)} className="text-red-500 hover:text-red-700">Delete</button>
                                       </div>
                                     </div>

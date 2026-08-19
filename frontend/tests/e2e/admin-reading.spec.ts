@@ -407,3 +407,153 @@ test('[MOCKED UI ONLY] a late-resolving version response cannot clobber a newer 
 
   await context.close()
 })
+
+// "Detach" (test_id -> null via the existing assign endpoint) -- fully mocked
+// so it doesn't depend on real test/passage content existing in this environment.
+// Covers the confirm() gate, the active-passage warning copy, and that a failed
+// detach leaves local state untouched (no optimistic removal).
+
+function mockDetachScenario(page: Page, opts: { passageActive: boolean }) {
+  let detailCalls = 0
+  let passagesCalls = 0
+  const assignBodies: any[] = []
+  let deleteCalled = false
+  let activeCalled = false
+
+  const testRow = { id: 12, title: 'Mocked Test 12', is_active: false, passage_count: 1, parts: ['A'], question_count: 1, missing_answers: 0, current_version: null }
+  const passageRow = (testId: number | null) => ({
+    id: 101, title: 'Wound Care', part: 'A', difficulty: 'intermediate',
+    is_active: opts.passageActive, created_at: '2026-01-01T00:00:00Z',
+    test_id: testId, test_title: testId ? testRow.title : null,
+  })
+  const detailPassage = { id: 101, title: 'Wound Care', part: 'A', difficulty: 'intermediate', is_active: opts.passageActive, question_count: 1, missing_answers: 0, questions: [{ id: 201, content: 'Q1', type: 'mcq', options: ['a', 'b'], correct_answer: 'a' }] }
+
+  page.route('**/reading/admin/tests', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue()
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([testRow]) })
+  })
+  page.route('**/reading/admin/tests/12/active', async (route) => {
+    activeCalled = true
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+  })
+  page.route('**/reading/admin/tests/12/detail', async (route) => {
+    detailCalls++
+    const groups = detailCalls === 1 ? [{ part: 'A', passages: [detailPassage] }] : []
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 12, title: testRow.title, is_active: false, groups }) })
+  })
+  page.route('**/reading/admin/tests/12/preview', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 12, title: testRow.title, passages: [], validation: { valid: true, errors: [], warnings: [] } }) })
+  })
+  page.route('**/reading/admin/passages', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue()
+    passagesCalls++
+    const body = passagesCalls === 1 ? [passageRow(12)] : [passageRow(null)]
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+  })
+  page.route('**/reading/admin/passages/101', async (route) => {
+    if (route.request().method() === 'DELETE') deleteCalled = true
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+  })
+  page.route('**/reading/admin/passages/101/assign', async (route) => {
+    assignBodies.push(JSON.parse(route.request().postData() || '{}'))
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+  })
+
+  return { assignBodies, get deleteCalled() { return deleteCalled }, get activeCalled() { return activeCalled }, get detailCalls() { return detailCalls } }
+}
+
+async function openDetachRow(page: Page) {
+  await page.goto('/admin/reading')
+  const row = page.locator('div.border.rounded-lg.overflow-hidden', { hasText: 'Mocked Test 12' })
+  await expect(row).toBeVisible({ timeout: 10_000 })
+  await Promise.all([
+    page.waitForResponse((res) => /\/reading\/admin\/tests\/12\/detail$/.test(res.url())),
+    row.locator('button.flex-1').first().click(),
+  ])
+  await expect(page.getByText('Wound Care')).toBeVisible()
+  return row
+}
+
+test('[MOCKED UI ONLY] Detach on a hidden passage clears it from the test, keeps it hidden, no delete call', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  const scenario = mockDetachScenario(page, { passageActive: false })
+  await openDetachRow(page)
+
+  page.once('dialog', (d) => { expect(d.message()).toContain('Detach passage from test?'); d.accept() })
+  const [assignReq] = await Promise.all([
+    page.waitForRequest((r) => /\/reading\/admin\/passages\/101\/assign$/.test(r.url()) && r.method() === 'POST'),
+    page.getByRole('button', { name: 'Detach' }).click(),
+  ])
+  expect(JSON.parse(assignReq.postData() || '{}')).toEqual({ test_id: null })
+
+  // Refetch clears the passage from Test 12's drill-down and it lands in the unassigned pool below.
+  await expect(page.getByText('No passages assigned yet.')).toBeVisible()
+  await expect(page.locator('text=Wound Care').first()).toBeVisible() // now in "Passages not in any test"
+  await expect(page.getByRole('button', { name: 'Hidden' })).toBeVisible() // is_active preserved
+  expect(scenario.deleteCalled).toBe(false)
+
+  await context.close()
+})
+
+test('[MOCKED UI ONLY] Detach on an active passage shows the stronger warning, keeps is_active true, no publish call', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  const scenario = mockDetachScenario(page, { passageActive: true })
+  await openDetachRow(page)
+
+  page.once('dialog', (d) => {
+    expect(d.message()).toContain("currently active")
+    expect(d.message()).toContain("Existing published test versions are not modified")
+    d.accept()
+  })
+  const [assignReq] = await Promise.all([
+    page.waitForRequest((r) => /\/reading\/admin\/passages\/101\/assign$/.test(r.url()) && r.method() === 'POST'),
+    page.getByRole('button', { name: 'Detach' }).click(),
+  ])
+  expect(JSON.parse(assignReq.postData() || '{}')).toEqual({ test_id: null })
+
+  await expect(page.getByText('No passages assigned yet.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Live', exact: true })).toBeVisible() // is_active preserved
+  expect(scenario.activeCalled).toBe(false)
+
+  await context.close()
+})
+
+test('[MOCKED UI ONLY] Cancelling the Detach confirm sends no request and leaves the passage assigned', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  mockDetachScenario(page, { passageActive: false })
+  await openDetachRow(page)
+
+  let assignCalled = false
+  page.on('request', (r) => { if (/\/reading\/admin\/passages\/101\/assign$/.test(r.url())) assignCalled = true })
+
+  page.once('dialog', (d) => d.dismiss())
+  await page.getByRole('button', { name: 'Detach' }).click()
+  await page.waitForTimeout(300)
+
+  expect(assignCalled).toBe(false)
+  await expect(page.getByText('Wound Care')).toBeVisible() // still in Test 12's drill-down
+
+  await context.close()
+})
+
+test('[MOCKED UI ONLY] a failed Detach shows an error and leaves the passage assigned', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  mockDetachScenario(page, { passageActive: false })
+  await page.route('**/reading/admin/passages/101/assign', async (route) => {
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ detail: 'Detach failed' }) })
+  })
+  await openDetachRow(page)
+
+  page.once('dialog', (d) => d.accept())
+  await page.getByRole('button', { name: 'Detach' }).click()
+
+  await expect(page.getByText('Detach failed')).toBeVisible()
+  await expect(page.getByText('Wound Care')).toBeVisible() // no local state removed the passage
+  await expect(page.getByText('No passages assigned yet.')).not.toBeVisible()
+
+  await context.close()
+})
