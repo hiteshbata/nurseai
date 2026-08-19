@@ -40,6 +40,7 @@ from app.services.mcq_grading import grade_exact_match, combine_graded_results, 
 from app.services.open_ended_grading import grade_open_ended_answers
 from app.services.explanations import generate_mcq_explanation
 from app.services.skill_graph import record_skill_observations, get_weakness
+from app.services.listening_mistake_engine import record_listening_mistake_events
 from app.services.coaching_messages import RECOMMENDATION_REASON, ACTIONABLE_IMPROVEMENT, CONFIDENCE_MESSAGE
 from app.services.listening_audio import (
     generate_two_speaker_audio, cut_segment, deepgram_transcribe, timestamped_lines,
@@ -408,7 +409,9 @@ async def submit_test(
         version_row = await run_sync(get_version_row, supabase, "listening_test_versions", version_id)
         questions_by_id = listening_snapshot_questions_by_id(version_row)
         part_by_section = {s["section_id"]: s["part"] for s in version_row["snapshot"]["sections"]}
+        difficulty_by_section = {s["section_id"]: s.get("difficulty") for s in version_row["snapshot"]["sections"]}
         part_by_qid = {q["question_id"]: part_by_section.get(q["section_id"]) for q in version_row["snapshot"]["questions"]}
+        section_id_by_qid = {q["question_id"]: q["section_id"] for q in version_row["snapshot"]["questions"]}
         transcripts_by_section = listening_snapshot_transcripts(version_row)
     else:
         t = await run_sync(
@@ -418,9 +421,10 @@ async def submit_test(
             raise HTTPException(status_code=404, detail="Test not found")
 
         sections = await run_sync(
-            supabase.table("listening_sections").select("id, part, transcript").eq("test_id", test_id).eq("is_active", True).execute
+            supabase.table("listening_sections").select("id, part, difficulty, transcript").eq("test_id", test_id).eq("is_active", True).execute
         )
         part_by_section = {s["id"]: s["part"] for s in sections.data}
+        difficulty_by_section = {s["id"]: s.get("difficulty") for s in sections.data}
         sids = list(part_by_section.keys())
         if not sids:
             raise HTTPException(status_code=404, detail="Test has no sections")
@@ -430,6 +434,7 @@ async def submit_test(
         )
         questions_by_id = {q["id"]: q for q in qrows.data}
         part_by_qid = {q["id"]: part_by_section.get(q["section_id"]) for q in qrows.data}
+        section_id_by_qid = {q["id"]: q["section_id"] for q in qrows.data}
         transcripts_by_section = {s["id"]: s.get("transcript") for s in sections.data}
 
     # only grade answers to questions that actually belong to this test
@@ -476,7 +481,7 @@ async def submit_test(
             current_user.id, {f"listening:{part}": band for part, band in per_part.items()}
         )
 
-    await run_sync(
+    submission = await run_sync(
         user_db.table("submissions").insert({
             "user_id": current_user.id,
             # NOT scenario_id: listening_tests is a different id space than the
@@ -496,6 +501,16 @@ async def submit_test(
                 "elapsed_seconds": request.elapsed_seconds,
             }),
         }).execute
+    )
+
+    # E2.1 Mistake Engine: best-effort evidence log, strictly after grading +
+    # submission + skill_graph have all already succeeded above. Never allowed
+    # to affect the response (see listening_mistake_engine docstring).
+    submission_id = submission.data[0]["id"] if submission.data else None
+    question_type_by_qid = {qid: q.get("type") or "mcq" for qid, q in questions_by_id.items()}
+    await record_listening_mistake_events(
+        current_user.id, submission_id, test_id, version_id,
+        combined["results"], section_id_by_qid, part_by_qid, difficulty_by_section, question_type_by_qid,
     )
 
     insights = await _build_listening_insights(per_part, current_user, user_db)
