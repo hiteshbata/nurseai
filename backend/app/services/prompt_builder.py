@@ -302,7 +302,175 @@ def build_reading_prompt(difficulty: str, specialty: str, topic: str, objectives
     return _SYSTEM_HEADER, user
 
 
-def build_listening_prompt(difficulty: str, specialty: str, topic: str, objectives: Optional[str] = None, instructions: Optional[str] = None) -> Tuple[str, str]:
+# Locked Listening Part A contract (Phase 3B): EXACTLY 2 independent extracts,
+# each a nurse-patient/nurse-colleague consultation, each followed by 12
+# short_answer gap-fill questions against a note-completion "body" template
+# (headings + context bullets + numbered blanks matching the 12 questions).
+# 2 extracts x 12 questions = 24 total. Container shape ("part" + "extracts":
+# [...]) mirrors Reading Part B/C's per-slot list rather than the legacy flat
+# title/transcript/questions shape above -- one Part A generation is 2
+# independent production rows (listening_sections), not one. transcript is
+# the canonical [{speaker, text}] shape used to generate/store the audio;
+# accepted_answers is optional alternate-phrasing support, stored but not
+# wired into grading this phase (see draft_generator.py's Part A validator).
+_LISTENING_PART_A_SCHEMA = """{
+  "part": "A",
+  "prep_seconds": 30,
+  "audio_mode": "dialogue",
+  "extracts": [
+    {
+      "title": "short descriptive title for this extract",
+      "transcript": [{"speaker": "Nurse", "text": "..."}, {"speaker": "Patient", "text": "..."}],
+      "body": "note-completion template: headings, context bullets, and 12 numbered blanks, e.g. 'Reason for visit\\n- ...\\n\\nHistory\\n1. Patient reports (1) ______\\n2. ...'",
+      "questions": [
+        {"content": "gap-fill prompt for blank (1), phrased so the transcript answer completes it naturally", "type": "short_answer", "options": [], "correct_answer": "reference word or short phrase from the transcript", "accepted_answers": ["alternate acceptable phrasing"]}
+      ]
+    },
+    {
+      "title": "short descriptive title for the second extract",
+      "transcript": [{"speaker": "Nurse", "text": "..."}, {"speaker": "Patient", "text": "..."}],
+      "body": "note-completion template for the second extract, same shape as above",
+      "questions": [
+        {"content": "gap-fill prompt for blank (1) of the second extract", "type": "short_answer", "options": [], "correct_answer": "reference word or short phrase", "accepted_answers": []}
+      ]
+    }
+  ]
+}"""
+
+_LISTENING_PART_A_INSTRUCTIONS = (
+    "Create an original OET Listening Part A task -- EXACTLY 2 independent extracts, each a two-speaker dialogue "
+    "(a nurse taking a patient's history, or a nurse consulting a colleague/patient about a clinical situation), "
+    "NOT one shared conversation. Return them as 2 separate entries in \"extracts\", each with its own \"title\", "
+    "\"transcript\", \"body\", and \"questions\".\n\n"
+    "\"transcript\" is a list of speaker turns: [{\"speaker\": \"Nurse\", \"text\": \"...\"}, {\"speaker\": \"Patient\", "
+    "\"text\": \"...\"}, ...]. Write natural spoken English -- realistic hesitations, interruptions, and clarification "
+    "requests -- not scripted or robotic dialogue. The two extracts must cover distinct clinical situations.\n\n"
+    "\"body\" is a note-completion template a candidate fills in while listening: section headings, short context "
+    "bullets, and EXACTLY 12 numbered blanks, each answerable from that extract's transcript in the order the "
+    "information is spoken. Every blank number must have a matching entry at the same position in \"questions\".\n\n"
+    "Each extract has EXACTLY 12 short_answer questions, one per blank, in transcript order. type=\"short_answer\", "
+    "options=[] (empty array), correct_answer = the reference word or short phrase from the transcript that fills "
+    "that blank. \"accepted_answers\" is an optional array of other acceptable phrasings for the same blank -- use "
+    "it only when the transcript genuinely supports more than one valid wording, otherwise leave it an empty array; "
+    "never let correct_answer alone be just one of several answers the transcript actually supports without also "
+    "listing the others in accepted_answers.\n\n"
+    "Return exactly 2 extracts, each with exactly 12 short_answer questions -- not 10, not 15. "
+    "2 extracts x 12 questions = 24 questions total. \"prep_seconds\" must be exactly 30 and \"audio_mode\" must be "
+    "exactly \"dialogue\" -- copy those two fields into your output unchanged."
+)
+
+
+# Locked Listening Part B contract (Phase 3B): EXACTLY 6 independent short
+# workplace extracts, each its own 1-mcq/3-option question -- same shape and
+# spirit as Reading Part B (_READING_PART_B_SCHEMA above), over audio instead
+# of text. 6 independent production rows (listening_sections) from one draft.
+_LISTENING_PART_B_SCHEMA = """{
+  "part": "B",
+  "prep_seconds": 15,
+  "audio_mode": "dialogue",
+  "extracts": [
+    {
+      "title": "short descriptive title for this extract",
+      "transcript": [{"speaker": "Nurse", "text": "..."}, {"speaker": "Colleague", "text": "..."}],
+      "questions": [
+        {"content": "the single question about this extract", "type": "mcq", "options": ["option A text", "option B text", "option C text"], "correct_answer": "must match one option exactly"}
+      ]
+    }
+  ]
+}"""
+
+_LISTENING_PART_B_INSTRUCTIONS = (
+    "Create an original OET Listening Part B task -- EXACTLY 6 independent short workplace-healthcare extracts "
+    "(a handover, briefing, team meeting snippet, or short instruction from a colleague), NOT one long recording. "
+    "Return them as 6 separate entries in \"extracts\", each with its own \"title\", \"transcript\", and "
+    "\"questions\".\n\n"
+    "\"transcript\" is a list of speaker turns: [{\"speaker\": \"...\", \"text\": \"...\"}, ...], natural spoken "
+    "English for a short two-speaker (or single-speaker briefing) workplace exchange. Keep each extract fully "
+    "independent -- do not make one extract necessary to understand another. Vary the workplace situation across "
+    "the six extracts rather than repeating the same scenario.\n\n"
+    "Each extract is followed by EXACTLY ONE question, in that extract's own \"questions\" array (a list of exactly "
+    "1 item). Every question has type=\"mcq\" with EXACTLY 3 options, and correct_answer must exactly match one of "
+    "those 3 option strings, character for character. Each question must test understanding, application, or "
+    "inference of the extract's content -- not a detail answerable from outside knowledge. Exactly one option may "
+    "be defensible as correct.\n\n"
+    "Return exactly 6 extracts, each with exactly 1 mcq question and exactly 3 options. \"prep_seconds\" must be "
+    "exactly 15 and \"audio_mode\" must be exactly \"dialogue\" -- copy those two fields into your output unchanged."
+)
+
+
+# Locked Listening Part C contract (Phase 3B): EXACTLY 2 independent
+# long-form extracts (interview or presentation), each with 6 mcq questions
+# over 3 options -- mirrors Reading Part C's per-slot list shape. Unlike
+# Part A/B, audio_mode is chosen PER EXTRACT here (dialogue for an interview,
+# monologue for a presentation), not a single top-level value.
+_LISTENING_PART_C_SCHEMA = """{
+  "part": "C",
+  "prep_seconds": 90,
+  "extracts": [
+    {
+      "title": "short descriptive title for this extract",
+      "audio_mode": "dialogue",
+      "transcript": [{"speaker": "Interviewer", "text": "..."}, {"speaker": "Guest", "text": "..."}],
+      "questions": [
+        {"content": "question text", "type": "mcq", "options": ["option 1", "option 2", "option 3"], "correct_answer": "must match one option exactly"}
+      ]
+    },
+    {
+      "title": "short descriptive title for the second extract",
+      "audio_mode": "monologue",
+      "transcript": [{"speaker": "Presenter", "text": "..."}],
+      "questions": [
+        {"content": "question text", "type": "mcq", "options": ["option 1", "option 2", "option 3"], "correct_answer": "must match one option exactly"}
+      ]
+    }
+  ]
+}"""
+
+_LISTENING_PART_C_INSTRUCTIONS = (
+    "Create an original OET Listening Part C task -- EXACTLY 2 independent long-form extracts, each either an "
+    "interview (two speakers, audio_mode=\"dialogue\") or a presentation/talk (one speaker, audio_mode=\"monologue\") "
+    "on a healthcare topic. Pick a mode per extract rather than defaulting both to the same one. Return them as 2 "
+    "separate entries in \"extracts\", each with its own \"title\", \"audio_mode\", \"transcript\", and "
+    "\"questions\". The two extracts must cover distinct topics.\n\n"
+    "\"transcript\" is a list of speaker turns: [{\"speaker\": \"...\", \"text\": \"...\"}, ...] -- for a monologue "
+    "every turn's speaker is the same presenter. Write natural spoken English -- hesitations, self-corrections, "
+    "signposting phrases (\"so, moving on to...\") -- not a written article read aloud.\n\n"
+    "Each extract has EXACTLY 6 mcq questions, in \"questions\", progressing forward through the extract in the "
+    "order the information is spoken. Every question has type=\"mcq\" with EXACTLY 3 options, and correct_answer "
+    "must exactly match one of those 3 option strings, character for character. Mix question types -- specific "
+    "detail, inference, speaker's opinion/attitude, purpose of a remark -- rather than making all 6 direct detail "
+    "lookups. The correct option must not be guessable without listening; distractors must be plausible near-misses "
+    "drawn from real content elsewhere in the extract.\n\n"
+    "Return exactly 2 extracts, each with exactly 6 mcq questions and exactly 3 options per question. "
+    "\"prep_seconds\" must be exactly 90 -- copy that field into your output unchanged."
+)
+
+
+def build_listening_prompt(difficulty: str, specialty: str, topic: str, objectives: Optional[str] = None, instructions: Optional[str] = None, part: Optional[str] = None) -> Tuple[str, str]:
+    if part == "A":
+        user = (
+            f"{_LISTENING_PART_A_INSTRUCTIONS}\n"
+            f"{_shared_context(difficulty, specialty, topic, objectives, instructions)}\n\n{_DIVERSITY_HINT}"
+            f"\n\nReturn ONLY this JSON:\n{_LISTENING_PART_A_SCHEMA}"
+        )
+        return _SYSTEM_HEADER, user
+
+    if part == "B":
+        user = (
+            f"{_LISTENING_PART_B_INSTRUCTIONS}\n"
+            f"{_shared_context(difficulty, specialty, topic, objectives, instructions)}\n\n{_DIVERSITY_HINT}"
+            f"\n\nReturn ONLY this JSON:\n{_LISTENING_PART_B_SCHEMA}"
+        )
+        return _SYSTEM_HEADER, user
+
+    if part == "C":
+        user = (
+            f"{_LISTENING_PART_C_INSTRUCTIONS}\n"
+            f"{_shared_context(difficulty, specialty, topic, objectives, instructions)}\n\n{_DIVERSITY_HINT}"
+            f"\n\nReturn ONLY this JSON:\n{_LISTENING_PART_C_SCHEMA}"
+        )
+        return _SYSTEM_HEADER, user
+
     schema = """{
   "title": "short descriptive title for this section",
   "part": "A, B, or C",
@@ -395,8 +563,8 @@ def build_prompt(module: str, difficulty: str, specialty: str, topic: str, objec
     builder = BUILDERS.get(module)
     if builder is None:
         raise ValueError(f"Unknown module: {module}")
-    # Only build_reading_prompt accepts `part` -- every other module builder's
-    # signature is unchanged, so `part` must not reach them.
-    if module == "reading":
+    # Only build_reading_prompt/build_listening_prompt accept `part` -- every
+    # other module builder's signature is unchanged, so `part` must not reach them.
+    if module in ("reading", "listening"):
         return builder(difficulty, specialty, topic, objectives, instructions, part=part)
     return builder(difficulty, specialty, topic, objectives, instructions)

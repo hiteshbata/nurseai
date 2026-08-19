@@ -212,10 +212,12 @@ class TestReadingContentValidatorRules:
 
 
 def _valid_sections():
+    """source_draft_id is set here (Content Studio origin) so the existing
+    missing_transcript rule tests below keep exercising the CS-required path."""
     return [
-        {"section_id": 1, "title": "S1", "part": "A", "audio_url": "https://x/a.mp3"},
-        {"section_id": 2, "title": "S2", "part": "B", "audio_url": "https://x/b.mp3"},
-        {"section_id": 3, "title": "S3", "part": "C", "audio_url": "https://x/c.mp3"},
+        {"section_id": 1, "title": "S1", "part": "A", "audio_url": "https://x/a.mp3", "transcript": [{"speaker": "Nurse", "text": "hi"}], "source_draft_id": 900},
+        {"section_id": 2, "title": "S2", "part": "B", "audio_url": "https://x/b.mp3", "transcript": [{"speaker": "Nurse", "text": "hi"}], "source_draft_id": 900},
+        {"section_id": 3, "title": "S3", "part": "C", "audio_url": "https://x/c.mp3", "transcript": [{"speaker": "Nurse", "text": "hi"}], "source_draft_id": 900},
     ]
 
 
@@ -247,6 +249,37 @@ class TestListeningContentValidatorRules:
             [{**_valid_sections()[0], "audio_url": "   "}] + _valid_sections()[1:], _valid_listening_questions(),
         )
         assert any(e["code"] == "missing_audio" for e in errors)
+
+    def test_missing_transcript_none(self):
+        errors, _ = _validate_listening_content(
+            [{**_valid_sections()[0], "transcript": None}] + _valid_sections()[1:], _valid_listening_questions(),
+        )
+        assert any(e["code"] == "missing_transcript" and e["field"] == "section:1" for e in errors)
+
+    def test_missing_transcript_empty_list(self):
+        errors, _ = _validate_listening_content(
+            [{**_valid_sections()[0], "transcript": []}] + _valid_sections()[1:], _valid_listening_questions(),
+        )
+        assert any(e["code"] == "missing_transcript" for e in errors)
+
+    def test_content_studio_transcript_present_passes(self):
+        """source_draft_id set + transcript present -- CS requirement satisfied."""
+        errors, _ = _validate_listening_content(_valid_sections(), _valid_listening_questions())
+        assert not any(e["code"] == "missing_transcript" for e in errors)
+
+    def test_legacy_section_missing_transcript_passes(self):
+        """source_draft_id None (legacy/direct-authored) -- missing transcript
+        must not block activation/re-publication of pre-existing content."""
+        legacy = [{**_valid_sections()[0], "source_draft_id": None, "transcript": None}] + _valid_sections()[1:]
+        errors, _ = _validate_listening_content(legacy, _valid_listening_questions())
+        assert not any(e["code"] == "missing_transcript" for e in errors)
+
+    def test_legacy_section_missing_audio_still_fails(self):
+        """Legacy compatibility is scoped to transcript only -- audio is still required."""
+        legacy = [{**_valid_sections()[0], "source_draft_id": None, "transcript": None, "audio_url": None}] + _valid_sections()[1:]
+        errors, _ = _validate_listening_content(legacy, _valid_listening_questions())
+        assert any(e["code"] == "missing_audio" and e["field"] == "section:1" for e in errors)
+        assert not any(e["code"] == "missing_transcript" for e in errors)
 
     def test_section_with_no_questions(self):
         errors, _ = _validate_listening_content(_valid_sections(), {**_valid_listening_questions(), 2: []})
@@ -321,10 +354,11 @@ def _seed_valid_reading(fake, test_id=1):
 
 
 def _seed_valid_listening(fake, test_id=2):
+    _turns = [{"speaker": "Nurse", "text": "hi"}]
     fake.tables.setdefault("listening_sections", []).extend([
-        {"id": 20 + test_id * 100, "title": "S1", "part": "A", "difficulty": "intermediate", "body": None, "transcript": None, "test_id": test_id, "is_active": True, "audio_url": "https://x/a.mp3"},
-        {"id": 21 + test_id * 100, "title": "S2", "part": "B", "difficulty": "intermediate", "body": None, "transcript": None, "test_id": test_id, "is_active": True, "audio_url": "https://x/b.mp3"},
-        {"id": 22 + test_id * 100, "title": "S3", "part": "C", "difficulty": "intermediate", "body": None, "transcript": None, "test_id": test_id, "is_active": True, "audio_url": "https://x/c.mp3"},
+        {"id": 20 + test_id * 100, "title": "S1", "part": "A", "difficulty": "intermediate", "body": None, "transcript": _turns, "test_id": test_id, "is_active": True, "audio_url": "https://x/a.mp3"},
+        {"id": 21 + test_id * 100, "title": "S2", "part": "B", "difficulty": "intermediate", "body": None, "transcript": _turns, "test_id": test_id, "is_active": True, "audio_url": "https://x/b.mp3"},
+        {"id": 22 + test_id * 100, "title": "S3", "part": "C", "difficulty": "intermediate", "body": None, "transcript": _turns, "test_id": test_id, "is_active": True, "audio_url": "https://x/c.mp3"},
     ])
     fake.tables.setdefault("questions", []).extend([
         {"id": 2000 + test_id * 100, "section_id": 20 + test_id * 100, "type": "mcq", "content": "qa", "options": json.dumps(["a", "b"]), "correct_answer": "a"},

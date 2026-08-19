@@ -535,8 +535,40 @@ function ReadingPassageSetEditor({ label, items, onChange, disabled }: {
   )
 }
 
+// Listening generated_content shape (all Parts A/B/C, Phase 4C):
+//   { part, prep_seconds, [audio_mode], extracts: ListeningExtract[] }
+// audio_mode lives at the top level for Parts A/B (shared across extracts)
+// but per-extract for Part C (dialogue/monologue can differ per extract) --
+// draft_generator never emits both on the same draft. body only appears on
+// Part A extracts (the short-answer notes-template text). Pre-extracts[]
+// drafts (flat title/transcript/questions) fall through to the legacy branch
+// below unchanged.
+interface ListeningTurn { speaker?: string; text?: string }
+interface ListeningExtract {
+  title?: string
+  body?: string
+  audio_mode?: string
+  transcript?: ListeningTurn[]
+  questions?: any[]
+}
+
 function ListeningEditor({ content, set, disabled }: { content: any; set: SetFn; disabled: boolean }) {
-  const transcript: { speaker: string; text: string }[] = content.transcript || []
+  if (Array.isArray(content.extracts)) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <SelectInput label="Part" value={content.part || 'A'} options={['A', 'B', 'C']} onChange={(v) => set('part', v)} disabled={disabled} testId="listening-part" />
+          <NumberInput label="Prep Seconds" value={content.prep_seconds ?? 0} onChange={(v) => set('prep_seconds', v)} disabled={disabled} testId="listening-prep-seconds" />
+        </div>
+        {'audio_mode' in content && (
+          <SelectInput label="Audio Mode" value={content.audio_mode || 'dialogue'} options={['dialogue', 'monologue']} onChange={(v) => set('audio_mode', v)} disabled={disabled} testId="listening-audio-mode" />
+        )}
+        <ListeningExtractSetEditor items={content.extracts} onChange={(v) => set('extracts', v)} disabled={disabled} />
+      </div>
+    )
+  }
+
+  const transcript: ListeningTurn[] = content.transcript || []
   const updateTurn = (i: number, patch: any) => {
     const next = transcript.slice()
     next[i] = { ...next[i], ...patch }
@@ -563,6 +595,75 @@ function ListeningEditor({ content, set, disabled }: { content: any; set: SetFn;
         )}
       </div>
       <QuestionsEditor label="Questions" questions={content.questions || []} onChange={(v) => set('questions', v)} disabled={disabled} />
+    </div>
+  )
+}
+
+function ListeningExtractSetEditor({ items, onChange, disabled }: {
+  items: ListeningExtract[]; onChange: (items: ListeningExtract[]) => void; disabled: boolean
+}) {
+  const updateItem = (i: number, patch: Partial<ListeningExtract>) => {
+    const next = items.slice()
+    next[i] = { ...next[i], ...patch }
+    onChange(next)
+  }
+  return (
+    <div className="space-y-6">
+      {items.map((item, i) => {
+        const transcript = item.transcript || []
+        const updateTurn = (j: number, patch: Partial<ListeningTurn>) => {
+          const next = transcript.slice()
+          next[j] = { ...next[j], ...patch }
+          updateItem(i, { transcript: next })
+        }
+        return (
+          <div key={i} className="border rounded-lg p-4 space-y-4" data-testid={`listening-extract-${i}`}>
+            <SectionLabel>Extract {i + 1}</SectionLabel>
+            <TextInput
+              label="Title" value={item.title || ''} onChange={(v) => updateItem(i, { title: v })} disabled={disabled}
+              testId={`listening-extract-${i}-title`}
+            />
+            {'audio_mode' in item && (
+              <SelectInput
+                label="Audio Mode" value={item.audio_mode || 'dialogue'} options={['dialogue', 'monologue']}
+                onChange={(v) => updateItem(i, { audio_mode: v })} disabled={disabled}
+                testId={`listening-extract-${i}-audio-mode`}
+              />
+            )}
+            {'body' in item && (
+              <TextArea
+                label="Body / Notes Template" value={item.body || ''} onChange={(v) => updateItem(i, { body: v })} disabled={disabled} rows={6}
+                testId={`listening-extract-${i}-body`}
+              />
+            )}
+            <SectionLabel>Transcript</SectionLabel>
+            <div className="space-y-2" data-testid={`listening-extract-${i}-transcript`}>
+              {transcript.map((turn, j) => (
+                <div key={j} className="flex gap-2 items-start">
+                  <input
+                    value={turn.speaker || ''} disabled={disabled} onChange={(e) => updateTurn(j, { speaker: e.target.value })}
+                    placeholder="Speaker" className="w-32 px-2 py-2 border rounded text-sm"
+                    data-testid={`listening-extract-${i}-turn-${j}-speaker`}
+                  />
+                  <textarea
+                    value={turn.text || ''} disabled={disabled} onChange={(e) => updateTurn(j, { text: e.target.value })} rows={2}
+                    className="flex-1 px-2 py-2 border rounded text-sm"
+                    data-testid={`listening-extract-${i}-turn-${j}-text`}
+                  />
+                  {!disabled && <button onClick={() => updateItem(i, { transcript: transcript.filter((_, idx) => idx !== j) })} className="text-red-500 text-sm px-2">✕</button>}
+                </div>
+              ))}
+              {!disabled && (
+                <button onClick={() => updateItem(i, { transcript: [...transcript, { speaker: '', text: '' }] })} className="text-sm text-blue-600 hover:underline">+ Add turn</button>
+              )}
+            </div>
+            <QuestionsEditor
+              label="Questions" questions={item.questions || []}
+              onChange={(v) => updateItem(i, { questions: v })} disabled={disabled}
+            />
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -821,15 +922,30 @@ function TextArea({ label, value, onChange, disabled, rows = 3, mono, testId }: 
   )
 }
 
-function SelectInput({ label, value, options, onChange, disabled }: {
-  label: string; value: string; options: string[]; onChange: (v: string) => void; disabled: boolean
+function SelectInput({ label, value, options, onChange, disabled, testId }: {
+  label: string; value: string; options: string[]; onChange: (v: string) => void; disabled: boolean; testId?: string
 }) {
   return (
     <div>
       <label className="block text-sm text-gray-500 mb-1">{label}</label>
-      <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className="w-full px-3 py-2 border rounded-lg disabled:bg-gray-50">
+      <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} data-testid={testId} className="w-full px-3 py-2 border rounded-lg disabled:bg-gray-50">
         {options.map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
+    </div>
+  )
+}
+
+function NumberInput({ label, value, onChange, disabled, testId }: {
+  label: string; value: number; onChange: (v: number) => void; disabled: boolean; testId?: string
+}) {
+  return (
+    <div>
+      <label className="block text-sm text-gray-500 mb-1">{label}</label>
+      <input
+        type="number" value={value} disabled={disabled}
+        onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))}
+        data-testid={testId} className="w-full px-3 py-2 border rounded-lg disabled:bg-gray-50"
+      />
     </div>
   )
 }

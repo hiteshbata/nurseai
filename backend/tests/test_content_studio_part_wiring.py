@@ -286,3 +286,70 @@ def test_build_prompt_dispatches_part_c_branch():
     _, user = prompt_builder.build_prompt("reading", "intermediate", "cardiology", "heart failure", part="C")
     for marker in ["Reading Part C", "EXACTLY 2", "EXACTLY 8", "mcq", "options"]:
         assert marker in user
+
+
+# ── 6. Listening (Phase 3E) -- part is required, not merely validated ────
+# Unlike Reading (part omitted -> legacy generic passage), Listening's
+# dedicated Part A/B/C generator has no such fallback -- every generation
+# through this endpoint must pick one of the three locked contracts.
+
+def test_request_schema_requires_part_for_listening():
+    with pytest.raises(ValidationError, match="part must be one of"):
+        GenerateDraftsRequest(module="listening", difficulty="intermediate", specialty="cardiology", topic="x")
+
+
+def test_request_schema_rejects_invalid_listening_part():
+    with pytest.raises(ValidationError, match="part must be one of"):
+        GenerateDraftsRequest(module="listening", difficulty="intermediate", specialty="cardiology", topic="x", part="D")
+
+
+@pytest.mark.parametrize("part", ["A", "B", "C"])
+def test_request_schema_accepts_valid_listening_parts(part):
+    req = GenerateDraftsRequest(module="listening", difficulty="intermediate", specialty="cardiology", topic="x", part=part)
+    assert req.part == part
+
+
+def test_build_prompt_dispatches_listening_part_a_branch():
+    _, user = prompt_builder.build_prompt("listening", "intermediate", "cardiology", "chest pain", part="A")
+    for marker in ["Listening Part A", "EXACTLY 2", "EXACTLY 12", "short_answer"]:
+        assert marker in user
+
+
+def _valid_listening_part_a_content():
+    extracts = [{
+        "title": f"Extract {n}",
+        "transcript": [{"speaker": "Nurse", "text": "hi"}],
+        "body": f"Extract {n} notes\n1. blank ______",
+        "questions": [
+            {"content": f"Extract {n} blank ({b})", "type": "short_answer", "options": [], "correct_answer": f"answer {n}-{b}"}
+            for b in range(1, 13)
+        ],
+    } for n in range(1, 3)]
+    return {"part": "A", "prep_seconds": 30, "audio_mode": "dialogue", "extracts": extracts}
+
+
+def test_generate_draft_listening_part_a_selects_part_a_prompt_and_passes_validation(monkeypatch):
+    """Mirrors test_generate_draft_part_a_selects_part_a_prompt_and_passes_validation
+    above, but for Listening's dedicated Part A generator (Phase 3B/3E)."""
+    _patch_ai(monkeypatch, _valid_listening_part_a_content())
+
+    result = _run(draft_generator.generate_draft(
+        module="listening", difficulty="intermediate", specialty="cardiology",
+        topic="ENT", part="A",
+    ))
+
+    assert "Listening Part A" in result["prompt"]["user_prompt"]
+    assert result["generated_content"]["part"] == "A"
+    assert result["validation_warnings"] == []
+
+
+def test_generate_draft_listening_part_a_structural_violation_still_raises(monkeypatch):
+    broken = _valid_listening_part_a_content()
+    broken["extracts"][0]["questions"] = broken["extracts"][0]["questions"][:11]
+    _patch_ai(monkeypatch, broken)
+
+    with pytest.raises(draft_generator.DraftGenerationError, match="locked contract"):
+        _run(draft_generator.generate_draft(
+            module="listening", difficulty="intermediate", specialty="cardiology",
+            topic="ENT", part="A",
+        ))

@@ -122,6 +122,12 @@ def get_item(module: str, item_id: int, current_user: UserInfo = Depends(require
 # 3B-5, 4A, 4C-3) -- reject anything else rather than silently dropping or
 # coercing it.
 _VALID_READING_PARTS = {"A", "B", "C"}
+# Listening's dedicated Part A/B/C generator (Phase 3) has no legacy
+# "part omitted" fallback the way Reading still does -- every Listening
+# generation through this endpoint must pick one of the three locked
+# contracts. Existing Listening legacy/PDF workflows (routers/listening.py)
+# are separate endpoints and are untouched by this.
+_VALID_LISTENING_PARTS = {"A", "B", "C"}
 
 
 class GenerateDraftsRequest(BaseModel):
@@ -138,6 +144,8 @@ class GenerateDraftsRequest(BaseModel):
     def _validate_reading_part(self):
         if self.module == "reading" and self.part is not None and self.part not in _VALID_READING_PARTS:
             raise ValueError(f"part must be one of {sorted(_VALID_READING_PARTS)} for reading; got '{self.part}'")
+        if self.module == "listening" and self.part not in _VALID_LISTENING_PARTS:
+            raise ValueError(f"part must be one of {sorted(_VALID_LISTENING_PARTS)} for listening; got '{self.part}'")
         return self
 
 

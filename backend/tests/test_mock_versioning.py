@@ -33,6 +33,7 @@ class FakeQuery:
         self.rows = supabase.tables.setdefault(table_name, [])
         self.filters = []
         self.in_filters = []
+        self.gte_filters = []
         self.order_col = None
         self.order_desc = False
         self.limit_n = None
@@ -48,6 +49,10 @@ class FakeQuery:
 
     def in_(self, col, vals):
         self.in_filters.append((col, set(vals)))
+        return self
+
+    def gte(self, col, val):
+        self.gte_filters.append((col, val))
         return self
 
     def not_(self):
@@ -77,6 +82,7 @@ class FakeQuery:
             r for r in self.rows
             if all(r.get(c) == v for c, v in self.filters)
             and all(r.get(c) in v for c, v in self.in_filters)
+            and all((r.get(c) or "") >= v for c, v in self.gte_filters)
         ]
         if self.order_col:
             rows = sorted(rows, key=lambda r: r.get(self.order_col) or 0, reverse=self.order_desc)
@@ -130,9 +136,9 @@ def _seeded_content(fake):
     ]
     fake.tables["listening_tests"] = [{"id": 2, "title": "Listening 1", "is_active": True, "part_audio": {}, "part_audio_times": {}}]
     fake.tables["listening_sections"] = [
-        {"id": 20, "title": "S1", "part": "B", "difficulty": "intermediate", "audio_url": "https://x/b.mp3", "transcript": [], "body": None, "test_id": 2, "is_active": True},
-        {"id": 21, "title": "SA", "part": "A", "difficulty": "intermediate", "audio_url": "https://x/a.mp3", "transcript": [], "body": None, "test_id": 2, "is_active": True},
-        {"id": 22, "title": "SC", "part": "C", "difficulty": "intermediate", "audio_url": "https://x/c.mp3", "transcript": [], "body": None, "test_id": 2, "is_active": True},
+        {"id": 20, "title": "S1", "part": "B", "difficulty": "intermediate", "audio_url": "https://x/b.mp3", "transcript": [{"speaker": "Nurse", "text": "s1"}], "body": None, "test_id": 2, "is_active": True},
+        {"id": 21, "title": "SA", "part": "A", "difficulty": "intermediate", "audio_url": "https://x/a.mp3", "transcript": [{"speaker": "Nurse", "text": "sa"}], "body": None, "test_id": 2, "is_active": True},
+        {"id": 22, "title": "SC", "part": "C", "difficulty": "intermediate", "audio_url": "https://x/c.mp3", "transcript": [{"speaker": "Interviewer", "text": "sc"}], "body": None, "test_id": 2, "is_active": True},
     ]
     fake.tables["questions"] += [
         {"id": 200, "section_id": 20, "type": "mcq", "content": "q", "options": json.dumps(["a", "b"]), "correct_answer": "a"},
@@ -220,14 +226,24 @@ def test_section_done_not_blocked_by_unpublish_when_version_pinned(monkeypatch):
         "current_section": "listening", "listening_test_id": 2, "reading_test_id": 1,
         "writing_scenario_id": 300, "speaking_scenario_id_1": 301, "speaking_scenario_id_2": 302,
         "reading_test_version_id": reading_version_id, "listening_test_version_id": listening_version_id,
-        "mock_test_version_id": 1, "section_started_at": {}, "results": {},
+        "mock_test_version_id": 1,
+        "section_started_at": {"listening": "2026-01-01T00:00:00+00:00"}, "results": {},
+    }]
+    # The listening player's own /listening/tests/2/submit already graded this
+    # attempt and wrote its authoritative row -- section-done now reads that
+    # back instead of trusting a client-supplied result (see mock.py
+    # _authoritative_section_result).
+    fake.tables["submissions"] = [{
+        "id": 1, "user_id": "student-1", "module": "listening", "score": 6.0,
+        "feedback": json.dumps({"test_id": 2, "correct": 5, "graded": 6}),
+        "created_at": "2026-01-01T00:00:01+00:00",
     }]
 
     # Admin unpublishes the live reading test after the student started.
     fake.tables["reading_tests"][0]["is_active"] = False
 
     result = asyncio.run(mock_router.section_done(
-        "sess-1", SectionDoneRequest(section="listening", result={"band": 6.0}), current_user=_STUDENT,
+        "sess-1", SectionDoneRequest(section="listening"), current_user=_STUDENT,
     ))
     assert result["next_section"] == "reading"  # not blocked
 
@@ -248,7 +264,7 @@ def test_section_done_still_blocked_for_legacy_unpinned_session(monkeypatch):
 
     try:
         asyncio.run(mock_router.section_done(
-            "sess-2", SectionDoneRequest(section="listening", result={"band": 6.0}), current_user=_STUDENT,
+            "sess-2", SectionDoneRequest(section="listening"), current_user=_STUDENT,
         ))
         assert False, "expected 409"
     except HTTPException as e:

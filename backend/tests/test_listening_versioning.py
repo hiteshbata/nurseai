@@ -119,11 +119,11 @@ def _seeded_fake():
         "body": None, "test_id": 2, "is_active": True,
     }, {
         "id": 21, "title": "Section A", "part": "A", "difficulty": "intermediate",
-        "audio_url": "https://bucket/part-a.mp3", "transcript": None,
+        "audio_url": "https://bucket/part-a.mp3", "transcript": [{"speaker": "Nurse", "text": "part a"}],
         "body": None, "test_id": 2, "is_active": True,
     }, {
         "id": 22, "title": "Section C", "part": "C", "difficulty": "intermediate",
-        "audio_url": "https://bucket/part-c.mp3", "transcript": None,
+        "audio_url": "https://bucket/part-c.mp3", "transcript": [{"speaker": "Interviewer", "text": "part c"}],
         "body": None, "test_id": 2, "is_active": True,
     }]
     fake.tables["questions"] = [{
@@ -146,6 +146,44 @@ def test_publishing_cuts_version_1_and_flips_live(monkeypatch):
     assert result == {"success": True, "is_active": True}
     assert len(fake.tables["listening_test_versions"]) == 1
     assert fake.tables["listening_test_versions"][0]["version"] == 1
+
+
+# ── Phase 3D -- snapshot preserves section_seq/prep_seconds/audio_mode ────
+# The Listening Content Studio's locked Part A/B/C contract (Phase 3) adds
+# these three columns to listening_sections; build_listening_snapshot must
+# freeze them the same way it already freezes transcript/body, so a
+# published version keeps the full production shape even after live content
+# changes.
+
+def test_snapshot_preserves_section_seq_prep_seconds_audio_mode(monkeypatch):
+    fake = _seeded_fake()
+    fake.tables["listening_sections"][0].update({"section_seq": 3, "prep_seconds": 15, "audio_mode": "dialogue"})
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)
+
+    version_id = fake.tables["listening_test_versions"][0]["id"]
+    row = listening_router.get_listening_test_version(2, version_id, _admin=_ADMIN)
+    section = next(s for s in row["snapshot"]["sections"] if s["section_id"] == 20)
+    assert section["section_seq"] == 3
+    assert section["prep_seconds"] == 15
+    assert section["audio_mode"] == "dialogue"
+
+
+def test_snapshot_fields_stay_frozen_after_live_edit(monkeypatch):
+    fake = _seeded_fake()
+    fake.tables["listening_sections"][0].update({"section_seq": 0, "prep_seconds": 30, "audio_mode": "dialogue"})
+    monkeypatch.setattr(listening_router, "get_supabase", lambda: fake)
+    listening_router.set_test_active(2, SetActiveRequest(is_active=True), admin=_ADMIN)
+
+    # Admin edits the live section's metadata after publishing.
+    fake.tables["listening_sections"][0]["prep_seconds"] = 90
+    fake.tables["listening_sections"][0]["audio_mode"] = "monologue"
+
+    version_id = fake.tables["listening_test_versions"][0]["id"]
+    row = listening_router.get_listening_test_version(2, version_id, _admin=_ADMIN)
+    section = next(s for s in row["snapshot"]["sections"] if s["section_id"] == 20)
+    assert section["prep_seconds"] == 30  # frozen, not the edit
+    assert section["audio_mode"] == "dialogue"
 
 
 def test_get_test_serves_frozen_audio_url_and_withholds_transcript(monkeypatch):

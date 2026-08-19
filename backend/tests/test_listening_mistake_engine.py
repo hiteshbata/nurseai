@@ -133,11 +133,11 @@ def _seeded_fake(user_id: str) -> FakeSupabase:
         "body": None, "test_id": 2, "is_active": True,
     }, {
         "id": 21, "title": "Section A", "part": "A", "difficulty": "easy",
-        "audio_url": "https://bucket/part-a.mp3", "transcript": None,
+        "audio_url": "https://bucket/part-a.mp3", "transcript": [{"speaker": "Nurse", "text": "part a"}],
         "body": None, "test_id": 2, "is_active": True,
     }, {
         "id": 22, "title": "Section C", "part": "C", "difficulty": "hard",
-        "audio_url": "https://bucket/part-c.mp3", "transcript": None,
+        "audio_url": "https://bucket/part-c.mp3", "transcript": [{"speaker": "Interviewer", "text": "part c"}],
         "body": None, "test_id": 2, "is_active": True,
     }]
     fake.tables["questions"] = [{

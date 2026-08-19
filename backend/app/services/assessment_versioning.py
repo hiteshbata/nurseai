@@ -233,7 +233,7 @@ def build_listening_snapshot(supabase, test_id: int) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Test not found")
 
     sections = supabase.table("listening_sections").select(
-        "id, title, part, difficulty, audio_url, transcript, body"
+        "id, title, part, difficulty, audio_url, transcript, body, section_seq, prep_seconds, audio_mode"
     ).eq("test_id", test_id).eq("is_active", True).execute().data
     sids = [s["id"] for s in sections]
     questions = supabase.table("questions").select(
@@ -248,6 +248,7 @@ def build_listening_snapshot(supabase, test_id: int) -> Dict[str, Any]:
         "sections": [{
             "section_id": s["id"], "title": s["title"], "part": s["part"], "difficulty": s["difficulty"],
             "audio_url": s.get("audio_url"), "transcript": s.get("transcript"), "body": s.get("body"),
+            "section_seq": s.get("section_seq"), "prep_seconds": s.get("prep_seconds"), "audio_mode": s.get("audio_mode"),
         } for s in sections],
         "questions": [{
             "question_id": q["id"], "section_id": q["section_id"],

@@ -142,21 +142,143 @@ def _reading_payload(draft: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[s
     return passage, content.get("questions", [])
 
 
+def _set_audio_url(section: Dict[str, Any], source: Dict[str, Any]) -> None:
+    """Only sets audio_url when `source` explicitly carries a non-empty
+    replacement. Draft generated_content never carries audio -- that's
+    attached to the production row afterward via listening.py's own
+    upload/TTS endpoints -- so omitting the key here (rather than setting it
+    to None) means an update() leaves the production row's existing
+    audio_url untouched. A missing audio_url must never be read as "delete
+    audio" (RC Phase 6A)."""
+    url = source.get("audio_url")
+    if isinstance(url, str) and url.strip():
+        section["audio_url"] = url.strip()
+
+
 def _listening_payload(draft: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """Legacy flat listening generation (no locked Part A/B/C contract): one
+    section, one row -- untouched by Phase 3C. Part A/B/C drafts are NOT
+    handled here -- see _listening_part_a/b/c_payloads below."""
     content = draft["generated_content"]
     part = content.get("part")
     section = {
         "title": _title(draft, content),
         "part": part if part in ("A", "B", "C") else "B",
         "difficulty": content.get("difficulty", "intermediate"),
-        "audio_url": None,
         "transcript": content.get("transcript"),
         "body": None,
         # Starts inactive -- see matching comment in _reading_payload.
         "is_active": False,
         "source_draft_id": draft["id"],
     }
+    _set_audio_url(section, content)
     return section, content.get("questions", [])
+
+
+# Locked Listening Part A/B/C contract (Phase 3C): each part publishes N
+# independent listening_sections rows from one draft (2 for A, 6 for B, 2 for
+# C), same multi-row architecture Reading Part B/C established --
+# section_seq (0..N-1, generation order) is what lets them share one
+# source_draft_id despite listening_sections_source_draft_uidx being widened
+# to (source_draft_id, section_seq) -- see the Phase 3F migration file.
+_LISTENING_PART_A_EXTRACT_COUNT = 2  # locked contract, matches the Part A structural validator
+_LISTENING_PART_B_EXTRACT_COUNT = 6  # locked contract, matches the Part B structural validator
+_LISTENING_PART_C_EXTRACT_COUNT = 2  # locked contract, matches the Part C structural validator
+
+
+def _listening_part_a_payloads(draft: Dict[str, Any]) -> List[Tuple[Dict[str, Any], List[Dict[str, Any]]]]:
+    """Part A's 2 independent extracts, each its own listening_sections row
+    (part='A', 12 short_answer questions, body=note-completion template,
+    prep_seconds=30, audio_mode='dialogue' -- global, copied onto every row)."""
+    content = draft["generated_content"]
+    extracts = content.get("extracts")
+    if not isinstance(extracts, list) or len(extracts) != _LISTENING_PART_A_EXTRACT_COUNT:
+        got = len(extracts) if isinstance(extracts, list) else type(extracts).__name__
+        raise InvalidPartError(f"Listening Part A draft must have exactly {_LISTENING_PART_A_EXTRACT_COUNT} extracts; got {got}.")
+    out: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]] = []
+    for seq, ex in enumerate(extracts):
+        section = {
+            "title": str(ex.get("title") or "").strip(),
+            "part": "A",
+            "difficulty": content.get("difficulty", "intermediate"),
+            "transcript": ex.get("transcript"),
+            "body": ex.get("body"),
+            "prep_seconds": content.get("prep_seconds", 30),
+            "audio_mode": content.get("audio_mode", "dialogue"),
+            "section_seq": seq,
+            # Starts inactive -- see matching comment in _reading_payload.
+            "is_active": False,
+            "source_draft_id": draft["id"],
+        }
+        _set_audio_url(section, ex)
+        out.append((section, ex.get("questions", [])))
+    return out
+
+
+def _listening_part_b_payloads(draft: Dict[str, Any]) -> List[Tuple[Dict[str, Any], List[Dict[str, Any]]]]:
+    """Part B's 6 independent extracts, each its own listening_sections row
+    (part='B', 1 mcq/3-option question, prep_seconds=15, audio_mode='dialogue'
+    -- global, copied onto every row). No body -- that's Part A only."""
+    content = draft["generated_content"]
+    extracts = content.get("extracts")
+    if not isinstance(extracts, list) or len(extracts) != _LISTENING_PART_B_EXTRACT_COUNT:
+        got = len(extracts) if isinstance(extracts, list) else type(extracts).__name__
+        raise InvalidPartError(f"Listening Part B draft must have exactly {_LISTENING_PART_B_EXTRACT_COUNT} extracts; got {got}.")
+    out: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]] = []
+    for seq, ex in enumerate(extracts):
+        section = {
+            "title": str(ex.get("title") or "").strip(),
+            "part": "B",
+            "difficulty": content.get("difficulty", "intermediate"),
+            "transcript": ex.get("transcript"),
+            "body": None,
+            "prep_seconds": content.get("prep_seconds", 15),
+            "audio_mode": content.get("audio_mode", "dialogue"),
+            "section_seq": seq,
+            # Starts inactive -- see matching comment in _reading_payload.
+            "is_active": False,
+            "source_draft_id": draft["id"],
+        }
+        _set_audio_url(section, ex)
+        out.append((section, ex.get("questions", [])))
+    return out
+
+
+def _listening_part_c_payloads(draft: Dict[str, Any]) -> List[Tuple[Dict[str, Any], List[Dict[str, Any]]]]:
+    """Part C's 2 independent extracts, each its own listening_sections row
+    (part='C', 6 mcq/3-option questions, prep_seconds=90). audio_mode is
+    chosen PER EXTRACT (dialogue/monologue), unlike Part A/B's global value --
+    read from each extract, not from content['audio_mode']."""
+    content = draft["generated_content"]
+    extracts = content.get("extracts")
+    if not isinstance(extracts, list) or len(extracts) != _LISTENING_PART_C_EXTRACT_COUNT:
+        got = len(extracts) if isinstance(extracts, list) else type(extracts).__name__
+        raise InvalidPartError(f"Listening Part C draft must have exactly {_LISTENING_PART_C_EXTRACT_COUNT} extracts; got {got}.")
+    out: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]] = []
+    for seq, ex in enumerate(extracts):
+        section = {
+            "title": str(ex.get("title") or "").strip(),
+            "part": "C",
+            "difficulty": content.get("difficulty", "intermediate"),
+            "transcript": ex.get("transcript"),
+            "body": None,
+            "prep_seconds": content.get("prep_seconds", 90),
+            "audio_mode": ex.get("audio_mode", "dialogue"),
+            "section_seq": seq,
+            # Starts inactive -- see matching comment in _reading_payload.
+            "is_active": False,
+            "source_draft_id": draft["id"],
+        }
+        _set_audio_url(section, ex)
+        out.append((section, ex.get("questions", [])))
+    return out
+
+
+_LISTENING_PART_PAYLOAD_BUILDERS = {
+    "A": _listening_part_a_payloads,
+    "B": _listening_part_b_payloads,
+    "C": _listening_part_c_payloads,
+}
 
 
 def _reading_part_b_payloads(draft: Dict[str, Any]) -> List[Tuple[Dict[str, Any], List[Dict[str, Any]]]]:
@@ -217,6 +339,14 @@ def _existing_multi_passage_production_ids(supabase, draft_id: int) -> Dict[int,
     single id, since Part B/C publish several rows, not 1."""
     rows = supabase.table("reading_passages").select("id, passage_seq").eq("source_draft_id", draft_id).execute().data
     return {r["passage_seq"]: r["id"] for r in rows if r.get("passage_seq") is not None}
+
+
+def _existing_multi_section_production_ids(supabase, draft_id: int) -> Dict[int, Any]:
+    """seq -> production row id, for whichever of this draft's Listening
+    Part A/B/C sections already exist (republish) -- listening_sections
+    analog of _existing_multi_passage_production_ids."""
+    rows = supabase.table("listening_sections").select("id, section_seq").eq("source_draft_id", draft_id).execute().data
+    return {r["section_seq"]: r["id"] for r in rows if r.get("section_seq") is not None}
 
 
 def _existing_production_id(supabase, table: str, draft_id: int) -> Any:
@@ -283,6 +413,18 @@ def build_preview(draft: Dict[str, Any]) -> Dict[str, Any]:
             ],
             "warnings": warnings,
         }
+
+    if module == "listening" and draft["generated_content"].get("part") in _LISTENING_PART_PAYLOAD_BUILDERS:
+        payloads = _LISTENING_PART_PAYLOAD_BUILDERS[draft["generated_content"]["part"]](draft)
+        existing = _existing_multi_section_production_ids(supabase, draft["id"])
+        records: List[Dict[str, Any]] = []
+        warnings: List[str] = []
+        for seq, (section, questions) in enumerate(payloads):
+            existing_id = existing.get(seq)
+            warnings += _duplicate_warning(supabase, "listening_sections", section["title"], {}, exclude_id=existing_id)
+            records.append({"table": "listening_sections", "fields": section, "action": "update" if existing_id else "create", "id": existing_id})
+            records.append({"table": "questions", "count": len(questions)})
+        return {"records": records, "warnings": warnings}
 
     section, questions = _listening_payload(draft)
     warnings = _duplicate_warning(supabase, "listening_sections", section["title"], {}, exclude_id=existing_id)
@@ -402,6 +544,48 @@ def _publish_multi_passage_reading(supabase, draft: Dict[str, Any], now: str, pa
     return {"table": "reading_passages", "passages": results, "questions_created": sum(r["questions_created"] for r in results), "action": action}
 
 
+def _publish_multi_section_listening(supabase, draft: Dict[str, Any], now: str, payloads: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]]) -> Dict[str, Any]:
+    """Shared by Listening Part A (2 sections), Part B (6), and Part C (2) --
+    listening_sections analog of _publish_multi_passage_reading, same
+    insert-or-update-by-seq + all-or-nothing rollback behavior. See that
+    function's docstring for the full reasoning; not repeated here."""
+    existing = _existing_multi_section_production_ids(supabase, draft["id"])
+    results: List[Dict[str, Any]] = []
+    created_ids: List[Any] = []
+    try:
+        for seq, (section, questions) in enumerate(payloads):
+            existing_id = existing.get(seq)
+            if existing_id:
+                section.pop("is_active", None)
+                row = supabase.table("listening_sections").update(section).eq("id", existing_id).execute().data[0]
+                questions_created = _replace_questions(supabase, "listening", questions, "section_id", existing_id)
+                results.append({"id": row["id"], "title": row["title"], "questions_created": questions_created, "action": "updated"})
+                continue
+            section["published_at"] = now
+            try:
+                row = supabase.table("listening_sections").insert(section).execute().data[0]
+            except Exception as e:
+                if "duplicate key" in str(e).lower():
+                    raise AlreadyPublishedError(f"Draft {draft['id']} has already been published to listening_sections.")
+                raise
+            created_ids.append(row["id"])
+            _insert_questions(supabase, "listening", questions, "section_id", row["id"])
+            results.append({"id": row["id"], "title": row["title"], "questions_created": len(questions), "action": "created"})
+    except Exception:
+        for sid in created_ids:
+            try:
+                supabase.table("listening_sections").delete().eq("id", sid).execute()
+            except Exception:
+                logger.exception(
+                    "Multi-section listening publish for draft=%s failed and rollback of "
+                    "newly-created section id=%s also failed -- it (and any cascaded "
+                    "questions) may be orphaned and need manual removal.", draft["id"], sid,
+                )
+        raise
+    action = "created" if not existing else ("updated" if len(existing) >= len(payloads) else "mixed")
+    return {"table": "listening_sections", "sections": results, "questions_created": sum(r["questions_created"] for r in results), "action": action}
+
+
 def publish(draft: Dict[str, Any], published_by: str) -> Dict[str, Any]:
     """First publish INSERTs a new production row. Republish (this draft
     already has one, found via source_draft_id -- see _existing_production_id)
@@ -463,6 +647,10 @@ def publish(draft: Dict[str, Any], published_by: str) -> Dict[str, Any]:
             supabase.table("reading_passages").delete().eq("id", row["id"]).execute()
             raise
         return {"table": "reading_passages", "id": row["id"], "title": row["title"], "questions_created": len(questions), "action": "created"}
+
+    if module == "listening" and draft["generated_content"].get("part") in _LISTENING_PART_PAYLOAD_BUILDERS:
+        payloads = _LISTENING_PART_PAYLOAD_BUILDERS[draft["generated_content"]["part"]](draft)
+        return _publish_multi_section_listening(supabase, draft, now, payloads)
 
     section, questions = _listening_payload(draft)
     if existing_id:

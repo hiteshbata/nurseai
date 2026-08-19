@@ -205,6 +205,14 @@ def _validate_listening_content(
                 f"Section \"{s.get('title', '')}\" has no audio",
                 {"section_id": sid},
             ))
+        # legacy direct-authored sections (source_draft_id NULL) predate the
+        # transcript requirement and stay learner-servable without one.
+        if s.get("source_draft_id") is not None and _is_blank(s.get("transcript")):
+            errors.append(_err(
+                "missing_transcript", f"section:{sid}",
+                f"Section \"{s.get('title', '')}\" has no transcript",
+                {"section_id": sid},
+            ))
         errors.extend(_check_questions(
             questions_by_section.get(sid, []),
             f"section:{sid}",
@@ -220,7 +228,7 @@ def _validate_listening_content(
 
 def validate_listening_test(supabase, test_id: int) -> Dict[str, Any]:
     sections = supabase.table("listening_sections").select(
-        "id, title, part, audio_url"
+        "id, title, part, audio_url, transcript, source_draft_id"
     ).eq("test_id", test_id).eq("is_active", True).execute().data
     sids = [s["id"] for s in sections]
     questions = supabase.table("questions").select(
@@ -238,7 +246,11 @@ def validate_listening_test(supabase, test_id: int) -> Dict[str, Any]:
         })
 
     section_dicts = [
-        {"section_id": s["id"], "title": s.get("title", ""), "part": s.get("part"), "audio_url": s.get("audio_url")}
+        {
+            "section_id": s["id"], "title": s.get("title", ""), "part": s.get("part"),
+            "audio_url": s.get("audio_url"), "transcript": s.get("transcript"),
+            "source_draft_id": s.get("source_draft_id"),
+        }
         for s in sections
     ]
     errors, warnings = _validate_listening_content(section_dicts, questions_by_section)
@@ -382,9 +394,9 @@ if __name__ == "__main__":
     assert any(e["code"] == "duplicate_question_text" for e in dup_text_errors)
 
     ok_sections = [
-        {"section_id": 1, "title": "S1", "part": "A", "audio_url": "https://x/1.mp3"},
-        {"section_id": 2, "title": "S2", "part": "B", "audio_url": "https://x/2.mp3"},
-        {"section_id": 3, "title": "S3", "part": "C", "audio_url": "https://x/3.mp3"},
+        {"section_id": 1, "title": "S1", "part": "A", "audio_url": "https://x/1.mp3", "transcript": [{"speaker": "Nurse", "text": "hi"}]},
+        {"section_id": 2, "title": "S2", "part": "B", "audio_url": "https://x/2.mp3", "transcript": [{"speaker": "Nurse", "text": "hi"}]},
+        {"section_id": 3, "title": "S3", "part": "C", "audio_url": "https://x/3.mp3", "transcript": [{"speaker": "Nurse", "text": "hi"}]},
     ]
     ok_l_questions = {
         1: [{"question_id": 10, "type": "short_answer", "content": "q1", "options": [], "correct_answer": "x"}],
@@ -398,5 +410,15 @@ if __name__ == "__main__":
         [{**ok_sections[0], "audio_url": None}] + ok_sections[1:], ok_l_questions,
     )
     assert any(e["code"] == "missing_audio" for e in no_audio_errors)
+
+    cs_missing_transcript_errors, _ = _validate_listening_content(
+        [{**ok_sections[0], "source_draft_id": 900, "transcript": None}] + ok_sections[1:], ok_l_questions,
+    )
+    assert any(e["code"] == "missing_transcript" for e in cs_missing_transcript_errors)
+
+    legacy_missing_transcript_errors, _ = _validate_listening_content(
+        [{**ok_sections[0], "source_draft_id": None, "transcript": None}] + ok_sections[1:], ok_l_questions,
+    )
+    assert not any(e["code"] == "missing_transcript" for e in legacy_missing_transcript_errors)
 
     print("assessment_validation.py self-check: all assertions passed")

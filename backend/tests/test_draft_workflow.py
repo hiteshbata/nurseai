@@ -107,17 +107,20 @@ class FakeQuery:
                     raise Exception(f"simulated insert failure on {self._table_name} (call #{fail_at})")
             # Mirrors reading_passages_source_draft_uidx / listening_sections_source_draft_uidx
             # (20260808050000_draft_review_workflow.sql, widened by
-            # 20260816000000_reading_part_b_multi_passage.sql) -- a partial unique index,
-            # null-safe (legacy rows with no source_draft_id never conflict). reading_passages'
-            # index is (source_draft_id, passage_seq) so a Part B draft's 6 passages (seq 0-5)
-            # can share one source_draft_id; listening_sections stays source_draft_id alone.
+            # 20260816000000_reading_part_b_multi_passage.sql for reading_passages
+            # and 20260819020000_listening_sections_part_studio.sql for
+            # listening_sections) -- a partial unique index, null-safe (legacy
+            # rows with no source_draft_id never conflict). Both tables' index
+            # is now (source_draft_id, <seq column>) so a multi-row draft's N
+            # passages/sections (seq 0..N-1) can share one source_draft_id.
             if self._enforce_source_draft_unique:
                 sdid = self._payload.get("source_draft_id")
                 if sdid is not None:
-                    if self._unique_cols == ("source_draft_id", "passage_seq"):
-                        seq = self._payload.get("passage_seq", 0)
+                    if len(self._unique_cols) == 2:
+                        seq_col = self._unique_cols[1]
+                        seq = self._payload.get(seq_col, 0)
                         conflict = any(
-                            r.get("source_draft_id") == sdid and r.get("passage_seq", 0) == seq
+                            r.get("source_draft_id") == sdid and r.get(seq_col, 0) == seq
                             for r in self._rows
                         )
                     else:
@@ -149,7 +152,11 @@ class FakeSupabase:
     # migration comment), so it's deliberately not in this set.
     UNIQUE_SOURCE_DRAFT_TABLES = {
         "reading_passages": ("source_draft_id", "passage_seq"),
-        "listening_sections": ("source_draft_id",),
+        # Widened by the Phase 3F migration (20260819020000_listening_sections_part_studio.sql)
+        # the same way reading_passages was widened for Part B -- see that
+        # migration's comment. Legacy flat-listening payloads never set
+        # section_seq, so they default to 0 same as the real DB column default.
+        "listening_sections": ("source_draft_id", "section_seq"),
     }
 
     def __init__(self):
@@ -1347,6 +1354,379 @@ def test_part_b_publish_unaffected_by_part_c(monkeypatch):
     result = draft_publisher.publish(draft, "owner-1")
     assert len(fake.tables["reading_passages"]) == 6
     assert result["action"] == "created"
+
+
+# ── Listening Content Studio Phase 3C: multi-section publish ───────────
+# Locked contract (Phase 3, mirrors Reading Part B/C's multi-passage
+# architecture over listening_sections instead of reading_passages):
+# Part A -> 2 sections, Part B -> 6, Part C -> 2. section_seq (0..N-1) is
+# what lets them share one source_draft_id under the widened
+# listening_sections_source_draft_uidx (Phase 3F migration).
+
+def _listening_part_a_extracts(n=2):
+    return [{
+        "title": f"Extract {i + 1}",
+        "transcript": [{"speaker": "Nurse", "text": f"extract {i + 1} turn"}],
+        "body": f"Extract {i + 1} notes\n1. blank ______",
+        "questions": [{
+            "type": "short_answer", "content": f"Extract {i + 1} blank ({b})",
+            "options": [], "correct_answer": f"answer {i + 1}-{b}",
+        } for b in range(1, 13)],
+    } for i in range(n)]
+
+
+def _listening_part_a_content(extracts=None):
+    return {"part": "A", "prep_seconds": 30, "audio_mode": "dialogue", "extracts": _listening_part_a_extracts() if extracts is None else extracts}
+
+
+def _listening_part_b_extracts(n=6):
+    return [{
+        "title": f"Extract {i + 1}",
+        "transcript": [{"speaker": "Nurse", "text": f"extract {i + 1} turn"}],
+        "questions": [{
+            "type": "mcq", "content": f"What does extract {i + 1} say?",
+            "options": ["Option A", "Option B", "Option C"], "correct_answer": "Option B",
+        }],
+    } for i in range(n)]
+
+
+def _listening_part_b_content(extracts=None):
+    return {"part": "B", "prep_seconds": 15, "audio_mode": "dialogue", "extracts": _listening_part_b_extracts() if extracts is None else extracts}
+
+
+def _listening_part_c_extracts(n=2):
+    return [{
+        "title": f"Extract {i + 1}",
+        "audio_mode": "dialogue" if i % 2 == 0 else "monologue",
+        "transcript": [{"speaker": "Interviewer", "text": f"extract {i + 1} turn"}],
+        "questions": [{
+            "type": "mcq", "content": f"Extract {i + 1} question {q}",
+            "options": ["Option A", "Option B", "Option C"], "correct_answer": "Option B",
+        } for q in range(1, 7)],
+    } for i in range(n)]
+
+
+def _listening_part_c_content(extracts=None):
+    return {"part": "C", "prep_seconds": 90, "extracts": _listening_part_c_extracts() if extracts is None else extracts}
+
+
+def test_listening_part_a_payloads_builds_two_sections_with_seq_and_fields_preserved():
+    draft = _draft(id=200, module="listening", generated_content=_listening_part_a_content())
+    payloads = draft_publisher._listening_part_a_payloads(draft)
+    assert len(payloads) == 2
+    for i, (section, questions) in enumerate(payloads):
+        assert section["part"] == "A"
+        assert section["section_seq"] == i
+        assert section["prep_seconds"] == 30
+        assert section["audio_mode"] == "dialogue"
+        assert section["body"] == f"Extract {i + 1} notes\n1. blank ______"
+        assert section["transcript"] == [{"speaker": "Nurse", "text": f"extract {i + 1} turn"}]
+        assert len(questions) == 12
+
+
+def test_listening_part_b_payloads_builds_six_sections_with_seq_and_fields_preserved():
+    draft = _draft(id=201, module="listening", generated_content=_listening_part_b_content())
+    payloads = draft_publisher._listening_part_b_payloads(draft)
+    assert len(payloads) == 6
+    for i, (section, questions) in enumerate(payloads):
+        assert section["part"] == "B"
+        assert section["section_seq"] == i
+        assert section["prep_seconds"] == 15
+        assert section["audio_mode"] == "dialogue"
+        assert section["body"] is None
+        assert len(questions) == 1
+
+
+def test_listening_part_c_payloads_preserve_per_extract_audio_mode():
+    draft = _draft(id=202, module="listening", generated_content=_listening_part_c_content())
+    payloads = draft_publisher._listening_part_c_payloads(draft)
+    assert len(payloads) == 2
+    assert payloads[0][0]["audio_mode"] == "dialogue"
+    assert payloads[1][0]["audio_mode"] == "monologue"
+    assert all(len(q) == 6 for _, q in payloads)
+
+
+def test_listening_part_b_payloads_rejects_wrong_extract_count():
+    draft = _draft(module="listening", generated_content=_listening_part_b_content(_listening_part_b_extracts(5)))
+    try:
+        draft_publisher._listening_part_b_payloads(draft)
+        assert False, "expected InvalidPartError"
+    except draft_publisher.InvalidPartError:
+        pass
+
+
+def test_listening_part_b_publish_creates_exactly_six_sections_all_part_b(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=203, module="listening", generated_content=_listening_part_b_content())
+    result = draft_publisher.publish(draft, "owner-1")
+    rows = fake.tables["listening_sections"]
+    assert len(rows) == 6
+    assert all(r["part"] == "B" for r in rows)
+    assert sorted(r["section_seq"] for r in rows) == [0, 1, 2, 3, 4, 5]
+    assert result["action"] == "created"
+    assert result["questions_created"] == 6
+
+
+def test_listening_part_b_publish_questions_linked_to_their_own_section_only(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=204, module="listening", generated_content=_listening_part_b_content())
+    draft_publisher.publish(draft, "owner-1")
+    rows_by_seq = {r["section_seq"]: r for r in fake.tables["listening_sections"]}
+    for seq, section in rows_by_seq.items():
+        qs = [q for q in fake.tables["questions"] if q["section_id"] == section["id"]]
+        assert len(qs) == 1
+        assert qs[0]["content"] == f"What does extract {seq + 1} say?"
+
+
+def test_listening_part_b_publish_all_six_share_same_source_draft_id(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=205, module="listening", generated_content=_listening_part_b_content())
+    draft_publisher.publish(draft, "owner-1")
+    assert all(r["source_draft_id"] == 205 for r in fake.tables["listening_sections"])
+
+
+def test_listening_part_b_publish_preview_returns_all_six_sections(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=206, module="listening", generated_content=_listening_part_b_content())
+    preview = draft_publisher.build_preview(draft)
+    section_records = [r for r in preview["records"] if r["table"] == "listening_sections"]
+    assert len(section_records) == 6
+    assert all(r["action"] == "create" for r in section_records)
+    assert sorted(r["fields"]["section_seq"] for r in section_records) == [0, 1, 2, 3, 4, 5]
+
+
+def test_listening_part_b_republish_of_unchanged_draft_updates_not_duplicates(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=207, module="listening", generated_content=_listening_part_b_content())
+    first = draft_publisher.publish(draft, "owner-1")
+    second = draft_publisher.publish(draft, "owner-2")
+    assert first["action"] == "created"
+    assert second["action"] == "updated"
+    assert len(fake.tables["listening_sections"]) == 6
+
+
+def test_listening_part_b_republish_after_edit_updates_all_six_rows_in_place(monkeypatch):
+    fake = _shared_fake(monkeypatch)
+    fake.tables["generated_content_drafts"] = [_draft(
+        id=208, status="approved", module="listening", generated_content=_listening_part_b_content(),
+    )]
+
+    draft = draft_store.get_draft(208)
+    draft_publisher.publish(draft, "owner-1")
+    draft_store.mark_published(208, "owner-1")
+
+    edited_extracts = _listening_part_b_extracts()
+    edited_extracts[0]["title"] = "Edited title"
+    draft_store.update_content(208, generated_content=_listening_part_b_content(edited_extracts), editor_id="analyst-1")
+    draft_store.approve(208, "admin-1")
+    draft = draft_store.get_draft(208)
+    second = draft_publisher.publish(draft, "owner-1")
+
+    assert second["action"] == "updated"
+    assert len(fake.tables["listening_sections"]) == 6
+    row0 = next(r for r in fake.tables["listening_sections"] if r["section_seq"] == 0)
+    assert row0["title"] == "Edited title"
+
+
+def test_listening_part_b_publish_failure_partway_leaves_no_partial_sections(monkeypatch):
+    """Atomicity, same as Reading Part B's equivalent test: if any one
+    section/question in a first publish fails, none of that publish's
+    sections survive -- not a partial set of 2 or 3 out of 6."""
+    fake = FakeSupabase()
+    fake.fail_insert_on_call["questions"] = 3  # sections 0,1 succeed; section 2's question fails
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=209, module="listening", generated_content=_listening_part_b_content())
+    try:
+        draft_publisher.publish(draft, "owner-1")
+        assert False, "expected the simulated insert failure to propagate"
+    except Exception as e:
+        assert "simulated insert failure" in str(e)
+    assert fake.tables["listening_sections"] == []
+
+
+def test_listening_part_a_unpublish_deactivates_both_sections(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=210, module="listening", generated_content=_listening_part_a_content())
+    draft_publisher.publish(draft, "owner-1")
+    for r in fake.tables["listening_sections"]:
+        r["is_active"] = True
+
+    result = draft_publisher.unpublish(draft)
+    assert len(result["ids"]) == 2
+    assert all(r["is_active"] is False for r in fake.tables["listening_sections"])
+
+
+def test_listening_part_a_publish_unaffected_by_part_b(monkeypatch):
+    """Part A (2 sections) and Part B (6 sections) publish independently --
+    same non-interference guarantee Reading Part A/B/C already have."""
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft_a = _draft(id=211, module="listening", generated_content=_listening_part_a_content())
+    draft_b = _draft(id=212, module="listening", generated_content=_listening_part_b_content())
+    draft_publisher.publish(draft_a, "owner-1")
+    draft_publisher.publish(draft_b, "owner-1")
+    assert len(fake.tables["listening_sections"]) == 8
+    assert sorted(r["section_seq"] for r in fake.tables["listening_sections"] if r["source_draft_id"] == 211) == [0, 1]
+    assert sorted(r["section_seq"] for r in fake.tables["listening_sections"] if r["source_draft_id"] == 212) == [0, 1, 2, 3, 4, 5]
+
+
+def test_legacy_flat_listening_still_publishes_one_row_unaffected_by_part_studio(monkeypatch):
+    """Existing direct/flat Listening generation (no locked part contract) is
+    untouched -- still exactly one row, section_seq defaults to 0."""
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=213, module="listening", generated_content={
+        "title": "Legacy section", "transcript": [{"speaker": "Nurse", "text": "hi"}], "questions": [],
+    })
+    result = draft_publisher.publish(draft, "owner-1")
+    assert result["action"] == "created"
+    assert len(fake.tables["listening_sections"]) == 1
+    assert fake.tables["listening_sections"][0].get("section_seq", 0) == 0
+
+
+# ── Phase 6A: audio_url must survive a republish without new audio ─────
+# Audio is attached to the production row directly (listening.py's
+# upload/TTS endpoints), never through generated_content -- so a republish's
+# payload previously hardcoded audio_url=None and nulled out whatever an
+# admin had already attached. See draft_publisher._set_audio_url.
+
+def test_legacy_listening_republish_without_audio_preserves_existing_audio_url(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=300, module="listening", generated_content={
+        "title": "Legacy section", "transcript": [{"speaker": "Nurse", "text": "hi"}], "questions": [],
+    })
+    draft_publisher.publish(draft, "owner-1")
+    fake.tables["listening_sections"][0]["audio_url"] = "https://bucket/a.mp3"
+
+    result = draft_publisher.publish(draft, "owner-1")
+
+    assert result["action"] == "updated"
+    assert fake.tables["listening_sections"][0]["audio_url"] == "https://bucket/a.mp3"
+
+
+def test_legacy_listening_republish_with_explicit_audio_url_replaces_it(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=301, module="listening", generated_content={
+        "title": "Legacy section", "transcript": [{"speaker": "Nurse", "text": "hi"}], "questions": [],
+    })
+    draft_publisher.publish(draft, "owner-1")
+    fake.tables["listening_sections"][0]["audio_url"] = "https://bucket/old.mp3"
+
+    draft["generated_content"] = {**draft["generated_content"], "audio_url": "https://bucket/new.mp3"}
+    result = draft_publisher.publish(draft, "owner-1")
+
+    assert result["action"] == "updated"
+    assert fake.tables["listening_sections"][0]["audio_url"] == "https://bucket/new.mp3"
+
+
+def test_legacy_listening_first_publish_leaves_audio_url_null(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=302, module="listening", generated_content={
+        "title": "New section", "transcript": [], "questions": [],
+    })
+    draft_publisher.publish(draft, "owner-1")
+    assert fake.tables["listening_sections"][0].get("audio_url") is None
+
+
+def test_listening_part_a_republish_without_audio_preserves_each_sections_audio_url(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=303, module="listening", generated_content=_listening_part_a_content())
+    draft_publisher.publish(draft, "owner-1")
+    for i, r in enumerate(sorted(fake.tables["listening_sections"], key=lambda r: r["section_seq"])):
+        r["audio_url"] = f"https://bucket/part-a-{i}.mp3"
+
+    result = draft_publisher.publish(draft, "owner-1")
+
+    assert result["sections"][0]["action"] == "updated"
+    rows_by_seq = {r["section_seq"]: r for r in fake.tables["listening_sections"]}
+    assert rows_by_seq[0]["audio_url"] == "https://bucket/part-a-0.mp3"
+    assert rows_by_seq[1]["audio_url"] == "https://bucket/part-a-1.mp3"
+
+
+def test_listening_part_b_republish_without_audio_preserves_each_sections_audio_url(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=304, module="listening", generated_content=_listening_part_b_content())
+    draft_publisher.publish(draft, "owner-1")
+    for i, r in enumerate(sorted(fake.tables["listening_sections"], key=lambda r: r["section_seq"])):
+        r["audio_url"] = f"https://bucket/part-b-{i}.mp3"
+
+    result = draft_publisher.publish(draft, "owner-1")
+
+    assert result["sections"][0]["action"] == "updated"
+    rows_by_seq = {r["section_seq"]: r for r in fake.tables["listening_sections"]}
+    for seq in range(6):
+        assert rows_by_seq[seq]["audio_url"] == f"https://bucket/part-b-{seq}.mp3"
+
+
+def test_listening_part_c_republish_without_audio_preserves_each_sections_audio_url(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=305, module="listening", generated_content=_listening_part_c_content())
+    draft_publisher.publish(draft, "owner-1")
+    rows = sorted(fake.tables["listening_sections"], key=lambda r: r["section_seq"])
+    rows[0]["audio_url"] = "https://bucket/part-c-0.mp3"
+    rows[1]["audio_url"] = "https://bucket/part-c-1.mp3"
+
+    result = draft_publisher.publish(draft, "owner-1")
+
+    assert result["sections"][0]["action"] == "updated"
+    rows_by_seq = {r["section_seq"]: r for r in fake.tables["listening_sections"]}
+    assert rows_by_seq[0]["audio_url"] == "https://bucket/part-c-0.mp3"
+    assert rows_by_seq[1]["audio_url"] == "https://bucket/part-c-1.mp3"
+
+
+def test_listening_part_b_republish_one_extract_gets_explicit_audio_others_preserved(monkeypatch):
+    """Each section's audio_url is decided independently: an explicit
+    replacement on one extract must not touch the others' preserved URLs."""
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=306, module="listening", generated_content=_listening_part_b_content())
+    draft_publisher.publish(draft, "owner-1")
+    for i, r in enumerate(sorted(fake.tables["listening_sections"], key=lambda r: r["section_seq"])):
+        r["audio_url"] = f"https://bucket/old-{i}.mp3"
+
+    edited_extracts = _listening_part_b_extracts()
+    edited_extracts[2]["audio_url"] = "https://bucket/new-2.mp3"
+    draft["generated_content"] = _listening_part_b_content(edited_extracts)
+    draft_publisher.publish(draft, "owner-1")
+
+    rows_by_seq = {r["section_seq"]: r for r in fake.tables["listening_sections"]}
+    assert rows_by_seq[2]["audio_url"] == "https://bucket/new-2.mp3"
+    for seq in (0, 1, 3, 4, 5):
+        assert rows_by_seq[seq]["audio_url"] == f"https://bucket/old-{seq}.mp3"
+
+
+def test_listening_part_b_first_publish_leaves_all_audio_urls_null(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=307, module="listening", generated_content=_listening_part_b_content())
+    draft_publisher.publish(draft, "owner-1")
+    assert all(r.get("audio_url") is None for r in fake.tables["listening_sections"])
+    assert len(fake.tables["listening_sections"]) == 6  # no duplicate rows from the republish-audio path
+
+
+def test_reading_republish_unaffected_by_listening_audio_url_fix(monkeypatch):
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(id=308, module="reading", generated_content={
+        "title": "A passage", "part": "A", "body": "text", "questions": [],
+    })
+    first = draft_publisher.publish(draft, "owner-1")
+    second = draft_publisher.publish(draft, "owner-1")
+    assert first["action"] == "created"
+    assert second["action"] == "updated"
+    assert len(fake.tables["reading_passages"]) == 1
 
 
 # ── Blog draft fields (Module 1 Section 7A) ─────────────────────────────
