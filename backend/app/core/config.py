@@ -157,5 +157,14 @@ class Settings(BaseSettings):
     # failure -- see app/services/alerts.py). Unset -> alerts no-op and
     # just log, same pattern as RESEND_API_KEY/TURNSTILE_SECRET_KEY above.
     SLACK_ALERT_WEBHOOK_URL: str = ""
+    # Backend-only Sanity credentials for app/services/sanity_client.py (the
+    # future Blog Publisher). Project id/dataset are duplicated here rather
+    # than shared with the frontend's NEXT_PUBLIC_SANITY_PROJECT_ID/DATASET --
+    # those live in a separate process/env file the backend can't read, and
+    # they're not secret anyway. SANITY_WRITE_TOKEN has no NEXT_PUBLIC_
+    # counterpart and must never be exposed to the frontend.
+    SANITY_PROJECT_ID: str = ""
+    SANITY_DATASET: str = "production"
+    SANITY_WRITE_TOKEN: str = ""
 
 settings = Settings()

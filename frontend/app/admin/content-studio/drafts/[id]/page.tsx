@@ -6,16 +6,25 @@ import Link from 'next/link'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { useAdminUser } from '@/app/admin/AdminShell'
+import { urlForImage } from '@/lib/sanity'
 
 const MODULE_LABELS: Record<string, string> = {
   speaking: 'Speaking', reading: 'Reading', listening: 'Listening',
-  writing: 'Writing', vocab: 'Vocabulary', grammar: 'Grammar',
+  writing: 'Writing', vocab: 'Vocabulary', grammar: 'Grammar', blog: 'Blog',
 }
 
 // Vocab has no production catalog table this sprint (vocab_cards is a
 // per-user SRS deck); Grammar has no production table at all. Both are
 // edit/review/archive only -- publish stays disabled with a fixed message.
-const PUBLISHABLE_MODULES = new Set(['speaking', 'writing', 'reading', 'listening'])
+// Blog publishes through Sanity (Module 1 Section 12+), not draft_publisher's
+// Supabase table map, so it skips the generic Publish Preview dialog (the
+// backend has no preview for a Sanity target) and Unpublish (Blog's backend
+// has no unpublish path) -- see the draft.module === 'blog' checks below.
+const PUBLISHABLE_MODULES = new Set(['speaking', 'writing', 'reading', 'listening', 'blog'])
+const NOT_PUBLISHABLE_MESSAGES: Record<string, string> = {
+  grammar: 'Grammar publishing unavailable until production schema exists.',
+  vocab: 'Vocabulary publishing is not available in this release.',
+}
 
 const STATUS_STYLES: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -65,6 +74,11 @@ export default function DraftEditorPage() {
   const [draft, setDraft] = useState<Draft | null>(null)
   const [content, setContent] = useState<Record<string, any>>({})
   const [draftName, setDraftName] = useState('')
+  // Blog-only (Module 1 Section 10): slug/excerpt/cover_image_ref are
+  // dedicated draft columns, not part of generated_content -- see
+  // draft_store.py. Every other module leaves this at its empty default and
+  // never sends it.
+  const [blogMeta, setBlogMeta] = useState({ slug: '', excerpt: '', cover_image_ref: '' })
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   // AdminShell (the wrapping shell for every /admin/* page) already fetches
@@ -90,6 +104,11 @@ export default function DraftEditorPage() {
         setDraft(res.data)
         setContent(res.data.generated_content || {})
         setDraftName(res.data.draft_name || '')
+        setBlogMeta({
+          slug: res.data.slug || '',
+          excerpt: res.data.excerpt || '',
+          cover_image_ref: res.data.cover_image_ref || '',
+        })
       })
       .catch(() => setNotFound(true))
   }, [draftId])
@@ -110,13 +129,30 @@ export default function DraftEditorPage() {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     setSaveState('saving')
     saveTimer.current = setTimeout(() => {
-      api.patch(`/admin/content-studio/drafts/${draftId}`, { generated_content: content })
+      const body: Record<string, any> = { generated_content: content }
+      // Blog dedicated fields ride the same autosave debounce as
+      // generated_content (Step 9: no Blog-specific unsaved-changes
+      // system). Only sent when non-empty -- the backend validator rejects
+      // an empty string as a malformed slug/excerpt, whereas omitting the
+      // key entirely means "no change" (see UpdateDraftRequest).
+      if (draft?.module === 'blog') {
+        if (blogMeta.slug.trim()) body.slug = blogMeta.slug.trim()
+        if (blogMeta.excerpt.trim()) body.excerpt = blogMeta.excerpt.trim()
+        // cover_image_ref always rides along, even empty -- "" is the clear
+        // sentinel the backend needs to null the field out (Section 11 Step
+        // 15); omitting the key entirely means "no change" instead.
+        body.cover_image_ref = blogMeta.cover_image_ref.trim()
+      }
+      api.patch(`/admin/content-studio/drafts/${draftId}`, body)
         .then(() => setSaveState('saved'))
-        .catch(() => { setSaveState('idle'); toast.error('Autosave failed') })
+        .catch((err) => {
+          setSaveState('idle')
+          toast.error(err?.response?.data?.detail || 'Autosave failed')
+        })
     }, 1000)
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content])
+  }, [content, blogMeta])
 
   const saveName = (name: string) => {
     setDraftName(name)
@@ -155,6 +191,19 @@ export default function DraftEditorPage() {
       await runAction('publish')
       toast.success('Published')
       setPreviewOpen(false)
+    } catch {
+      // toast already shown by runAction
+    }
+  }
+
+  // Blog publishes straight to Sanity, not a Supabase production table --
+  // draft_publisher.build_preview (the Publish Preview dialog's data source)
+  // has no dispatch branch for it, so Blog skips the dialog and calls the
+  // same /publish endpoint directly instead of going through openPublishPreview.
+  const publishBlog = async () => {
+    try {
+      await runAction('publish')
+      toast.success('Published')
     } catch {
       // toast already shown by runAction
     }
@@ -230,17 +279,15 @@ export default function DraftEditorPage() {
             <>
               <ActionButton disabled={busy || !canReview} onClick={() => runAction('reject')} testId="unapprove-button" tone="gray">Send Back to Review</ActionButton>
               {publishable ? (
-                <ActionButton disabled={busy || !canPublish} onClick={openPublishPreview} testId="publish-button" tone="blue">Publish</ActionButton>
+                <ActionButton disabled={busy || !canPublish} onClick={draft.module === 'blog' ? publishBlog : openPublishPreview} testId="publish-button" tone="blue">Publish</ActionButton>
               ) : (
                 <span className="text-sm text-gray-500 italic" data-testid="publish-disabled-message">
-                  {draft.module === 'grammar'
-                    ? 'Grammar publishing unavailable until production schema exists.'
-                    : 'Vocabulary publishing is not available in this release.'}
+                  {NOT_PUBLISHABLE_MESSAGES[draft.module] || 'Publishing is not available for this module.'}
                 </span>
               )}
             </>
           )}
-          {draft.status === 'published' && publishable && (
+          {draft.status === 'published' && publishable && draft.module !== 'blog' && (
             <ActionButton disabled={busy || !canPublish} onClick={() => runAction('unpublish')} testId="unpublish-button" tone="gray">Unpublish</ActionButton>
           )}
           {['draft', 'review', 'approved'].includes(draft.status) && (
@@ -268,7 +315,11 @@ export default function DraftEditorPage() {
 
         {/* Module-aware editor */}
         <div className="bg-white rounded-lg shadow p-6">
-          <ModuleEditor module={draft.module} content={content} onChange={setContent} disabled={!canEdit} />
+          <ModuleEditor
+            module={draft.module} content={content} onChange={setContent} disabled={!canEdit}
+            blogMeta={blogMeta} onBlogMetaChange={setBlogMeta} draftId={draftId}
+            slugLocked={!!draft.published_at}
+          />
         </div>
       </div>
 
@@ -343,8 +394,12 @@ function PublishPreviewDialog({ preview, busy, onCancel, onConfirm }: {
 // ── Module-aware editors (no code editor -- plain forms over the same
 // JSON shape draft_generator/prompt_builder already produce) ──────────
 
-function ModuleEditor({ module, content, onChange, disabled }: {
+function ModuleEditor({ module, content, onChange, disabled, blogMeta, onBlogMetaChange, draftId, slugLocked }: {
   module: string; content: Record<string, any>; onChange: (c: Record<string, any>) => void; disabled: boolean
+  blogMeta: { slug: string; excerpt: string; cover_image_ref: string }
+  onBlogMetaChange: (m: { slug: string; excerpt: string; cover_image_ref: string }) => void
+  draftId: string
+  slugLocked: boolean
 }) {
   const set = (key: string, value: any) => onChange({ ...content, [key]: value })
 
@@ -355,6 +410,7 @@ function ModuleEditor({ module, content, onChange, disabled }: {
     case 'listening': return <ListeningEditor content={content} set={set} disabled={disabled} />
     case 'vocab': return <VocabEditor content={content} set={set} disabled={disabled} />
     case 'grammar': return <GrammarEditor content={content} set={set} disabled={disabled} />
+    case 'blog': return <BlogEditor content={content} set={set} disabled={disabled} blogMeta={blogMeta} setBlogMeta={onBlogMetaChange} draftId={draftId} slugLocked={slugLocked} />
     default: return <div className="text-gray-500">Unknown module.</div>
   }
 }
@@ -551,6 +607,131 @@ function GrammarEditor({ content, set, disabled }: { content: any; set: SetFn; d
       <SelectInput label="Difficulty" value={content.difficulty || 'intermediate'} options={['beginner', 'intermediate', 'advanced']} onChange={(v) => set('difficulty', v)} disabled={disabled} />
       <TextArea label="Explanation" value={content.explanation || ''} onChange={(v) => set('explanation', v)} disabled={disabled} rows={6} />
       <QuestionsEditor label="Practice Questions" questions={content.practice_questions || []} onChange={(v) => set('practice_questions', v)} disabled={disabled} withExplanation />
+    </div>
+  )
+}
+
+// Mirrors backend/app/routers/admin_content_studio.py's _SLUG_RE -- client
+// side is a fast hint only, the backend stays the authority (Step 8).
+const BLOG_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+const COVER_IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp'
+
+function BlogEditor({ content, set, disabled, blogMeta, setBlogMeta, draftId, slugLocked }: {
+  content: any; set: SetFn; disabled: boolean
+  blogMeta: { slug: string; excerpt: string; cover_image_ref: string }
+  setBlogMeta: (m: { slug: string; excerpt: string; cover_image_ref: string }) => void
+  draftId: string
+  slugLocked: boolean
+}) {
+  const title: string = content.title || ''
+  const setMeta = (patch: Partial<typeof blogMeta>) => setBlogMeta({ ...blogMeta, ...patch })
+  const slugValid = !blogMeta.slug || (BLOG_SLUG_RE.test(blogMeta.slug) && blogMeta.slug.length <= 200)
+  const [uploadingCover, setUploadingCover] = useState(false)
+
+  const uploadCoverImage = async (file: File) => {
+    setUploadingCover(true)
+    try {
+      const form = new FormData()
+      form.append('image', file)
+      const res = await api.post(`/admin/content-studio/drafts/${draftId}/cover-image`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setMeta({ cover_image_ref: res.data.cover_image_ref })
+      toast.success('Cover image uploaded')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Cover image upload failed')
+    } finally {
+      setUploadingCover(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="flex justify-between">
+          <label className="block text-sm text-gray-500 mb-1">Title</label>
+          <span className="text-xs text-gray-400">{title.length}/300</span>
+        </div>
+        <input
+          value={title} disabled={disabled} maxLength={300}
+          onChange={(e) => set('title', e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg disabled:bg-gray-50"
+          data-testid="blog-title"
+        />
+        {!title.trim() && <div className="text-xs text-red-600 mt-1">Title is required before this draft can be submitted for review.</div>}
+      </div>
+
+      <div>
+        <label className="block text-sm text-gray-500 mb-1">Slug</label>
+        <input
+          value={blogMeta.slug} disabled={disabled || slugLocked} maxLength={200}
+          onChange={(e) => setMeta({ slug: e.target.value })}
+          placeholder="post-title-goes-here"
+          className="w-full px-3 py-2 border rounded-lg disabled:bg-gray-50 font-mono text-sm"
+          data-testid="blog-slug"
+        />
+        {slugLocked ? (
+          <div className="text-xs text-gray-500 mt-1" data-testid="blog-slug-locked-message">
+            Slug is locked after publication to protect existing links.
+          </div>
+        ) : !slugValid && (
+          <div className="text-xs text-red-600 mt-1">Lowercase letters, numbers, and hyphens only -- no spaces, slashes, or leading/trailing hyphens.</div>
+        )}
+      </div>
+
+      <div>
+        <div className="flex justify-between">
+          <label className="block text-sm text-gray-500 mb-1">Excerpt</label>
+          <span className="text-xs text-gray-400">{blogMeta.excerpt.length}/200</span>
+        </div>
+        <textarea
+          value={blogMeta.excerpt} disabled={disabled} maxLength={200} rows={3}
+          onChange={(e) => setMeta({ excerpt: e.target.value })}
+          className="w-full px-3 py-2 border rounded-lg disabled:bg-gray-50"
+          data-testid="blog-excerpt"
+        />
+      </div>
+
+      <TextArea label="Body (Markdown)" value={content.body || ''} onChange={(v) => set('body', v)} disabled={disabled} rows={18} testId="blog-body" />
+
+      <div>
+        <label className="block text-sm text-gray-500 mb-1">Cover Image</label>
+        {blogMeta.cover_image_ref && (
+          <img
+            src={urlForImage({ asset: { _ref: blogMeta.cover_image_ref, _type: 'reference' } }).width(480).url()}
+            alt="Cover preview"
+            className="w-full max-w-sm rounded-lg border mb-2"
+            data-testid="blog-cover-image-preview"
+          />
+        )}
+        <div className="flex items-center gap-3">
+          <label className={`px-3 py-2 border rounded-lg text-sm font-semibold ${disabled || uploadingCover ? 'text-gray-400 bg-gray-50' : 'text-gray-700 hover:bg-gray-50 cursor-pointer'}`}>
+            {uploadingCover ? 'Uploading...' : blogMeta.cover_image_ref ? 'Replace image' : 'Upload image'}
+            <input
+              type="file" accept={COVER_IMAGE_ACCEPT} className="hidden"
+              disabled={disabled || uploadingCover}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                if (file) uploadCoverImage(file)
+              }}
+              data-testid="blog-cover-image-input"
+            />
+          </label>
+          {blogMeta.cover_image_ref && (
+            <button
+              type="button" disabled={disabled || uploadingCover}
+              onClick={() => setMeta({ cover_image_ref: '' })}
+              className="px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
+              data-testid="blog-cover-image-remove"
+            >
+              Remove cover image
+            </button>
+          )}
+        </div>
+        <div className="text-xs text-gray-400 mt-1">JPEG, PNG, or WebP, up to 5MB.</div>
+      </div>
     </div>
   )
 }

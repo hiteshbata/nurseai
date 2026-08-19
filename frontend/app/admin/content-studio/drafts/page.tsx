@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import toast from 'react-hot-toast'
 import api from '@/lib/api'
 
 interface DraftListItem {
@@ -20,7 +22,7 @@ interface DraftListItem {
 
 const MODULE_LABELS: Record<string, string> = {
   speaking: 'Speaking', reading: 'Reading', listening: 'Listening',
-  writing: 'Writing', vocab: 'Vocabulary', grammar: 'Grammar',
+  writing: 'Writing', vocab: 'Vocabulary', grammar: 'Grammar', blog: 'Blog',
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -32,28 +34,80 @@ const STATUS_STYLES: Record<string, string> = {
 }
 
 export default function DraftsListPage() {
+  const router = useRouter()
   const [drafts, setDrafts] = useState<DraftListItem[]>([])
   const [status, setStatus] = useState('')
+  const [module, setModule] = useState('')
   const [loading, setLoading] = useState(true)
+  const [blogTitle, setBlogTitle] = useState('')
+  const [creatingBlog, setCreatingBlog] = useState(false)
 
   useEffect(() => {
     setLoading(true)
-    api.get('/admin/content-studio/drafts', { params: status ? { status } : {} })
+    const params: Record<string, string> = {}
+    if (status) params.status = status
+    if (module) params.module = module
+    api.get('/admin/content-studio/drafts', { params })
       .then((res) => setDrafts(res.data.drafts || []))
       .finally(() => setLoading(false))
-  }, [status])
+  }, [status, module])
+
+  // Blog has no AI generator (Module 1 Section 10) -- creating a draft here
+  // skips /generate entirely and posts a minimal draft straight to
+  // /admin/content-studio/drafts, same endpoint the AI generator's "Save
+  // Draft" button uses.
+  const createBlogDraft = async () => {
+    const title = blogTitle.trim()
+    if (!title) {
+      toast.error('Title is required')
+      return
+    }
+    setCreatingBlog(true)
+    try {
+      const res = await api.post('/admin/content-studio/drafts', {
+        module: 'blog',
+        draft_name: title,
+        generated_content: { title, body: '' },
+      })
+      router.push(`/admin/content-studio/drafts/${res.data.id}`)
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Could not create blog draft')
+    } finally {
+      setCreatingBlog(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-5xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
           <h1 className="text-3xl font-bold">Drafts</h1>
-          <Link href="/admin/content-studio/generate" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
-            Generate New
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text" value={blogTitle} onChange={(e) => setBlogTitle(e.target.value)}
+              placeholder="New blog post title"
+              aria-label="New blog post title"
+              className="px-3 py-2 border rounded-lg text-sm"
+              data-testid="new-blog-title-input"
+            />
+            <button
+              onClick={createBlogDraft} disabled={creatingBlog}
+              className="px-4 py-2 bg-white border text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
+              data-testid="new-blog-draft-button"
+            >
+              {creatingBlog ? 'Creating...' : 'New Blog Post'}
+            </button>
+            <Link href="/admin/content-studio/generate" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
+              Generate New
+            </Link>
+          </div>
         </div>
 
-        <div className="mb-4">
+        <div className="mb-4 flex flex-wrap gap-2">
+          <select value={module} onChange={(e) => setModule(e.target.value)} className="px-3 py-2 border rounded-lg text-sm" aria-label="Filter by module" data-testid="filter-module">
+            <option value="">All modules</option>
+            {Object.entries(MODULE_LABELS).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </select>
           <select value={status} onChange={(e) => setStatus(e.target.value)} className="px-3 py-2 border rounded-lg text-sm" data-testid="filter-status">
             <option value="">All statuses</option>
             {Object.keys(STATUS_STYLES).map((s) => <option key={s} value={s}>{s}</option>)}

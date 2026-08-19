@@ -253,6 +253,28 @@ def test_mark_published_requires_approved(monkeypatch):
         pass
 
 
+def test_mark_published_is_compare_and_set_not_check_then_act(monkeypatch):
+    """Module 1 Section 12E Step 5/7: mark_published's update is filtered on
+    .eq("status", "approved") -- not a separate read followed by an
+    unconditional write -- so of two calls racing for the same draft, only
+    the first can ever match and write; the second finds zero rows updated
+    (status is already 'published' by then) and raises InvalidTransitionError
+    instead of silently overwriting published_by/published_at a second time."""
+    rows = [_draft(status="approved")]
+    _patched(monkeypatch, rows)
+
+    first = draft_store.mark_published(1, "owner-1")
+    assert first["status"] == "published"
+    assert first["published_by"] == "owner-1"
+
+    try:
+        draft_store.mark_published(1, "owner-2")
+        assert False, "expected InvalidTransitionError"
+    except draft_store.InvalidTransitionError:
+        pass
+    assert rows[0]["published_by"] == "owner-1"  # second call never wrote
+
+
 # ── content update + revisions ───────────────────────────────────────
 
 def test_update_content_writes_revision_only_when_content_changes(monkeypatch):
@@ -1321,6 +1343,340 @@ def test_part_b_publish_unaffected_by_part_c(monkeypatch):
     result = draft_publisher.publish(draft, "owner-1")
     assert len(fake.tables["reading_passages"]) == 6
     assert result["action"] == "created"
+
+
+# ── Blog draft fields (Module 1 Section 7A) ─────────────────────────────
+# slug/excerpt/cover_image_ref live as first-class columns (not buried in
+# generated_content jsonb) so the review workflow's revision snapshots can
+# see them change. draft_store never enforces slug uniqueness itself -- the
+# DB partial unique index (generated_content_drafts_blog_slug_uidx,
+# 20260819010000_blog_draft_fields.sql) is the authoritative guard; these
+# tests only prove create_draft()/update_content() plumb the fields through
+# and that draft_publisher still refuses to publish 'blog' (no dispatch
+# branch added for it -- see draft_publisher.publish's NotPublishableError).
+
+def test_create_draft_blog_with_all_fields_persists(monkeypatch):
+    fake = _patched(monkeypatch, [])
+    created = draft_store.create_draft(
+        module="blog", draft_name="My Post", ai_title=None, metadata={}, prompt={},
+        generated_content={"title": "Hello", "body": "World"}, validation_warnings=[],
+        model_used=None, created_by="admin-1",
+        slug="oet-speaking-guide", excerpt="A short teaser.", cover_image_ref="image-abc123-800x600-jpg",
+    )
+    assert created["module"] == "blog"
+    assert created["slug"] == "oet-speaking-guide"
+    assert created["excerpt"] == "A short teaser."
+    assert created["cover_image_ref"] == "image-abc123-800x600-jpg"
+    assert created["generated_content"] == {"title": "Hello", "body": "World"}
+    assert fake.tables["generated_content_drafts"][0]["slug"] == "oet-speaking-guide"
+
+
+def test_create_draft_blog_with_fields_omitted_stays_null(monkeypatch):
+    fake = _patched(monkeypatch, [])
+    created = draft_store.create_draft(
+        module="blog", draft_name="No extras yet", ai_title=None, metadata={}, prompt={},
+        generated_content={"title": "Hello"}, validation_warnings=[],
+        model_used=None, created_by="admin-1",
+    )
+    assert created["slug"] is None
+    assert created["excerpt"] is None
+    assert created["cover_image_ref"] is None
+
+
+def test_create_draft_non_blog_unaffected_by_new_optional_fields(monkeypatch):
+    """Existing modules must keep working -- and keep returning NULL for the
+    new columns -- without passing slug/excerpt/cover_image_ref at all."""
+    fake = _patched(monkeypatch, [])
+    created = draft_store.create_draft(
+        module="speaking", draft_name="A scenario", ai_title=None, metadata={}, prompt={},
+        generated_content={"title": "S1"}, validation_warnings=[],
+        model_used=None, created_by="admin-1",
+    )
+    assert created["module"] == "speaking"
+    assert created["slug"] is None
+    assert created["excerpt"] is None
+    assert created["cover_image_ref"] is None
+
+
+def test_blog_publish_still_blocked_not_publishable(monkeypatch):
+    """Blog drafts can now exist, but draft_publisher has no dispatch branch
+    for 'blog' -- Section 7A must not make it publishable."""
+    fake = FakeSupabase()
+    monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
+    draft = _draft(module="blog", status="approved", generated_content={"title": "t", "body": "b"},
+                    slug="oet-speaking-guide")
+    try:
+        draft_publisher.publish(draft, "owner-1")
+        assert False, "expected NotPublishableError"
+    except draft_publisher.NotPublishableError:
+        pass
+
+
+# ── revision snapshots: slug / excerpt / cover_image_ref ────────────────
+
+def test_slug_change_creates_revision_snapshot(monkeypatch):
+    rows = [_draft(module="blog", status="draft", slug=None, excerpt=None, cover_image_ref=None)]
+    fake = _patched(monkeypatch, rows)
+    updated = draft_store.update_content(1, slug="oet-speaking-guide", editor_id="a1")
+    assert updated["slug"] == "oet-speaking-guide"
+    revisions = fake.tables["generated_content_draft_revisions"]
+    assert len(revisions) == 1
+    assert revisions[0]["before"]["slug"] is None
+    assert revisions[0]["after"]["slug"] == "oet-speaking-guide"
+
+
+def test_excerpt_change_creates_revision_snapshot(monkeypatch):
+    rows = [_draft(module="blog", status="draft", slug=None, excerpt=None, cover_image_ref=None)]
+    fake = _patched(monkeypatch, rows)
+    updated = draft_store.update_content(1, excerpt="A short teaser.", editor_id="a1")
+    assert updated["excerpt"] == "A short teaser."
+    revisions = fake.tables["generated_content_draft_revisions"]
+    assert len(revisions) == 1
+    assert revisions[0]["before"]["excerpt"] is None
+    assert revisions[0]["after"]["excerpt"] == "A short teaser."
+
+
+def test_cover_image_ref_change_creates_revision_snapshot(monkeypatch):
+    rows = [_draft(module="blog", status="draft", slug=None, excerpt=None, cover_image_ref=None)]
+    fake = _patched(monkeypatch, rows)
+    updated = draft_store.update_content(1, cover_image_ref="image-abc123-800x600-jpg", editor_id="a1")
+    assert updated["cover_image_ref"] == "image-abc123-800x600-jpg"
+    revisions = fake.tables["generated_content_draft_revisions"]
+    assert len(revisions) == 1
+    assert revisions[0]["before"]["cover_image_ref"] is None
+    assert revisions[0]["after"]["cover_image_ref"] == "image-abc123-800x600-jpg"
+
+
+# ── cover_image_ref clear sentinel (Module 1 Section 11 Step 15) ────────
+
+def test_cover_image_ref_empty_string_clears_to_null(monkeypatch):
+    rows = [_draft(module="blog", status="draft", cover_image_ref="image-abc123-800x600-jpg")]
+    _patched(monkeypatch, rows)
+    updated = draft_store.update_content(1, cover_image_ref="", editor_id="a1")
+    assert updated["cover_image_ref"] is None
+
+
+def test_cover_image_ref_clear_creates_revision_snapshot(monkeypatch):
+    rows = [_draft(module="blog", status="draft", cover_image_ref="image-abc123-800x600-jpg")]
+    fake = _patched(monkeypatch, rows)
+    draft_store.update_content(1, cover_image_ref="", editor_id="a1")
+    revisions = fake.tables["generated_content_draft_revisions"]
+    assert len(revisions) == 1
+    assert revisions[0]["before"]["cover_image_ref"] == "image-abc123-800x600-jpg"
+    assert revisions[0]["after"]["cover_image_ref"] is None
+
+
+def test_cover_image_ref_clear_on_already_null_is_noop(monkeypatch):
+    """"" normalizes to None -- clearing an already-empty cover_image_ref must
+    not write a field, a revision, or bump updated_at (matches the existing
+    "only when content actually changed" rule the other Blog fields follow)."""
+    rows = [_draft(module="blog", status="draft", cover_image_ref=None)]
+    fake = _patched(monkeypatch, rows)
+    updated = draft_store.update_content(1, cover_image_ref="", editor_id="a1")
+    assert updated["cover_image_ref"] is None
+    assert fake.tables.get("generated_content_draft_revisions", []) == []
+
+
+def test_generated_content_change_still_creates_revision_after_blog_fields_added(monkeypatch):
+    rows = [_draft(module="blog", status="draft", generated_content={"title": "v1"})]
+    fake = _patched(monkeypatch, rows)
+    draft_store.update_content(1, generated_content={"title": "v2"}, editor_id="a1")
+    revisions = fake.tables["generated_content_draft_revisions"]
+    assert len(revisions) == 1
+    assert revisions[0]["after"]["generated_content"] == {"title": "v2"}
+
+
+def test_metadata_change_still_creates_revision_after_blog_fields_added(monkeypatch):
+    rows = [_draft(module="blog", status="draft", metadata={"a": 1})]
+    fake = _patched(monkeypatch, rows)
+    draft_store.update_content(1, metadata={"a": 2}, editor_id="a1")
+    revisions = fake.tables["generated_content_draft_revisions"]
+    assert len(revisions) == 1
+    assert revisions[0]["after"]["metadata"] == {"a": 2}
+
+
+def test_multiple_blog_fields_changed_together_produce_one_coherent_revision(monkeypatch):
+    rows = [_draft(module="blog", status="draft", slug="old-slug", excerpt="old excerpt",
+                    cover_image_ref=None, generated_content={"title": "v1"})]
+    fake = _patched(monkeypatch, rows)
+    updated = draft_store.update_content(
+        1, generated_content={"title": "v2"}, slug="new-slug", excerpt="new excerpt",
+        cover_image_ref="image-abc123-800x600-jpg", editor_id="a1",
+    )
+    revisions = fake.tables["generated_content_draft_revisions"]
+    assert len(revisions) == 1  # one coherent snapshot, not one per field
+    before, after = revisions[0]["before"], revisions[0]["after"]
+    assert before["slug"] == "old-slug" and after["slug"] == "new-slug"
+    assert before["excerpt"] == "old excerpt" and after["excerpt"] == "new excerpt"
+    assert before["cover_image_ref"] is None and after["cover_image_ref"] == "image-abc123-800x600-jpg"
+    assert before["generated_content"] == {"title": "v1"} and after["generated_content"] == {"title": "v2"}
+    assert updated["slug"] == "new-slug"
+    assert updated["excerpt"] == "new excerpt"
+    assert updated["cover_image_ref"] == "image-abc123-800x600-jpg"
+
+
+def test_existing_revision_without_new_keys_remains_readable(monkeypatch):
+    """A revision written before this section shipped has only
+    generated_content/metadata in before/after -- list_revisions must still
+    return it as-is, not raise or backfill missing keys."""
+    fake = FakeSupabase()
+    fake.tables["generated_content_draft_revisions"] = [{
+        "id": 1, "draft_id": 5,
+        "before": {"generated_content": {"title": "old"}, "metadata": {}},
+        "after": {"generated_content": {"title": "new"}, "metadata": {}},
+        "editor": "a1", "created_at": "2026-08-01T00:00:00Z",
+    }]
+    monkeypatch.setattr(draft_store, "get_supabase", lambda: fake)
+    revisions = draft_store.list_revisions(5)
+    assert len(revisions) == 1
+    assert "slug" not in revisions[0]["after"]
+    assert revisions[0]["after"]["generated_content"] == {"title": "new"}
+
+
+def test_non_blog_module_revision_behavior_unchanged(monkeypatch):
+    """Speaking/writing/etc. drafts never set slug/excerpt/cover_image_ref --
+    a content-only edit still produces exactly the same revision shape."""
+    rows = [_draft(module="writing", status="draft", generated_content={"title": "v1"})]
+    fake = _patched(monkeypatch, rows)
+    draft_store.update_content(1, generated_content={"title": "v2"}, editor_id="a1")
+    revisions = fake.tables["generated_content_draft_revisions"]
+    assert len(revisions) == 1
+    assert revisions[0]["before"]["slug"] is None
+    assert revisions[0]["after"]["slug"] is None
+
+
+# ── slug uniqueness (DB partial unique index) ────────────────────────────
+# generated_content_drafts_blog_slug_uidx is verified directly against
+# Postgres (QA project) as part of this task's DB verification step --
+# these two tests only prove create_draft() doesn't swallow the DB's error,
+# and that it doesn't invent an application-level uniqueness check of its
+# own (a second blog draft with a distinct slug, or two with slug=None,
+# must both succeed with no special-casing).
+
+class _SlugUniqueFakeQuery(FakeQuery):
+    def execute(self):
+        if self._op == "insert" and self._table_name == "generated_content_drafts":
+            slug = self._payload.get("slug")
+            module = self._payload.get("module")
+            if module == "blog" and slug is not None:
+                conflict = any(
+                    r.get("module") == "blog" and r.get("slug") == slug for r in self._rows
+                )
+                if conflict:
+                    raise Exception(
+                        'duplicate key value violates unique constraint "generated_content_drafts_blog_slug_uidx"'
+                    )
+        return super().execute()
+
+
+class _SlugUniqueFakeSupabase(FakeSupabase):
+    def table(self, name):
+        self.tables.setdefault(name, [])
+        return _SlugUniqueFakeQuery(self.tables[name], table_name=name, supabase=self)
+
+
+def test_duplicate_blog_slug_rejected_by_db_constraint_simulation(monkeypatch):
+    """Module 1 Section 15G: create_draft() translates the raw DB unique-
+    violation into DuplicateSlugError -- no duplicate row is created (only
+    the first insert lands in the fake table), and the raw Postgres
+    constraint text does not reach the caller."""
+    fake = _SlugUniqueFakeSupabase()
+    monkeypatch.setattr(draft_store, "get_supabase", lambda: fake)
+    draft_store.create_draft(
+        module="blog", draft_name="A", ai_title=None, metadata={}, prompt={},
+        generated_content={"title": "A"}, validation_warnings=[], model_used=None,
+        created_by="admin-1", slug="oet-speaking-guide",
+    )
+    try:
+        draft_store.create_draft(
+            module="blog", draft_name="B", ai_title=None, metadata={}, prompt={},
+            generated_content={"title": "B"}, validation_warnings=[], model_used=None,
+            created_by="admin-1", slug="oet-speaking-guide",
+        )
+        assert False, "expected DuplicateSlugError to be raised"
+    except draft_store.DuplicateSlugError as e:
+        message = str(e)
+        assert "oet-speaking-guide" in message
+        assert "already in use" in message
+        # no raw DB/constraint/SQL detail leaks into the application-level message
+        assert "constraint" not in message.lower()
+        assert "postgres" not in message.lower()
+        assert "generated_content_drafts_blog_slug_uidx" not in message
+    assert len(fake.tables["generated_content_drafts"]) == 1
+
+
+def test_duplicate_blog_slug_does_not_create_duplicate_row(monkeypatch):
+    fake = _SlugUniqueFakeSupabase()
+    monkeypatch.setattr(draft_store, "get_supabase", lambda: fake)
+    draft_store.create_draft(
+        module="blog", draft_name="A", ai_title=None, metadata={}, prompt={},
+        generated_content={"title": "A"}, validation_warnings=[], model_used=None,
+        created_by="admin-1", slug="dup-slug",
+    )
+    try:
+        draft_store.create_draft(
+            module="blog", draft_name="B", ai_title=None, metadata={}, prompt={},
+            generated_content={"title": "B"}, validation_warnings=[], model_used=None,
+            created_by="admin-1", slug="dup-slug",
+        )
+    except draft_store.DuplicateSlugError:
+        pass
+    rows = fake.tables["generated_content_drafts"]
+    assert len(rows) == 1
+    assert rows[0]["draft_name"] == "A"
+
+
+def test_distinct_blog_slug_still_succeeds(monkeypatch):
+    fake = _SlugUniqueFakeSupabase()
+    monkeypatch.setattr(draft_store, "get_supabase", lambda: fake)
+    draft_store.create_draft(
+        module="blog", draft_name="A", ai_title=None, metadata={}, prompt={},
+        generated_content={"title": "A"}, validation_warnings=[], model_used=None,
+        created_by="admin-1", slug="slug-one",
+    )
+    b = draft_store.create_draft(
+        module="blog", draft_name="B", ai_title=None, metadata={}, prompt={},
+        generated_content={"title": "B"}, validation_warnings=[], model_used=None,
+        created_by="admin-1", slug="slug-two",
+    )
+    assert b["slug"] == "slug-two"
+    assert len(fake.tables["generated_content_drafts"]) == 2
+
+
+def test_same_slug_on_non_blog_module_unaffected(monkeypatch):
+    """The unique index is partial (Blog-only) -- a non-Blog module reusing
+    the same slug string must not be treated as a conflict."""
+    fake = _SlugUniqueFakeSupabase()
+    monkeypatch.setattr(draft_store, "get_supabase", lambda: fake)
+    draft_store.create_draft(
+        module="blog", draft_name="A", ai_title=None, metadata={}, prompt={},
+        generated_content={"title": "A"}, validation_warnings=[], model_used=None,
+        created_by="admin-1", slug="shared-slug-text",
+    )
+    other = draft_store.create_draft(
+        module="reading", draft_name="B", ai_title=None, metadata={}, prompt={},
+        generated_content={"title": "B"}, validation_warnings=[], model_used=None,
+        created_by="admin-1", slug="shared-slug-text",
+    )
+    assert other["slug"] == "shared-slug-text"
+    assert len(fake.tables["generated_content_drafts"]) == 2
+
+
+def test_multiple_blog_drafts_with_null_slug_both_allowed(monkeypatch):
+    fake = _SlugUniqueFakeSupabase()
+    monkeypatch.setattr(draft_store, "get_supabase", lambda: fake)
+    a = draft_store.create_draft(
+        module="blog", draft_name="A", ai_title=None, metadata={}, prompt={},
+        generated_content={"title": "A"}, validation_warnings=[], model_used=None,
+        created_by="admin-1",
+    )
+    b = draft_store.create_draft(
+        module="blog", draft_name="B", ai_title=None, metadata={}, prompt={},
+        generated_content={"title": "B"}, validation_warnings=[], model_used=None,
+        created_by="admin-1",
+    )
+    assert a["slug"] is None and b["slug"] is None
+    assert len(fake.tables["generated_content_drafts"]) == 2
 
 
 if __name__ == "__main__":

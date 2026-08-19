@@ -1,8 +1,11 @@
+import { cache } from 'react'
 import { createClient } from '@sanity/client'
 import imageUrlBuilder from '@sanity/image-url'
 
-interface SanityImage {
+export interface SanityImage {
   asset: { _ref: string; _type: 'reference' }
+  hotspot?: { x: number; y: number; height: number; width: number }
+  crop?: { top: number; bottom: number; left: number; right: number }
 }
 
 export const sanityClient = createClient({
@@ -29,17 +32,19 @@ export interface BlogPost {
 
 export async function getBlogPosts(): Promise<BlogPost[]> {
   return sanityClient.fetch(
-    `*[_type == "post"] | order(publishedAt desc) {
+    `*[_type == "post" && defined(slug.current) && defined(publishedAt)] | order(publishedAt desc) {
       _id, title, "slug": slug.current, excerpt, publishedAt, coverImage
     }`
   )
 }
 
-export async function getBlogPost(slug: string): Promise<BlogPost | null> {
+// cache() dedupes this within a single render pass -- generateMetadata() and
+// the page component both call getBlogPost() for the same slug.
+export const getBlogPost = cache(async (slug: string): Promise<BlogPost | null> => {
   return sanityClient.fetch(
-    `*[_type == "post" && slug.current == $slug][0] {
+    `*[_type == "post" && slug.current == $slug && defined(publishedAt)][0] {
       _id, title, "slug": slug.current, excerpt, body, publishedAt, coverImage
     }`,
     { slug }
   )
-}
+})

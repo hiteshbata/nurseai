@@ -1,5 +1,5 @@
 import { RouteSpinner } from "@/components/RouteSpinner"
 
 export default function Loading() {
-  return <RouteSpinner message="Loading..." />
+  return <RouteSpinner message="Loading blog..." />
 }

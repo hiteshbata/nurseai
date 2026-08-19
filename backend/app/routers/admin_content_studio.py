@@ -17,21 +17,74 @@ new drafts (AI cost) and hard-deleting a draft stay admin-only, unchanged
 from RC3.2. RC3.1's read-only production-content endpoints below are
 untouched, still admin-only.
 """
+import logging
+import re
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, model_validator
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.supabase import get_supabase
 from app.routers.admin import require_admin, require_analyst, require_owner, _write_audit_log
 from app.routers.auth import UserInfo
-from app.services import content_studio, draft_generator, draft_publisher, draft_store
+from app.services import (
+    blog_document_mapper, blog_publisher, content_studio, draft_generator,
+    draft_publisher, draft_store, markdown_to_portable_text, sanity_client,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/content-studio", tags=["admin"])
 
-DRAFT_MODULES = ("speaking", "reading", "listening", "writing", "vocab", "grammar")
+DRAFT_MODULES = ("speaking", "reading", "listening", "writing", "vocab", "grammar", "blog")
 _generate_rate_limiter = SlidingWindowRateLimiter(20, 600, name="content-studio:generate")
+
+# Lowercase hyphen-separated segments only -- rejects spaces, '/', '?', '#',
+# '.', and anything else that would give a slug meaning beyond a single URL
+# path segment (blocks query/fragment injection and path traversal by
+# construction, not by blocklist). The DB partial unique index
+# (generated_content_drafts_blog_slug_uidx) is the authoritative uniqueness
+# guard -- this only checks shape.
+_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+# Sanity asset _ref shape (https://www.sanity.io/docs/image-type):
+# image-<hex asset id>-<width>x<height>-<format>. Structural only -- no
+# upload pipeline, no verification the asset actually exists in Sanity.
+_COVER_IMAGE_REF_RE = re.compile(r"^image-[a-f0-9]+-\d+x\d+-[a-z0-9]+$")
+
+
+def _validate_slug(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    if not _SLUG_RE.match(value) or len(value) > 200:
+        raise ValueError(
+            "slug must be lowercase letters, numbers, and hyphens only (no spaces, slashes, or leading/trailing hyphens), max 200 chars"
+        )
+    return value
+
+
+def _validate_excerpt(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    if len(value) > 200:
+        raise ValueError("excerpt must be at most 200 characters")
+    return value
+
+
+def _validate_cover_image_ref(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    if value == "":
+        # Explicit clear sentinel (Module 1 Section 11 Step 15) -- omitting
+        # the field means "no change" (see UpdateDraftRequest), so removing
+        # an image needs a value that survives that check while still
+        # meaning "no image". draft_store.update_content normalizes this to
+        # NULL before it reaches the DB.
+        return value
+    if not _COVER_IMAGE_REF_RE.match(value) or len(value) > 200:
+        raise ValueError("cover_image_ref must be a valid Sanity image asset reference (image-<id>-<w>x<h>-<format>)")
+    return value
 
 
 @router.get("/summary")
@@ -127,6 +180,15 @@ class SaveDraftRequest(BaseModel):
     generated_content: Dict[str, Any]
     validation_warnings: List[str] = Field(default_factory=list)
     model_used: Optional[str] = None
+    # Blog-only (Module 1 Section 7A); every other module leaves these None
+    # and the DB columns stay NULL, same as before this field existed.
+    slug: Optional[str] = None
+    excerpt: Optional[str] = None
+    cover_image_ref: Optional[str] = None
+
+    _validate_slug = field_validator("slug")(_validate_slug)
+    _validate_excerpt = field_validator("excerpt")(_validate_excerpt)
+    _validate_cover_image_ref = field_validator("cover_image_ref")(_validate_cover_image_ref)
 
 
 @router.post("/drafts")
@@ -139,12 +201,18 @@ def save_draft(req: SaveDraftRequest, current_user: UserInfo = Depends(require_a
     if not req.generated_content:
         raise HTTPException(status_code=400, detail="generated_content is required")
 
-    created = draft_store.create_draft(
-        module=req.module, draft_name=req.draft_name.strip(), ai_title=req.ai_title,
-        metadata=req.metadata, prompt=req.prompt, generated_content=req.generated_content,
-        validation_warnings=req.validation_warnings, model_used=req.model_used,
-        created_by=current_user.id,
-    )
+    try:
+        created = draft_store.create_draft(
+            module=req.module, draft_name=req.draft_name.strip(), ai_title=req.ai_title,
+            metadata=req.metadata, prompt=req.prompt, generated_content=req.generated_content,
+            validation_warnings=req.validation_warnings, model_used=req.model_used,
+            created_by=current_user.id,
+            slug=req.slug, excerpt=req.excerpt, cover_image_ref=req.cover_image_ref,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except draft_store.DuplicateSlugError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     _write_audit_log(
         get_supabase(), current_user, "draft_saved", "generated_content_draft",
         target_id=created["id"], target_label=req.draft_name,
@@ -176,6 +244,14 @@ class UpdateDraftRequest(BaseModel):
     draft_name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     generated_content: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
+    # Blog-only (Module 1 Section 7A) -- see SaveDraftRequest.
+    slug: Optional[str] = None
+    excerpt: Optional[str] = None
+    cover_image_ref: Optional[str] = None
+
+    _validate_slug = field_validator("slug")(_validate_slug)
+    _validate_excerpt = field_validator("excerpt")(_validate_excerpt)
+    _validate_cover_image_ref = field_validator("cover_image_ref")(_validate_cover_image_ref)
 
 
 @router.patch("/drafts/{draft_id}")
@@ -183,15 +259,22 @@ def update_draft(draft_id: int, req: UpdateDraftRequest, current_user: UserInfo 
     """Rename and/or edit a draft's content (the RC3.3 module-aware editor's
     autosave). Writes only to generated_content_drafts -- see
     draft_store.update_content for the revision-on-change rule."""
-    if req.draft_name is None and req.generated_content is None and req.metadata is None:
+    if (
+        req.draft_name is None and req.generated_content is None and req.metadata is None
+        and req.slug is None and req.excerpt is None and req.cover_image_ref is None
+    ):
         raise HTTPException(status_code=400, detail="Nothing to update")
-    updated = draft_store.update_content(
-        draft_id,
-        draft_name=req.draft_name.strip() if req.draft_name else None,
-        generated_content=req.generated_content,
-        metadata=req.metadata,
-        editor_id=current_user.id,
-    )
+    try:
+        updated = draft_store.update_content(
+            draft_id,
+            draft_name=req.draft_name.strip() if req.draft_name else None,
+            generated_content=req.generated_content,
+            metadata=req.metadata,
+            slug=req.slug, excerpt=req.excerpt, cover_image_ref=req.cover_image_ref,
+            editor_id=current_user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not updated:
         raise HTTPException(status_code=404, detail="Draft not found")
     _write_audit_log(
@@ -199,6 +282,74 @@ def update_draft(draft_id: int, req: UpdateDraftRequest, current_user: UserInfo 
         target_id=draft_id, target_label=updated.get("draft_name"),
     )
     return updated
+
+
+# ── BLOG COVER IMAGE (Module 1 Section 11) ───────────────────────────
+# Uploads straight to Sanity's Assets API (see app/services/sanity_client.py
+# upload_image_asset) and hands back the resulting asset _ref -- it does NOT
+# write cover_image_ref itself. The caller PATCHes that ref onto the draft
+# via update_draft above, same as any other Blog field edit, so it rides the
+# existing autosave/validation/revision path instead of a second one.
+COVER_IMAGE_MAX_BYTES = 5 * 1024 * 1024  # matches reading.py's passage-image limit
+COVER_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+_cover_image_rate_limiter = SlidingWindowRateLimiter(20, 600, name="content-studio:cover-image")
+
+
+def _sniff_image_type(contents: bytes) -> Optional[str]:
+    """Reads magic bytes rather than trusting the browser-supplied
+    Content-Type header (Step 18: MIME spoofing) -- stdlib only, no new
+    dependency. Only the three formats this endpoint accepts."""
+    if contents[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if contents[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if contents[:4] == b"RIFF" and contents[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+@router.post("/drafts/{draft_id}/cover-image")
+async def upload_cover_image(
+    draft_id: int,
+    image: UploadFile = File(...),
+    current_user: UserInfo = Depends(require_analyst),
+):
+    """Uploads one Blog draft's cover image. Returns {cover_image_ref,
+    preview_url} for the frontend to PATCH onto the draft and render
+    immediately -- see update_draft's cover_image_ref handling."""
+    draft = draft_store.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if draft["module"] != "blog":
+        raise HTTPException(status_code=400, detail="Cover images are Blog-only")
+    if _cover_image_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many uploads — please slow down.")
+
+    if image.content_type not in COVER_IMAGE_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Use a JPEG, PNG, or WebP image")
+    contents = await image.read()
+    if len(contents) > COVER_IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="Image must be under 5MB")
+    if _sniff_image_type(contents) != image.content_type:
+        raise HTTPException(status_code=400, detail="File contents don't match the declared image type")
+
+    try:
+        asset = sanity_client.upload_image_asset(contents, image.content_type)
+    except sanity_client.SanityConfigError:
+        raise HTTPException(status_code=503, detail="Sanity is not configured")
+    except sanity_client.SanityDatasetIsolationError:
+        raise HTTPException(status_code=503, detail="Sanity dataset isolation check failed")
+    except (
+        sanity_client.SanityAuthError, sanity_client.SanityInvalidRequestError,
+        sanity_client.SanityRateLimitError, sanity_client.SanityAPIError, sanity_client.SanityNetworkError,
+    ) as e:
+        raise HTTPException(status_code=502, detail=f"Sanity upload failed: {e}")
+
+    _write_audit_log(
+        get_supabase(), current_user, "cover_image_uploaded", "generated_content_draft",
+        target_id=draft_id, detail={"cover_image_ref": asset["ref"]},
+    )
+    return {"cover_image_ref": asset["ref"], "preview_url": asset["url"]}
 
 
 @router.delete("/drafts/{draft_id}")
@@ -294,6 +445,113 @@ def get_publish_preview(draft_id: int, current_user: UserInfo = Depends(require_
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def _publish_blog_draft(draft: Dict[str, Any], current_user: UserInfo) -> Dict[str, Any]:
+    """Blog's publish path (Module 1 Section 12D). Blog's production system
+    is Sanity, not a Supabase table -- draft_publisher has no 'blog' entry
+    and must stay that way (see test_blog_publish_still_blocked_not_publishable)
+    -- so this drives blog_publisher (12A-12C, untouched) and draft_store
+    directly instead. There is no transaction spanning Postgres and Sanity:
+    Supabase is only ever flipped to 'published' AFTER Sanity confirms the
+    document is live, never before and never speculatively.
+
+    Definite failures (invalid content, Sanity rejection) leave the draft
+    'approved' and are safe to retry after the admin fixes the problem.
+    Uncertain outcomes (Sanity confirmation failed, or Sanity published but
+    the Supabase write then failed) also leave the draft 'approved' -- but
+    are NOT safe to retry via a second create+publish, because Sanity may
+    already be live. Reconciliation for both is the same action: click
+    Publish again. blog_publisher.publish_sanity_draft's own idempotency
+    check (it reads the published document back before writing anything)
+    means a retry that finds Sanity already published skips straight to the
+    Supabase write below instead of writing Sanity a second time.
+    """
+    draft_id = draft["id"]
+    supabase = get_supabase()
+    published_id = sanity_client.sanity_blog_document_id(draft_id)
+
+    # Anchors the Sanity publishedAt on republish. Sanity's own document is
+    # the source of truth for "when did this post first go live" -- not
+    # this draft's own published_at column, which (like every other module)
+    # is legitimately re-stamped with "now" on every publish, including
+    # republishes; reusing it here would reset a post's publish date on
+    # every edit.
+    try:
+        existing_sanity_doc = sanity_client.get_document(published_id)
+    except (
+        sanity_client.SanityAuthError, sanity_client.SanityInvalidRequestError,
+        sanity_client.SanityRateLimitError, sanity_client.SanityAPIError,
+        sanity_client.SanityNetworkError, sanity_client.SanityConfigError,
+    ):
+        logger.exception("Blog draft %s: could not look up existing Sanity document %s", draft_id, published_id)
+        raise HTTPException(status_code=502, detail="Blog was not published. Please correct the issue and retry.")
+    existing_published_at = (existing_sanity_doc or {}).get("publishedAt")
+
+    try:
+        result = blog_publisher.publish_sanity_draft(
+            draft,
+            publish_time=datetime.now(timezone.utc).isoformat(),
+            existing_published_at=existing_published_at,
+        )
+    except (
+        blog_document_mapper.BlogDocumentValidationError,
+        markdown_to_portable_text.UnsupportedImageError,
+        markdown_to_portable_text.UnsupportedTableError,
+    ) as e:
+        _write_audit_log(
+            supabase, current_user, "draft_publish_failed", "generated_content_draft",
+            target_id=draft_id, detail={"reason": "invalid_content", "error": str(e)},
+        )
+        raise HTTPException(status_code=400, detail="Blog was not published. Please correct the issue and retry.")
+    except blog_publisher.BlogPublicationError as e:
+        _write_audit_log(
+            supabase, current_user, "draft_publish_failed", "generated_content_draft",
+            target_id=draft_id, detail={"reason": "sanity_rejected", "error": str(e)},
+        )
+        raise HTTPException(status_code=502, detail="Blog was not published. Please correct the issue and retry.")
+    except blog_publisher.BlogPublicationUncertainError as e:
+        _write_audit_log(
+            supabase, current_user, "draft_publish_uncertain", "generated_content_draft",
+            target_id=draft_id, detail={"reason": "sanity_confirmation_failed", "sanity_document_id": published_id, "error": str(e)},
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Publication may have succeeded, but the final status could not be confirmed. Reconciliation is required.",
+        )
+
+    try:
+        draft_store.mark_published(draft_id, current_user.id)
+    except draft_store.InvalidTransitionError:
+        # Draft is no longer 'approved' -- another request already flipped it
+        # to 'published' between this request's status check and this call
+        # (Step 14: concurrent Publish clicks). Sanity content is confirmed
+        # consistent regardless of which request's write "won", so Supabase
+        # is already correct; there is nothing more to write.
+        _write_audit_log(
+            supabase, current_user, "draft_published", "generated_content_draft",
+            target_id=draft_id, detail={**result, "concurrent_publish": True},
+        )
+        return result
+    except Exception:
+        # Case D: Sanity published, Supabase update failed. Do not unpublish
+        # Sanity, do not fabricate a 'published' Supabase row -- surface the
+        # inconsistency and let the same idempotent Publish click reconcile it.
+        logger.exception("Blog draft %s: Sanity publish confirmed but Supabase status update failed", draft_id)
+        _write_audit_log(
+            supabase, current_user, "draft_publish_uncertain", "generated_content_draft",
+            target_id=draft_id, detail={"reason": "supabase_update_failed", "sanity_document_id": published_id},
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Publication may have succeeded, but the final status could not be confirmed. Reconciliation is required.",
+        )
+
+    _write_audit_log(
+        supabase, current_user, "draft_published", "generated_content_draft",
+        target_id=draft_id, detail=result,
+    )
+    return result
+
+
 @router.post("/drafts/{draft_id}/publish")
 def publish_draft(draft_id: int, current_user: UserInfo = Depends(require_owner)):
     """Copies an approved draft into production. The draft row is kept and
@@ -303,6 +561,10 @@ def publish_draft(draft_id: int, current_user: UserInfo = Depends(require_owner)
         raise HTTPException(status_code=404, detail="Draft not found")
     if draft["status"] != "approved":
         raise HTTPException(status_code=409, detail="Only approved drafts can be published")
+
+    if draft["module"] == "blog":
+        return _publish_blog_draft(draft, current_user)
+
     try:
         result = draft_publisher.publish(draft, current_user.id)
     except (draft_publisher.NotPublishableError, draft_publisher.InvalidPartError) as e:
