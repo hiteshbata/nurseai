@@ -1,6 +1,5 @@
 """AI scoring and patient role-play using the card system."""
 import hashlib
-import httpx
 import json
 import logging
 import re
@@ -8,7 +7,7 @@ import time
 import unicodedata
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
-from app.core.config import settings
+from app.core.config import settings as settings
 from app.core.error_utils import redact_api_keys
 from app.core.supabase import get_supabase
 from app.core.threading import run_sync

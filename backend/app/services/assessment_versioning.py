@@ -19,8 +19,6 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
 
-from app.core.supabase import get_supabase
-
 logger = logging.getLogger(__name__)
 
 _PART_ORDER = {"A": 0, "B": 1, "C": 2}

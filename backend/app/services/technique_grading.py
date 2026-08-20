@@ -4,7 +4,7 @@ existing grading services -- no new comparator, no new AI client. Every
 result is normalized to {score, feedback, mistakes} so Phase C's submission
 endpoint can write it straight into practice_attempts' matching columns."""
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from app.services import mcq_grading
 from app.services.ai_scoring import _call_ai

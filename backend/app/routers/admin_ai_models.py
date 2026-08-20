@@ -12,7 +12,7 @@ restoring a past `before` snapshot and logging that as a new change too
 """
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
