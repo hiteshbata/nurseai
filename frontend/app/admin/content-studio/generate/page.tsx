@@ -75,7 +75,7 @@ export default function AiDraftGeneratorPage() {
         objectives: objectives.trim() || undefined,
         instructions: instructions.trim() || undefined,
         count,
-        part: module === 'reading' && part ? part : undefined,
+        part: (module === 'reading' || module === 'listening') && part ? part : undefined,
       })
       const newResults: DraftResult[] = res.data.results
       setResults(newResults)
@@ -147,7 +147,7 @@ export default function AiDraftGeneratorPage() {
                 ))}
               </select>
             </Field>
-            {module === 'reading' && (
+            {(module === 'reading' || module === 'listening') && (
               <Field label="Part">
                 <select value={part} onChange={(e) => setPart(e.target.value)} className="w-full px-3 py-2 border rounded-lg" data-testid="field-part">
                   <option value="">Default</option>

@@ -322,3 +322,60 @@ test('AI Draft Generator: generate shows loading state, previews a draft, saves 
   expect(pageErrors).toEqual([])
   await context.close()
 })
+
+// ---- 11. Listening Part A/B/C selector (backend now requires part for
+// listening, same as reading -- see admin_content_studio.py's
+// _VALID_LISTENING_PARTS). These stub the /generate response via page.route
+// so no real Gemini call happens; only the request payload is asserted.
+
+test('Part selector: shown for Reading and Listening, hidden for other modules', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+
+  await page.goto('/admin/content-studio/generate')
+  await expect(page.getByTestId('field-module')).toBeVisible({ timeout: 15_000 })
+
+  for (const module of ['reading', 'listening']) {
+    await page.getByTestId('field-module').selectOption(module)
+    await expect(page.getByTestId('field-part')).toBeVisible()
+    const values = await page.getByTestId('field-part').locator('option').allTextContents()
+    expect(values).toEqual(['Default', 'Part A', 'Part B', 'Part C'])
+  }
+
+  for (const module of ['speaking', 'writing']) {
+    await page.getByTestId('field-module').selectOption(module)
+    await expect(page.getByTestId('field-part')).not.toBeVisible()
+  }
+
+  await context.close()
+})
+
+test('Listening generate request sends part=A/B/C and never omits it', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+
+  await page.route('**/admin/content-studio/generate', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ results: [{ success: true, generated_content: {}, validation_warnings: [] }] }),
+    })
+  )
+
+  await page.goto('/admin/content-studio/generate')
+  await page.getByTestId('field-module').selectOption('listening')
+  await page.getByTestId('field-topic').fill('Part selector payload check')
+
+  for (const part of ['A', 'B', 'C']) {
+    await page.getByTestId('field-part').selectOption(part)
+    const requestBody = page.waitForRequest('**/admin/content-studio/generate').then((req) => req.postDataJSON())
+    await page.getByTestId('generate-button').click()
+    const body = await requestBody
+    expect(body.part).toBe(part) // never undefined/omitted for listening
+    expect(body.module).toBe('listening')
+    await expect(page.getByTestId('draft-preview-card')).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId('discard-button').click()
+  }
+
+  await context.close()
+})
