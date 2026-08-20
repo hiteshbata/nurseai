@@ -15,6 +15,20 @@ export const metadata: Metadata = {
   description:
     'Guides on OET Speaking: exam format, band scores, OET vs IELTS, speaking tips, and advice for Indian nurses.',
   alternates: { canonical: '/blog' },
+  openGraph: {
+    type: 'website',
+    url: '/blog',
+    siteName: 'SpeakOET',
+    title: 'Blog — SpeakOET',
+    description:
+      'Guides on OET Speaking: exam format, band scores, OET vs IELTS, speaking tips, and advice for Indian nurses.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Blog — SpeakOET',
+    description:
+      'Guides on OET Speaking: exam format, band scores, OET vs IELTS, speaking tips, and advice for Indian nurses.',
+  },
 }
 
 function formatDate(date: string) {
