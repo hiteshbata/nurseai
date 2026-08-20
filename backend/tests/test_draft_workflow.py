@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.services import draft_store, draft_publisher
+from app.services import draft_store, draft_publisher, listening_audio
 
 
 class FakeResult:
@@ -1362,17 +1362,34 @@ def test_part_b_publish_unaffected_by_part_c(monkeypatch):
 # Part A -> 2 sections, Part B -> 6, Part C -> 2. section_seq (0..N-1) is
 # what lets them share one source_draft_id under the widened
 # listening_sections_source_draft_uidx (Phase 3F migration).
+#
+# Phase 7E: publish now hard-blocks any of these parts if an extract's audio
+# is missing/stale (draft_publisher._check_listening_audio_gate), so every
+# extract fixture below carries ready audio (url + matching transcript hash)
+# by default -- otherwise every publish()/build_preview() call in this
+# section would raise AudioNotReadyError before reaching what it's actually
+# testing. See test_content_studio_audio.py's PublishAudioGateTests for the
+# gate's own dedicated coverage (missing/partial/outdated/all-ready).
+
+def _ready_audio(transcript, tag):
+    return {"audio_url": f"https://cdn/{tag}.mp3", "audio_transcript_hash": listening_audio.transcript_hash(transcript)}
+
 
 def _listening_part_a_extracts(n=2):
-    return [{
-        "title": f"Extract {i + 1}",
-        "transcript": [{"speaker": "Nurse", "text": f"extract {i + 1} turn"}],
-        "body": f"Extract {i + 1} notes\n1. blank ______",
-        "questions": [{
-            "type": "short_answer", "content": f"Extract {i + 1} blank ({b})",
-            "options": [], "correct_answer": f"answer {i + 1}-{b}",
-        } for b in range(1, 13)],
-    } for i in range(n)]
+    out = []
+    for i in range(n):
+        transcript = [{"speaker": "Nurse", "text": f"extract {i + 1} turn"}]
+        out.append({
+            "title": f"Extract {i + 1}",
+            "transcript": transcript,
+            "body": f"Extract {i + 1} notes\n1. blank ______",
+            "questions": [{
+                "type": "short_answer", "content": f"Extract {i + 1} blank ({b})",
+                "options": [], "correct_answer": f"answer {i + 1}-{b}",
+            } for b in range(1, 13)],
+            **_ready_audio(transcript, f"part-a-{i}"),
+        })
+    return out
 
 
 def _listening_part_a_content(extracts=None):
@@ -1380,14 +1397,19 @@ def _listening_part_a_content(extracts=None):
 
 
 def _listening_part_b_extracts(n=6):
-    return [{
-        "title": f"Extract {i + 1}",
-        "transcript": [{"speaker": "Nurse", "text": f"extract {i + 1} turn"}],
-        "questions": [{
-            "type": "mcq", "content": f"What does extract {i + 1} say?",
-            "options": ["Option A", "Option B", "Option C"], "correct_answer": "Option B",
-        }],
-    } for i in range(n)]
+    out = []
+    for i in range(n):
+        transcript = [{"speaker": "Nurse", "text": f"extract {i + 1} turn"}]
+        out.append({
+            "title": f"Extract {i + 1}",
+            "transcript": transcript,
+            "questions": [{
+                "type": "mcq", "content": f"What does extract {i + 1} say?",
+                "options": ["Option A", "Option B", "Option C"], "correct_answer": "Option B",
+            }],
+            **_ready_audio(transcript, f"part-b-{i}"),
+        })
+    return out
 
 
 def _listening_part_b_content(extracts=None):
@@ -1395,15 +1417,20 @@ def _listening_part_b_content(extracts=None):
 
 
 def _listening_part_c_extracts(n=2):
-    return [{
-        "title": f"Extract {i + 1}",
-        "audio_mode": "dialogue" if i % 2 == 0 else "monologue",
-        "transcript": [{"speaker": "Interviewer", "text": f"extract {i + 1} turn"}],
-        "questions": [{
-            "type": "mcq", "content": f"Extract {i + 1} question {q}",
-            "options": ["Option A", "Option B", "Option C"], "correct_answer": "Option B",
-        } for q in range(1, 7)],
-    } for i in range(n)]
+    out = []
+    for i in range(n):
+        transcript = [{"speaker": "Interviewer", "text": f"extract {i + 1} turn"}]
+        out.append({
+            "title": f"Extract {i + 1}",
+            "audio_mode": "dialogue" if i % 2 == 0 else "monologue",
+            "transcript": transcript,
+            "questions": [{
+                "type": "mcq", "content": f"Extract {i + 1} question {q}",
+                "options": ["Option A", "Option B", "Option C"], "correct_answer": "Option B",
+            } for q in range(1, 7)],
+            **_ready_audio(transcript, f"part-c-{i}"),
+        })
+    return out
 
 
 def _listening_part_c_content(extracts=None):
@@ -1637,82 +1664,89 @@ def test_legacy_listening_first_publish_leaves_audio_url_null(monkeypatch):
     assert fake.tables["listening_sections"][0].get("audio_url") is None
 
 
-def test_listening_part_a_republish_without_audio_preserves_each_sections_audio_url(monkeypatch):
+def test_listening_part_a_republish_keeps_each_sections_audio_synced_to_its_own_extract(monkeypatch):
+    """Phase 7E: the audio gate requires every extract to carry ready audio
+    before publish succeeds at all, so a section's audio_url is now always
+    sourced from (and stays synced to) its own extract on every publish --
+    superseding the pre-7E contract where a production row's independently-
+    attached audio_url survived a republish untouched (that contract still
+    holds for legacy flat listening -- see
+    test_legacy_listening_republish_without_audio_preserves_existing_audio_url)."""
     fake = FakeSupabase()
     monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
     draft = _draft(id=303, module="listening", generated_content=_listening_part_a_content())
     draft_publisher.publish(draft, "owner-1")
-    for i, r in enumerate(sorted(fake.tables["listening_sections"], key=lambda r: r["section_seq"])):
-        r["audio_url"] = f"https://bucket/part-a-{i}.mp3"
 
     result = draft_publisher.publish(draft, "owner-1")
 
     assert result["sections"][0]["action"] == "updated"
     rows_by_seq = {r["section_seq"]: r for r in fake.tables["listening_sections"]}
-    assert rows_by_seq[0]["audio_url"] == "https://bucket/part-a-0.mp3"
-    assert rows_by_seq[1]["audio_url"] == "https://bucket/part-a-1.mp3"
+    assert rows_by_seq[0]["audio_url"] == "https://cdn/part-a-0.mp3"
+    assert rows_by_seq[1]["audio_url"] == "https://cdn/part-a-1.mp3"
 
 
-def test_listening_part_b_republish_without_audio_preserves_each_sections_audio_url(monkeypatch):
+def test_listening_part_b_republish_keeps_each_sections_audio_synced_to_its_own_extract(monkeypatch):
     fake = FakeSupabase()
     monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
     draft = _draft(id=304, module="listening", generated_content=_listening_part_b_content())
     draft_publisher.publish(draft, "owner-1")
-    for i, r in enumerate(sorted(fake.tables["listening_sections"], key=lambda r: r["section_seq"])):
-        r["audio_url"] = f"https://bucket/part-b-{i}.mp3"
 
     result = draft_publisher.publish(draft, "owner-1")
 
     assert result["sections"][0]["action"] == "updated"
     rows_by_seq = {r["section_seq"]: r for r in fake.tables["listening_sections"]}
     for seq in range(6):
-        assert rows_by_seq[seq]["audio_url"] == f"https://bucket/part-b-{seq}.mp3"
+        assert rows_by_seq[seq]["audio_url"] == f"https://cdn/part-b-{seq}.mp3"
 
 
-def test_listening_part_c_republish_without_audio_preserves_each_sections_audio_url(monkeypatch):
+def test_listening_part_c_republish_keeps_each_sections_audio_synced_to_its_own_extract(monkeypatch):
     fake = FakeSupabase()
     monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
     draft = _draft(id=305, module="listening", generated_content=_listening_part_c_content())
     draft_publisher.publish(draft, "owner-1")
-    rows = sorted(fake.tables["listening_sections"], key=lambda r: r["section_seq"])
-    rows[0]["audio_url"] = "https://bucket/part-c-0.mp3"
-    rows[1]["audio_url"] = "https://bucket/part-c-1.mp3"
 
     result = draft_publisher.publish(draft, "owner-1")
 
     assert result["sections"][0]["action"] == "updated"
     rows_by_seq = {r["section_seq"]: r for r in fake.tables["listening_sections"]}
-    assert rows_by_seq[0]["audio_url"] == "https://bucket/part-c-0.mp3"
-    assert rows_by_seq[1]["audio_url"] == "https://bucket/part-c-1.mp3"
+    assert rows_by_seq[0]["audio_url"] == "https://cdn/part-c-0.mp3"
+    assert rows_by_seq[1]["audio_url"] == "https://cdn/part-c-1.mp3"
 
 
-def test_listening_part_b_republish_one_extract_gets_explicit_audio_others_preserved(monkeypatch):
-    """Each section's audio_url is decided independently: an explicit
-    replacement on one extract must not touch the others' preserved URLs."""
+def test_listening_part_b_republish_one_extract_regenerated_others_unaffected(monkeypatch):
+    """Each section's audio is decided independently: regenerating (or
+    editing) one extract's audio must not touch the others' -- same
+    isolation guarantee as generate_draft_audio's own sibling-preservation
+    tests (test_content_studio_audio.py), now proven through a full
+    publish/republish cycle instead of just the draft-side update."""
     fake = FakeSupabase()
     monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
     draft = _draft(id=306, module="listening", generated_content=_listening_part_b_content())
     draft_publisher.publish(draft, "owner-1")
-    for i, r in enumerate(sorted(fake.tables["listening_sections"], key=lambda r: r["section_seq"])):
-        r["audio_url"] = f"https://bucket/old-{i}.mp3"
 
     edited_extracts = _listening_part_b_extracts()
-    edited_extracts[2]["audio_url"] = "https://bucket/new-2.mp3"
+    edited_extracts[2]["audio_url"] = "https://cdn/part-b-2-regenerated.mp3"
     draft["generated_content"] = _listening_part_b_content(edited_extracts)
     draft_publisher.publish(draft, "owner-1")
 
     rows_by_seq = {r["section_seq"]: r for r in fake.tables["listening_sections"]}
-    assert rows_by_seq[2]["audio_url"] == "https://bucket/new-2.mp3"
+    assert rows_by_seq[2]["audio_url"] == "https://cdn/part-b-2-regenerated.mp3"
     for seq in (0, 1, 3, 4, 5):
-        assert rows_by_seq[seq]["audio_url"] == f"https://bucket/old-{seq}.mp3"
+        assert rows_by_seq[seq]["audio_url"] == f"https://cdn/part-b-{seq}.mp3"
 
 
-def test_listening_part_b_first_publish_leaves_all_audio_urls_null(monkeypatch):
+def test_listening_part_b_first_publish_stamps_each_sections_own_audio_url(monkeypatch):
+    """Phase 7E: first publish of an audio-ready Part B draft carries each
+    extract's own audio straight onto its row (not null -- publishing
+    without audio at all is now blocked by the gate, see
+    test_content_studio_audio.py's PublishAudioGateTests)."""
     fake = FakeSupabase()
     monkeypatch.setattr(draft_publisher, "get_supabase", lambda: fake)
     draft = _draft(id=307, module="listening", generated_content=_listening_part_b_content())
     draft_publisher.publish(draft, "owner-1")
-    assert all(r.get("audio_url") is None for r in fake.tables["listening_sections"])
+    rows_by_seq = {r["section_seq"]: r for r in fake.tables["listening_sections"]}
+    for seq in range(6):
+        assert rows_by_seq[seq]["audio_url"] == f"https://cdn/part-b-{seq}.mp3"
     assert len(fake.tables["listening_sections"]) == 6  # no duplicate rows from the republish-audio path
 
 

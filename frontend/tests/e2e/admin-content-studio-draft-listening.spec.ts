@@ -117,11 +117,11 @@ const PART_C_CONTENT = {
   ],
 }
 
-async function mockDraft(page: Page, draftId: number, content: Record<string, any>, onPatch?: (body: any) => void) {
+async function mockDraft(page: Page, draftId: number, content: Record<string, any>, onPatch?: (body: any) => void, overrides: Record<string, any> = {}) {
   await page.route(`${apiBaseURL}/admin/content-studio/drafts/${draftId}`, async (route) => {
     const method = route.request().method()
     if (method === 'GET') {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(baseDraft({ id: draftId, generated_content: content })) })
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(baseDraft({ id: draftId, generated_content: content, ...overrides })) })
       return
     }
     if (method === 'PATCH') {
@@ -132,6 +132,12 @@ async function mockDraft(page: Page, draftId: number, content: Record<string, an
     }
     await route.continue()
   })
+}
+
+async function mockAuthMeRole(page: Page, role: string) {
+  await page.route('**/auth/me', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ role }) })
+  )
 }
 
 // ---- Part A ----
@@ -305,6 +311,550 @@ test('[MOCKED] editing Part C extract 0 does not change extract 1, and save pres
   expect(saved.extracts[1].title).toBe('Extract 2 Title')
   expect(saved.extracts[1].audio_mode).toBe('monologue')
   expect(saved.extracts[1].questions).toHaveLength(6)
+
+  await context.close()
+})
+
+// ---- Phase 7B: per-extract audio UI ----
+// generate-audio is mocked with a deterministic fixture URL -- never calls
+// real OpenAI TTS. See backend/app/routers/admin_content_studio.py
+// generate_draft_audio for the real response shape this mirrors.
+const FIXTURE_AUDIO_URL = 'https://fixtures.example.com/qa/extract-audio.mp3'
+
+async function mockGenerateAudio(page: Page, draftId: number, opts?: { fail?: boolean; onRequest?: (body: any) => void }) {
+  await page.route(`${apiBaseURL}/admin/content-studio/drafts/${draftId}/generate-audio`, async (route) => {
+    const body = route.request().postDataJSON()
+    opts?.onRequest?.(body)
+    // Small artificial delay so the transient GENERATING UI state is observable
+    // in the assertions below instead of racing an instant mock resolution.
+    await new Promise((r) => setTimeout(r, 300))
+    if (opts?.fail) {
+      await route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ detail: { code: 'audio_generation_failed', message: 'Audio generation failed. Try again.' } }) })
+      return
+    }
+    await route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        extract_index: body.extract_index,
+        audio_url: FIXTURE_AUDIO_URL,
+        duration_seconds: 12.5,
+        audio_generated_at: '2026-08-20T00:00:00Z',
+        audio_transcript_hash: 'fixture-hash',
+      }),
+    })
+  })
+}
+
+function withAudio(content: Record<string, any>, extractIndex: number) {
+  const extracts = content.extracts.map((ex: any, i: number) =>
+    i === extractIndex
+      ? { ...ex, audio_url: FIXTURE_AUDIO_URL, audio_duration_seconds: 12.5, audio_generated_at: '2026-08-19T00:00:00Z', audio_transcript_hash: 'stale-or-current-hash' }
+      : ex,
+  )
+  return { ...content, extracts }
+}
+
+test('[MOCKED] Part A, B, C extracts with no audio show "Not generated" and a Generate Voice button', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2101, PART_A_CONTENT)
+  await mockDraft(page, 2102, PART_B_CONTENT)
+  await mockDraft(page, 2103, PART_C_CONTENT)
+
+  for (const [draftId, count] of [[2101, 2], [2102, 6], [2103, 2]] as const) {
+    await page.goto(`/admin/content-studio/drafts/${draftId}`)
+    await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+    for (let i = 0; i < count; i++) {
+      const panel = page.getByTestId(`listening-extract-${i}`)
+      await expect(panel.getByTestId(`listening-extract-${i}-audio-status`)).toHaveText('Not generated')
+      await expect(panel.getByTestId(`listening-extract-${i}-generate-audio`)).toHaveText('Generate Voice')
+      await expect(panel.getByTestId(`listening-extract-${i}-audio-player`)).toHaveCount(0)
+    }
+  }
+
+  await context.close()
+})
+
+test('[MOCKED] Generate Voice success moves extract to Ready with a player, and only that extract changes', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2104, PART_B_CONTENT)
+  let requestBody: any = null
+  await mockGenerateAudio(page, 2104, { onRequest: (b) => { requestBody = b } })
+
+  await page.goto('/admin/content-studio/drafts/2104')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+  const panel0 = page.getByTestId('listening-extract-0')
+  await panel0.getByTestId('listening-extract-0-generate-audio').click()
+  await expect(panel0.getByTestId('listening-extract-0-audio-status')).toHaveText('Generating...')
+  await expect(panel0.getByTestId('listening-extract-0-generate-audio')).toBeDisabled()
+
+  await expect(panel0.getByTestId('listening-extract-0-audio-status')).toHaveText('Ready')
+  await expect(panel0.getByTestId('listening-extract-0-audio-player')).toHaveAttribute('src', FIXTURE_AUDIO_URL)
+  await expect(panel0.getByTestId('listening-extract-0-audio-duration')).toHaveText('13s')
+  await expect(panel0.getByTestId('listening-extract-0-generate-audio')).toHaveText('Regenerate Voice')
+
+  expect(requestBody).toEqual({ extract_index: 0 })
+
+  // Sibling extracts untouched.
+  for (let i = 1; i < 6; i++) {
+    const panel = page.getByTestId(`listening-extract-${i}`)
+    await expect(panel.getByTestId(`listening-extract-${i}-audio-status`)).toHaveText('Not generated')
+    await expect(panel.getByTestId(`listening-extract-${i}-audio-player`)).toHaveCount(0)
+  }
+  await expect(page.getByTestId('listening-extract-1-title')).toHaveValue('Extract 2 Title')
+
+  await context.close()
+})
+
+test('[MOCKED] Generate Voice failure shows an error and leaves the extract in its previous state', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2105, PART_B_CONTENT)
+  await mockGenerateAudio(page, 2105, { fail: true })
+
+  await page.goto('/admin/content-studio/drafts/2105')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+  const panel0 = page.getByTestId('listening-extract-0')
+  await panel0.getByTestId('listening-extract-0-generate-audio').click()
+
+  await expect(page.getByText('Audio generation failed. Try again.')).toBeVisible()
+  await expect(panel0.getByTestId('listening-extract-0-audio-status')).toHaveText('Not generated')
+  await expect(panel0.getByTestId('listening-extract-0-audio-player')).toHaveCount(0)
+
+  await context.close()
+})
+
+test('[MOCKED] Regenerate Voice works on an extract that already has audio', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2106, withAudio(PART_B_CONTENT, 0))
+  await mockGenerateAudio(page, 2106)
+
+  await page.goto('/admin/content-studio/drafts/2106')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+  const panel0 = page.getByTestId('listening-extract-0')
+  await expect(panel0.getByTestId('listening-extract-0-audio-status')).toHaveText('Ready')
+  await expect(panel0.getByTestId('listening-extract-0-generate-audio')).toHaveText('Regenerate Voice')
+
+  await panel0.getByTestId('listening-extract-0-generate-audio').click()
+  await expect(panel0.getByTestId('listening-extract-0-audio-status')).toHaveText('Ready')
+  await expect(panel0.getByTestId('listening-extract-0-audio-player')).toHaveAttribute('src', FIXTURE_AUDIO_URL)
+
+  await context.close()
+})
+
+test('[MOCKED] editing the transcript marks audio Outdated but keeps the existing player and audio_url', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2107, withAudio(PART_B_CONTENT, 0))
+
+  await page.goto('/admin/content-studio/drafts/2107')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+  const panel0 = page.getByTestId('listening-extract-0')
+  await expect(panel0.getByTestId('listening-extract-0-audio-status')).toHaveText('Ready')
+  await expect(panel0.getByTestId('listening-extract-0-audio-player')).toHaveAttribute('src', FIXTURE_AUDIO_URL)
+
+  await panel0.getByTestId('listening-extract-0-turn-0-text').fill('Edited line, script changed')
+
+  await expect(panel0.getByTestId('listening-extract-0-audio-status')).toHaveText('Audio outdated')
+  // Existing player stays visible, still pointed at the same audio_url -- no auto-regenerate, nothing deleted.
+  await expect(panel0.getByTestId('listening-extract-0-audio-player')).toHaveAttribute('src', FIXTURE_AUDIO_URL)
+  await expect(panel0.getByTestId('listening-extract-0-generate-audio')).toHaveText('Regenerate Voice')
+
+  await context.close()
+})
+
+// ---- Phase 7C: draft-level "Generate All Voice" ----
+// Same mocked generate-audio fixture as Phase 7B -- Gemini/real TTS never invoked.
+
+function withAudioAt(content: Record<string, any>, indices: number[]) {
+  const extracts = content.extracts.map((ex: any, i: number) =>
+    indices.includes(i)
+      ? { ...ex, audio_url: FIXTURE_AUDIO_URL, audio_duration_seconds: 12.5, audio_generated_at: '2026-08-19T00:00:00Z', audio_transcript_hash: 'current-hash' }
+      : ex,
+  )
+  return { ...content, extracts }
+}
+
+test('[MOCKED] all extracts ready: Generate All is disabled and makes zero requests', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2201, withAudioAt(PART_B_CONTENT, [0, 1, 2, 3, 4, 5]))
+  let requestCount = 0
+  await mockGenerateAudio(page, 2201, { onRequest: () => { requestCount++ } })
+
+  await page.goto('/admin/content-studio/drafts/2201')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+  await expect(page.getByTestId('generate-all-voice-button')).toBeDisabled()
+  await expect(page.getByTestId('generate-all-voice-all-ready')).toHaveText('All audio is ready.')
+  await expect(page.getByTestId('generate-all-voice-summary')).toHaveText('Part B: 6/6 ready')
+
+  expect(requestCount).toBe(0)
+  await context.close()
+})
+
+test('[MOCKED] all extracts not generated: request count equals extract count (Part B = 6)', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2202, PART_B_CONTENT)
+  const requests: any[] = []
+  await mockGenerateAudio(page, 2202, { onRequest: (b) => requests.push(b) })
+
+  await page.goto('/admin/content-studio/drafts/2202')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+  await expect(page.getByTestId('generate-all-voice-summary')).toHaveText('Part B: 0/6 ready')
+  await page.getByTestId('generate-all-voice-button').click()
+  await expect(page.getByTestId('generate-all-voice-dialog')).toBeVisible()
+  await expect(page.getByTestId('generate-all-voice-count')).toHaveText('Generate audio for 6 extracts?')
+  await page.getByTestId('generate-all-voice-confirm-button').click()
+
+  await expect(page.getByTestId('generate-all-voice-result')).toBeVisible({ timeout: 15_000 })
+  expect(requests).toHaveLength(6)
+  await expect(page.getByTestId('generate-all-voice-result')).toContainText('Generated: 6')
+  await expect(page.getByTestId('generate-all-voice-result')).toContainText('Failed: 0')
+  await expect(page.getByTestId('generate-all-voice-result')).toContainText('Skipped (already ready): 0')
+
+  for (let i = 0; i < 6; i++) {
+    await expect(page.getByTestId(`listening-extract-${i}-audio-status`)).toHaveText('Ready')
+  }
+  await context.close()
+})
+
+test('[MOCKED] mixed ready/outdated/not-generated: only outdated + not-generated are requested', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  // extracts 0,1,3,5 start READY; 2,4 are NOT_GENERATED -> mark 0 dirty via a transcript edit to get one OUTDATED too.
+  await mockDraft(page, 2203, withAudioAt(PART_B_CONTENT, [0, 1, 3, 5]))
+  const requests: any[] = []
+  await mockGenerateAudio(page, 2203, { onRequest: (b) => requests.push(b) })
+
+  await page.goto('/admin/content-studio/drafts/2203')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+  // Make extract 0 OUTDATED (was READY).
+  await page.getByTestId('listening-extract-0-turn-0-text').fill('Edited, now outdated')
+  await expect(page.getByTestId('listening-extract-0-audio-status')).toHaveText('Audio outdated')
+
+  // Needs audio: 0 (outdated), 2 (not generated), 4 (not generated) = 3. Skip 1, 3, 5 (ready).
+  await expect(page.getByTestId('generate-all-voice-summary')).toHaveText('Part B: 3/6 ready')
+  await page.getByTestId('generate-all-voice-button').click()
+  await expect(page.getByTestId('generate-all-voice-count')).toHaveText('Generate audio for 3 extracts?')
+  await page.getByTestId('generate-all-voice-confirm-button').click()
+
+  await expect(page.getByTestId('generate-all-voice-result')).toBeVisible({ timeout: 15_000 })
+  expect(requests).toHaveLength(3)
+  expect(requests.map((r) => r.extract_index).sort()).toEqual([0, 2, 4])
+
+  await context.close()
+})
+
+test('[MOCKED] one API failure: remaining extracts continue and summary reports success/failure split', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2204, PART_B_CONTENT)
+  await page.route(`${apiBaseURL}/admin/content-studio/drafts/2204/generate-audio`, async (route) => {
+    const body = route.request().postDataJSON()
+    await new Promise((r) => setTimeout(r, 100))
+    if (body.extract_index === 2) {
+      await route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ detail: { code: 'audio_generation_failed', message: 'Audio generation failed. Try again.' } }) })
+      return
+    }
+    await route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ extract_index: body.extract_index, audio_url: FIXTURE_AUDIO_URL, duration_seconds: 12.5, audio_generated_at: '2026-08-20T00:00:00Z', audio_transcript_hash: 'fixture-hash' }),
+    })
+  })
+
+  await page.goto('/admin/content-studio/drafts/2204')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+  await page.getByTestId('generate-all-voice-button').click()
+  await page.getByTestId('generate-all-voice-confirm-button').click()
+
+  await expect(page.getByTestId('generate-all-voice-result')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('generate-all-voice-result')).toContainText('Generated: 5')
+  await expect(page.getByTestId('generate-all-voice-result')).toContainText('Failed: 1')
+  await expect(page.getByTestId('generate-all-voice-result')).toContainText('Skipped (already ready): 0')
+  await expect(page.getByTestId('generate-all-voice-failure-2')).toContainText('Audio generation failed. Try again.')
+
+  // Extract 2 stays failed (Not generated); every sibling reached Ready independently.
+  await expect(page.getByTestId('listening-extract-2-audio-status')).toHaveText('Not generated')
+  for (const i of [0, 1, 3, 4, 5]) {
+    await expect(page.getByTestId(`listening-extract-${i}-audio-status`)).toHaveText('Ready')
+  }
+
+  await context.close()
+})
+
+test('[MOCKED] extract-level state updates independently and siblings stay isolated during a batch run', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2205, PART_B_CONTENT)
+  await mockGenerateAudio(page, 2205)
+
+  await page.goto('/admin/content-studio/drafts/2205')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+  await page.getByTestId('generate-all-voice-button').click()
+  await page.getByTestId('generate-all-voice-confirm-button').click()
+
+  // Titles/transcripts of extracts not yet reached are untouched mid-run.
+  await expect(page.getByTestId('listening-extract-5-title')).toHaveValue('Extract 6 Title')
+  await expect(page.getByTestId('generate-all-voice-result')).toBeVisible({ timeout: 15_000 })
+  for (let i = 0; i < 6; i++) {
+    await expect(page.getByTestId(`listening-extract-${i}-title`)).toHaveValue(`Extract ${i + 1} Title`)
+    await expect(page.getByTestId(`listening-extract-${i}-audio-status`)).toHaveText('Ready')
+  }
+
+  await context.close()
+})
+
+test('[MOCKED] user cancels the confirmation dialog: zero requests made', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2206, PART_B_CONTENT)
+  let requestCount = 0
+  await mockGenerateAudio(page, 2206, { onRequest: () => { requestCount++ } })
+
+  await page.goto('/admin/content-studio/drafts/2206')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+  await page.getByTestId('generate-all-voice-button').click()
+  await expect(page.getByTestId('generate-all-voice-dialog')).toBeVisible()
+  await page.getByTestId('generate-all-voice-cancel-button').click()
+  await expect(page.getByTestId('generate-all-voice-dialog')).toHaveCount(0)
+
+  expect(requestCount).toBe(0)
+  for (let i = 0; i < 6; i++) {
+    await expect(page.getByTestId(`listening-extract-${i}-audio-status`)).toHaveText('Not generated')
+  }
+  await context.close()
+})
+
+test('[MOCKED] confirmation shows the exact TTS request count, not a vague message', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2207, withAudioAt(PART_C_CONTENT, [1]))
+  await mockGenerateAudio(page, 2207)
+
+  await page.goto('/admin/content-studio/drafts/2207')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+  await page.getByTestId('generate-all-voice-button').click()
+  await expect(page.getByTestId('generate-all-voice-count')).toHaveText('Generate audio for 1 extract?')
+  await expect(page.getByTestId('generate-all-voice-dialog')).not.toContainText('may incur costs')
+
+  await context.close()
+})
+
+test('[MOCKED] Part A extract count feeding Generate All is 2', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2208, PART_A_CONTENT)
+  await page.goto('/admin/content-studio/drafts/2208')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('generate-all-voice-button').click()
+  await expect(page.getByTestId('generate-all-voice-count')).toHaveText('Generate audio for 2 extracts?')
+  await context.close()
+})
+
+test('[MOCKED] Part B extract count feeding Generate All is 6', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2209, PART_B_CONTENT)
+  await page.goto('/admin/content-studio/drafts/2209')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('generate-all-voice-button').click()
+  await expect(page.getByTestId('generate-all-voice-count')).toHaveText('Generate audio for 6 extracts?')
+  await context.close()
+})
+
+test('[MOCKED] Part C extract count feeding Generate All is 2', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2210, PART_C_CONTENT)
+  await page.goto('/admin/content-studio/drafts/2210')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('generate-all-voice-button').click()
+  await expect(page.getByTestId('generate-all-voice-count')).toHaveText('Generate audio for 2 extracts?')
+  await context.close()
+})
+
+test('[MOCKED] dialogue (Part B) and monologue (Part C) extracts both display audio state correctly', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockDraft(page, 2108, withAudio(PART_C_CONTENT, 1)) // extract 1 is monologue in PART_C_CONTENT
+
+  await page.goto('/admin/content-studio/drafts/2108')
+  await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+  const dialoguePanel = page.getByTestId('listening-extract-0')
+  await expect(dialoguePanel.getByTestId('listening-extract-0-audio-mode')).toHaveValue('dialogue')
+  await expect(dialoguePanel.getByTestId('listening-extract-0-audio-status')).toHaveText('Not generated')
+
+  const monologuePanel = page.getByTestId('listening-extract-1')
+  await expect(monologuePanel.getByTestId('listening-extract-1-audio-mode')).toHaveValue('monologue')
+  await expect(monologuePanel.getByTestId('listening-extract-1-audio-status')).toHaveText('Ready')
+  await expect(monologuePanel.getByTestId('listening-extract-1-audio-player')).toHaveAttribute('src', FIXTURE_AUDIO_URL)
+
+  await context.close()
+})
+
+// ---- Phase 7E: publish gate on extracts[] audio readiness ────────────
+// draft_publisher.build_preview raises AudioNotReadyError (409, structured
+// detail) when a Listening Part A/B/C draft has any extract whose audio is
+// NOT_GENERATED or OUTDATED; admin_content_studio.get_publish_preview
+// surfaces it as-is. These mock the /publish-preview response directly --
+// no real backend, no TTS/Gemini call, publish is never actually invoked.
+
+function audioGateDetail(part: string, missing: number[], outdated: number[]) {
+  const reason = missing.length && outdated.length ? 'audio_missing_and_outdated' : outdated.length ? 'audio_outdated' : 'audio_missing'
+  return {
+    error: reason, part, missing_audio_indexes: missing, outdated_audio_indexes: outdated,
+    message: `Listening Part ${part} is not publish-ready.`,
+  }
+}
+
+test('[MOCKED] Part B approved draft with no audio: publish blocked, identifies part and all 6 missing indexes', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockAuthMeRole(page, 'owner')
+  await mockDraft(page, 2301, PART_B_CONTENT, undefined, { status: 'approved' })
+  let publishCalled = false
+  await page.route(`${apiBaseURL}/admin/content-studio/drafts/2301/publish-preview`, async (route) => {
+    await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: audioGateDetail('B', [0, 1, 2, 3, 4, 5], []) }) })
+  })
+  await page.route(`${apiBaseURL}/admin/content-studio/drafts/2301/publish`, async (route) => {
+    publishCalled = true
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) })
+  })
+
+  await page.goto('/admin/content-studio/drafts/2301')
+  await expect(page.getByTestId('publish-button')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('publish-button').click()
+
+  await expect(page.getByTestId('audio-gate-error')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByTestId('audio-gate-error')).toContainText('Part B')
+  await expect(page.getByTestId('audio-gate-missing-indexes')).toContainText('1, 2, 3, 4, 5, 6')
+  await expect(page.getByTestId('audio-gate-outdated-indexes')).toHaveCount(0)
+  await expect(page.getByTestId('publish-preview-dialog')).not.toBeVisible()
+  expect(publishCalled).toBe(false) // gate blocks before the dialog can even offer Confirm
+
+  await context.close()
+})
+
+test('[MOCKED] Part B approved draft with only extract 0 ready: publish blocked, identifies indexes 1-5 as missing', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockAuthMeRole(page, 'owner')
+  await mockDraft(page, 2302, withAudioAt(PART_B_CONTENT, [0]), undefined, { status: 'approved' })
+  await page.route(`${apiBaseURL}/admin/content-studio/drafts/2302/publish-preview`, async (route) => {
+    await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: audioGateDetail('B', [1, 2, 3, 4, 5], []) }) })
+  })
+
+  await page.goto('/admin/content-studio/drafts/2302')
+  await expect(page.getByTestId('publish-button')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('publish-button').click()
+
+  await expect(page.getByTestId('audio-gate-missing-indexes')).toContainText('2, 3, 4, 5, 6')
+
+  await context.close()
+})
+
+test('[MOCKED] Part B approved draft with a stale extract: publish blocked with audio_outdated, not audio_missing', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockAuthMeRole(page, 'owner')
+  await mockDraft(page, 2303, withAudioAt(PART_B_CONTENT, [0, 1, 2, 3, 4, 5]), undefined, { status: 'approved' })
+  await page.route(`${apiBaseURL}/admin/content-studio/drafts/2303/publish-preview`, async (route) => {
+    await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: audioGateDetail('B', [], [2]) }) })
+  })
+
+  await page.goto('/admin/content-studio/drafts/2303')
+  await expect(page.getByTestId('publish-button')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('publish-button').click()
+
+  await expect(page.getByTestId('audio-gate-error')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByTestId('audio-gate-outdated-indexes')).toContainText('3')
+  await expect(page.getByTestId('audio-gate-missing-indexes')).toHaveCount(0)
+
+  await context.close()
+})
+
+test('[MOCKED] Part A approved draft with no audio: publish blocked, exact 2-extract requirement identified', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockAuthMeRole(page, 'owner')
+  await mockDraft(page, 2304, PART_A_CONTENT, undefined, { status: 'approved' })
+  await page.route(`${apiBaseURL}/admin/content-studio/drafts/2304/publish-preview`, async (route) => {
+    await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: audioGateDetail('A', [0, 1], []) }) })
+  })
+
+  await page.goto('/admin/content-studio/drafts/2304')
+  await expect(page.getByTestId('publish-button')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('publish-button').click()
+
+  await expect(page.getByTestId('audio-gate-error')).toContainText('Part A')
+  await expect(page.getByTestId('audio-gate-missing-indexes')).toContainText('1, 2')
+
+  await context.close()
+})
+
+test('[MOCKED] Part C approved draft with no audio: publish blocked, exact 2-extract requirement identified', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockAuthMeRole(page, 'owner')
+  await mockDraft(page, 2305, PART_C_CONTENT, undefined, { status: 'approved' })
+  await page.route(`${apiBaseURL}/admin/content-studio/drafts/2305/publish-preview`, async (route) => {
+    await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: audioGateDetail('C', [0, 1], []) }) })
+  })
+
+  await page.goto('/admin/content-studio/drafts/2305')
+  await expect(page.getByTestId('publish-button')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('publish-button').click()
+
+  await expect(page.getByTestId('audio-gate-error')).toContainText('Part C')
+  await expect(page.getByTestId('audio-gate-missing-indexes')).toContainText('1, 2')
+
+  await context.close()
+})
+
+test('[MOCKED] Part B approved draft with all 6 extracts ready: audio gate passes, preview opens with no error banner', async ({ browser }) => {
+  skipIfNoCreds()
+  const { context, page } = await authedPage(browser)
+  await mockAuthMeRole(page, 'owner')
+  await mockDraft(page, 2306, withAudioAt(PART_B_CONTENT, [0, 1, 2, 3, 4, 5]), undefined, { status: 'approved' })
+  let publishCalled = false
+  await page.route(`${apiBaseURL}/admin/content-studio/drafts/2306/publish-preview`, async (route) => {
+    await route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        records: Array.from({ length: 6 }, (_, i) => ({ table: 'listening_sections', fields: { title: `Extract ${i + 1}`, section_seq: i }, action: 'create' })),
+        warnings: [],
+      }),
+    })
+  })
+  await page.route(`${apiBaseURL}/admin/content-studio/drafts/2306/publish`, async (route) => {
+    publishCalled = true
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) })
+  })
+
+  await page.goto('/admin/content-studio/drafts/2306')
+  await expect(page.getByTestId('publish-button')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('publish-button').click()
+
+  // Gate passes -> the normal Publish Preview dialog opens, no gate banner.
+  await expect(page.getByTestId('publish-preview-dialog')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByTestId('audio-gate-error')).toHaveCount(0)
+  // Stop here -- do not actually publish (no confirm-publish-button click).
+  expect(publishCalled).toBe(false)
 
   await context.close()
 })

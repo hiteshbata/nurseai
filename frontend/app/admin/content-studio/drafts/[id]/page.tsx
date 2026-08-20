@@ -65,6 +65,13 @@ interface Preview {
   records: PreviewRecord[]
   warnings: string[]
 }
+interface AudioGateError {
+  error: 'audio_missing' | 'audio_outdated' | 'audio_missing_and_outdated'
+  part: string
+  missing_audio_indexes: number[]
+  outdated_audio_indexes: number[]
+  message: string
+}
 
 export default function DraftEditorPage() {
   const params = useParams<{ id: string }>()
@@ -91,6 +98,7 @@ export default function DraftEditorPage() {
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
+  const [audioGateError, setAudioGateError] = useState<AudioGateError | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [revisions, setRevisions] = useState<any[]>([])
 
@@ -175,12 +183,21 @@ export default function DraftEditorPage() {
 
   const openPublishPreview = async () => {
     setBusy(true)
+    setAudioGateError(null)
     try {
       const res = await api.get(`/admin/content-studio/drafts/${draftId}/publish-preview`)
       setPreview(res.data)
       setPreviewOpen(true)
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Could not build publish preview')
+      const detail = err?.response?.data?.detail
+      // Phase 7E: Listening Part A/B/C publish is blocked while any extract's
+      // audio is missing or stale -- draft_publisher.AudioNotReadyError,
+      // surfaced as a 409 with a structured detail (not a plain string).
+      if (err?.response?.status === 409 && detail && typeof detail === 'object' && String(detail.error || '').startsWith('audio_')) {
+        setAudioGateError(detail as AudioGateError)
+      } else {
+        toast.error((typeof detail === 'string' && detail) || detail?.message || 'Could not build publish preview')
+      }
     } finally {
       setBusy(false)
     }
@@ -261,6 +278,23 @@ export default function DraftEditorPage() {
         {(draft.validation_warnings || []).length > 0 && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 text-sm text-yellow-800">
             {draft.validation_warnings.map((w, i) => <div key={i}>&#9888; {w}</div>)}
+          </div>
+        )}
+
+        {audioGateError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-800" data-testid="audio-gate-error">
+            <div className="font-semibold">Publish blocked -- audio not ready (Part {audioGateError.part})</div>
+            <div className="mt-1">{audioGateError.message}</div>
+            {audioGateError.missing_audio_indexes.length > 0 && (
+              <div className="mt-1" data-testid="audio-gate-missing-indexes">
+                Missing audio: extract {audioGateError.missing_audio_indexes.map((i) => i + 1).join(', ')}
+              </div>
+            )}
+            {audioGateError.outdated_audio_indexes.length > 0 && (
+              <div className="mt-1" data-testid="audio-gate-outdated-indexes">
+                Outdated audio: extract {audioGateError.outdated_audio_indexes.map((i) => i + 1).join(', ')}
+              </div>
+            )}
           </div>
         )}
 
@@ -407,7 +441,7 @@ function ModuleEditor({ module, content, onChange, disabled, blogMeta, onBlogMet
     case 'speaking': return <SpeakingEditor content={content} set={set} disabled={disabled} />
     case 'writing': return <WritingEditor content={content} set={set} disabled={disabled} />
     case 'reading': return <ReadingEditor content={content} set={set} disabled={disabled} />
-    case 'listening': return <ListeningEditor content={content} set={set} disabled={disabled} />
+    case 'listening': return <ListeningEditor content={content} set={set} disabled={disabled} draftId={draftId} />
     case 'vocab': return <VocabEditor content={content} set={set} disabled={disabled} />
     case 'grammar': return <GrammarEditor content={content} set={set} disabled={disabled} />
     case 'blog': return <BlogEditor content={content} set={set} disabled={disabled} blogMeta={blogMeta} setBlogMeta={onBlogMetaChange} draftId={draftId} slugLocked={slugLocked} />
@@ -550,9 +584,13 @@ interface ListeningExtract {
   audio_mode?: string
   transcript?: ListeningTurn[]
   questions?: any[]
+  audio_url?: string
+  audio_duration_seconds?: number
+  audio_generated_at?: string
+  audio_transcript_hash?: string
 }
 
-function ListeningEditor({ content, set, disabled }: { content: any; set: SetFn; disabled: boolean }) {
+function ListeningEditor({ content, set, disabled, draftId }: { content: any; set: SetFn; disabled: boolean; draftId: string }) {
   if (Array.isArray(content.extracts)) {
     return (
       <div className="space-y-4">
@@ -563,7 +601,7 @@ function ListeningEditor({ content, set, disabled }: { content: any; set: SetFn;
         {'audio_mode' in content && (
           <SelectInput label="Audio Mode" value={content.audio_mode || 'dialogue'} options={['dialogue', 'monologue']} onChange={(v) => set('audio_mode', v)} disabled={disabled} testId="listening-audio-mode" />
         )}
-        <ListeningExtractSetEditor items={content.extracts} onChange={(v) => set('extracts', v)} disabled={disabled} />
+        <ListeningExtractSetEditor items={content.extracts} onChange={(v) => set('extracts', v)} disabled={disabled} draftId={draftId} part={content.part || 'A'} />
       </div>
     )
   }
@@ -599,22 +637,111 @@ function ListeningEditor({ content, set, disabled }: { content: any; set: SetFn;
   )
 }
 
-function ListeningExtractSetEditor({ items, onChange, disabled }: {
-  items: ListeningExtract[]; onChange: (items: ListeningExtract[]) => void; disabled: boolean
+interface BatchAudioResult {
+  generated: number
+  failed: number
+  skipped: number
+  failures: { index: number; title: string; error: string }[]
+}
+
+function ListeningExtractSetEditor({ items, onChange, disabled, draftId, part }: {
+  items: ListeningExtract[]; onChange: (items: ListeningExtract[]) => void; disabled: boolean; draftId: string; part: string
 }) {
+  // Backend is the sole owner of audio_transcript_hash comparison (listening_audio.get_audio_status) --
+  // the frontend never re-derives that hash. Instead it tracks "has this extract's
+  // transcript been touched since its current audio_url was stamped" locally, which is
+  // enough to show OUTDATED without duplicating the hashing algorithm.
+  const [dirty, setDirty] = useState<Set<number>>(new Set())
+  const [generating, setGenerating] = useState<Set<number>>(new Set())
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [batchRunning, setBatchRunning] = useState(false)
+  const [batchResult, setBatchResult] = useState<BatchAudioResult | null>(null)
+
   const updateItem = (i: number, patch: Partial<ListeningExtract>) => {
     const next = items.slice()
     next[i] = { ...next[i], ...patch }
     onChange(next)
   }
+
+  const requestAudio = (i: number) =>
+    api.post(`/admin/content-studio/drafts/${draftId}/generate-audio`, { extract_index: i }).then((res) => res.data)
+
+  const generateVoice = async (i: number) => {
+    setGenerating((prev) => new Set(prev).add(i))
+    try {
+      const data = await requestAudio(i)
+      updateItem(i, {
+        audio_url: data.audio_url,
+        audio_duration_seconds: data.duration_seconds,
+        audio_generated_at: data.audio_generated_at,
+        audio_transcript_hash: data.audio_transcript_hash,
+      })
+      setDirty((prev) => { const next = new Set(prev); next.delete(i); return next })
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail?.message || err?.response?.data?.detail || 'Voice generation failed')
+    } finally {
+      setGenerating((prev) => { const next = new Set(prev); next.delete(i); return next })
+    }
+  }
+
+  // NEEDS_AUDIO = NOT_GENERATED + OUTDATED. READY extracts are never included --
+  // this is the sole source of truth for what Generate All will call, and it's
+  // recomputed every render so a transcript edit made mid-session is picked up.
+  const needsAudioIndices = items.reduce<number[]>((acc, item, i) => {
+    if (!item.audio_url || dirty.has(i)) acc.push(i)
+    return acc
+  }, [])
+  const readyCount = items.length - needsAudioIndices.length
+
+  const runGenerateAll = async (indices: number[]) => {
+    setConfirmOpen(false)
+    setBatchRunning(true)
+    let current = items
+    const failures: BatchAudioResult['failures'] = []
+    let generated = 0
+    for (const i of indices) {
+      setGenerating((prev) => new Set(prev).add(i))
+      try {
+        const data = await requestAudio(i)
+        current = current.map((it, idx) => idx === i
+          ? { ...it, audio_url: data.audio_url, audio_duration_seconds: data.duration_seconds, audio_generated_at: data.audio_generated_at, audio_transcript_hash: data.audio_transcript_hash }
+          : it)
+        onChange(current)
+        setDirty((prev) => { const next = new Set(prev); next.delete(i); return next })
+        generated++
+      } catch (err: any) {
+        failures.push({
+          index: i,
+          title: current[i]?.title || `Extract ${i + 1}`,
+          error: err?.response?.data?.detail?.message || err?.response?.data?.detail || 'Voice generation failed',
+        })
+      } finally {
+        setGenerating((prev) => { const next = new Set(prev); next.delete(i); return next })
+      }
+    }
+    setBatchRunning(false)
+    setBatchResult({ generated, failed: failures.length, skipped: items.length - indices.length, failures })
+  }
+
   return (
     <div className="space-y-6">
+      <GenerateAllVoiceSection
+        part={part} disabled={disabled} batchRunning={batchRunning}
+        needsAudioIndices={needsAudioIndices} readyCount={readyCount} total={items.length}
+        confirmOpen={confirmOpen} onOpenConfirm={() => setConfirmOpen(true)} onCancelConfirm={() => setConfirmOpen(false)}
+        onConfirmRun={() => runGenerateAll(needsAudioIndices)}
+        batchResult={batchResult}
+      />
       {items.map((item, i) => {
         const transcript = item.transcript || []
+        const updateTranscript = (next: ListeningTurn[]) => {
+          updateItem(i, { transcript: next })
+          if (item.audio_url) setDirty((prev) => new Set(prev).add(i))
+        }
         const updateTurn = (j: number, patch: Partial<ListeningTurn>) => {
           const next = transcript.slice()
           next[j] = { ...next[j], ...patch }
-          updateItem(i, { transcript: next })
+          updateTranscript(next)
         }
         return (
           <div key={i} className="border rounded-lg p-4 space-y-4" data-testid={`listening-extract-${i}`}>
@@ -650,13 +777,18 @@ function ListeningExtractSetEditor({ items, onChange, disabled }: {
                     className="flex-1 px-2 py-2 border rounded text-sm"
                     data-testid={`listening-extract-${i}-turn-${j}-text`}
                   />
-                  {!disabled && <button onClick={() => updateItem(i, { transcript: transcript.filter((_, idx) => idx !== j) })} className="text-red-500 text-sm px-2">✕</button>}
+                  {!disabled && <button onClick={() => updateTranscript(transcript.filter((_, idx) => idx !== j))} className="text-red-500 text-sm px-2">✕</button>}
                 </div>
               ))}
               {!disabled && (
-                <button onClick={() => updateItem(i, { transcript: [...transcript, { speaker: '', text: '' }] })} className="text-sm text-blue-600 hover:underline">+ Add turn</button>
+                <button onClick={() => updateTranscript([...transcript, { speaker: '', text: '' }])} className="text-sm text-blue-600 hover:underline">+ Add turn</button>
               )}
             </div>
+            <AudioSection
+              extract={item} index={i} disabled={disabled}
+              generating={generating.has(i)} outdated={dirty.has(i)}
+              onGenerate={() => generateVoice(i)}
+            />
             <QuestionsEditor
               label="Questions" questions={item.questions || []}
               onChange={(v) => updateItem(i, { questions: v })} disabled={disabled}
@@ -664,6 +796,98 @@ function ListeningExtractSetEditor({ items, onChange, disabled }: {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function GenerateAllVoiceSection({ part, disabled, batchRunning, needsAudioIndices, readyCount, total, confirmOpen, onOpenConfirm, onCancelConfirm, onConfirmRun, batchResult }: {
+  part: string; disabled: boolean; batchRunning: boolean
+  needsAudioIndices: number[]; readyCount: number; total: number
+  confirmOpen: boolean; onOpenConfirm: () => void; onCancelConfirm: () => void; onConfirmRun: () => void
+  batchResult: BatchAudioResult | null
+}) {
+  const n = needsAudioIndices.length
+  return (
+    <div className="border rounded-lg p-4 space-y-3" data-testid="generate-all-voice-section">
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={onOpenConfirm} disabled={disabled || batchRunning || n === 0}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-700"
+          data-testid="generate-all-voice-button"
+        >
+          {batchRunning ? 'Generating All...' : 'Generate All Voice'}
+        </button>
+        <span className="text-sm text-gray-600" data-testid="generate-all-voice-summary">
+          Part {part}: {readyCount}/{total} ready
+        </span>
+        {n === 0 && <span className="text-sm text-gray-500" data-testid="generate-all-voice-all-ready">All audio is ready.</span>}
+      </div>
+
+      {batchResult && (
+        <div className="text-sm bg-gray-50 border rounded-lg p-3 space-y-1" data-testid="generate-all-voice-result">
+          <div className="font-semibold">Audio generation complete.</div>
+          <div>Generated: {batchResult.generated}</div>
+          <div>Failed: {batchResult.failed}</div>
+          <div>Skipped (already ready): {batchResult.skipped}</div>
+          {batchResult.failures.map((f) => (
+            <div key={f.index} className="text-red-600" data-testid={`generate-all-voice-failure-${f.index}`}>
+              Extract {f.index + 1} ({f.title}): {f.error}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {confirmOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" data-testid="generate-all-voice-dialog">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h2 className="text-lg font-semibold mb-1">Generate All Voice</h2>
+            <p className="text-sm text-gray-500 mb-3">Part {part}</p>
+            <p className="text-sm text-gray-800 mb-1" data-testid="generate-all-voice-count">
+              Generate audio for {n} extract{n === 1 ? '' : 's'}?
+            </p>
+            <p className="text-sm text-gray-500 mb-4">
+              This will make {n} TTS request{n === 1 ? '' : 's'}.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={onCancelConfirm} className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100" data-testid="generate-all-voice-cancel-button">Cancel</button>
+              <button onClick={onConfirmRun} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700" data-testid="generate-all-voice-confirm-button">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AudioSection({ extract, index, disabled, generating, outdated, onGenerate }: {
+  extract: ListeningExtract; index: number; disabled: boolean
+  generating: boolean; outdated: boolean; onGenerate: () => void
+}) {
+  const status = generating ? 'GENERATING' : !extract.audio_url ? 'NOT_GENERATED' : outdated ? 'OUTDATED' : 'READY'
+  const STATUS_TEXT: Record<string, string> = {
+    NOT_GENERATED: 'Not generated', GENERATING: 'Generating...', READY: 'Ready', OUTDATED: 'Audio outdated',
+  }
+  return (
+    <div className="space-y-2" data-testid={`listening-extract-${index}-audio`}>
+      <SectionLabel>Audio</SectionLabel>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm text-gray-600" data-testid={`listening-extract-${index}-audio-status`}>{STATUS_TEXT[status]}</span>
+        {typeof extract.audio_duration_seconds === 'number' && (status === 'READY' || status === 'OUTDATED') && (
+          <span className="text-xs text-gray-400" data-testid={`listening-extract-${index}-audio-duration`}>{Math.round(extract.audio_duration_seconds)}s</span>
+        )}
+        {!disabled && (
+          <button
+            onClick={onGenerate} disabled={generating}
+            className="text-sm text-blue-600 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+            data-testid={`listening-extract-${index}-generate-audio`}
+          >
+            {status === 'NOT_GENERATED' ? 'Generate Voice' : 'Regenerate Voice'}
+          </button>
+        )}
+      </div>
+      {(status === 'READY' || status === 'OUTDATED') && extract.audio_url && (
+        <audio controls src={extract.audio_url} className="w-full max-w-md" data-testid={`listening-extract-${index}-audio-player`} />
+      )}
     </div>
   )
 }

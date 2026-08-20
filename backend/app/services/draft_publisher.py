@@ -42,6 +42,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
 from app.core.supabase import get_supabase
+from app.services import listening_audio
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,31 @@ class InvalidPartError(Exception):
     """content['part'] isn't one of the values the target table's CHECK
     constraint allows -- raised here so publish fails loudly instead of
     silently coercing to a default part."""
+
+
+class AudioNotReadyError(Exception):
+    """A Listening Part A/B/C draft has one or more extracts whose audio is
+    missing (NOT_GENERATED) or stale (OUTDATED -- transcript edited after
+    audio was generated), per listening_audio.get_audio_status. Raised
+    before any production row is written, so Publish never ships an extract
+    a learner can't hear or whose audio doesn't match its transcript."""
+
+    def __init__(self, part: str, missing_indexes: List[int], outdated_indexes: List[int]):
+        self.part = part
+        self.missing_indexes = missing_indexes
+        self.outdated_indexes = outdated_indexes
+        if missing_indexes and outdated_indexes:
+            self.reason = "audio_missing_and_outdated"
+        elif outdated_indexes:
+            self.reason = "audio_outdated"
+        else:
+            self.reason = "audio_missing"
+        bits = []
+        if missing_indexes:
+            bits.append(f"missing audio for extract(s) {missing_indexes}")
+        if outdated_indexes:
+            bits.append(f"outdated audio for extract(s) {outdated_indexes}")
+        super().__init__(f"Listening Part {part} is not publish-ready: {'; '.join(bits)}.")
 
 
 def _now_iso() -> str:
@@ -281,6 +307,19 @@ _LISTENING_PART_PAYLOAD_BUILDERS = {
 }
 
 
+def _check_listening_audio_gate(part: str, extracts: List[Dict[str, Any]]) -> None:
+    """Every extract in a locked-contract Listening draft must have current
+    audio before publish -- called only from the extracts[] branches of
+    build_preview/publish, after the payload builder above has already
+    confirmed the extract count matches the part's locked contract. Legacy
+    flat listening (_listening_payload, no extracts[] key) never reaches
+    this function."""
+    missing = [i for i, ex in enumerate(extracts) if listening_audio.get_audio_status(ex) == "NOT_GENERATED"]
+    outdated = [i for i, ex in enumerate(extracts) if listening_audio.get_audio_status(ex) == "OUTDATED"]
+    if missing or outdated:
+        raise AudioNotReadyError(part, missing, outdated)
+
+
 def _reading_part_b_payloads(draft: Dict[str, Any]) -> List[Tuple[Dict[str, Any], List[Dict[str, Any]]]]:
     """Part B's 6 independent extracts, each its own reading_passages row
     (part='B', one 3-option MCQ). passage_seq (0-5, generation order) is
@@ -415,7 +454,9 @@ def build_preview(draft: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     if module == "listening" and draft["generated_content"].get("part") in _LISTENING_PART_PAYLOAD_BUILDERS:
-        payloads = _LISTENING_PART_PAYLOAD_BUILDERS[draft["generated_content"]["part"]](draft)
+        part = draft["generated_content"]["part"]
+        payloads = _LISTENING_PART_PAYLOAD_BUILDERS[part](draft)
+        _check_listening_audio_gate(part, draft["generated_content"]["extracts"])
         existing = _existing_multi_section_production_ids(supabase, draft["id"])
         records: List[Dict[str, Any]] = []
         warnings: List[str] = []
@@ -649,7 +690,9 @@ def publish(draft: Dict[str, Any], published_by: str) -> Dict[str, Any]:
         return {"table": "reading_passages", "id": row["id"], "title": row["title"], "questions_created": len(questions), "action": "created"}
 
     if module == "listening" and draft["generated_content"].get("part") in _LISTENING_PART_PAYLOAD_BUILDERS:
-        payloads = _LISTENING_PART_PAYLOAD_BUILDERS[draft["generated_content"]["part"]](draft)
+        part = draft["generated_content"]["part"]
+        payloads = _LISTENING_PART_PAYLOAD_BUILDERS[part](draft)
+        _check_listening_audio_gate(part, draft["generated_content"]["extracts"])
         return _publish_multi_section_listening(supabase, draft, now, payloads)
 
     section, questions = _listening_payload(draft)

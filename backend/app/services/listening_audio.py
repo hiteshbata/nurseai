@@ -9,12 +9,14 @@ The transcript is a list of turns [{"speaker": "...", "text": "..."}]. Each
 distinct speaker label maps to a distinct OpenAI voice so a consult sounds like
 two different people.
 """
+import hashlib
+import json
 import logging
 import os
 import shutil
 import subprocess
 import tempfile
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -193,6 +195,53 @@ def cut_segment(src_path: str, start: float, end: float) -> bytes:
             os.remove(out_path)
         except OSError:
             pass
+
+
+def _probe_duration(path: str) -> float:
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", path],
+        check=True, capture_output=True, timeout=30,
+    )
+    data = json.loads(result.stdout)
+    return round(float(data["format"]["duration"]), 2)
+
+
+async def probe_duration_seconds(audio_bytes: bytes) -> float:
+    """ffprobe the stitched mp3 for its length in seconds. Blocking (subprocess),
+    run via run_sync -- same pattern as _stitch/cut_segment above."""
+    tmp_path = tempfile.mktemp(suffix=".mp3")
+    try:
+        with open(tmp_path, "wb") as f:
+            f.write(audio_bytes)
+        return await run_sync(_probe_duration, tmp_path)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+
+def transcript_hash(turns: List[dict]) -> str:
+    """Deterministic hash over turn order + speaker labels + text. The one
+    canonical definition of "has this extract's script changed" -- reused by
+    audio generation (to stamp what was voiced), get_audio_status below (to
+    detect staleness), and publish validation."""
+    canonical = json.dumps(
+        [[str(t.get("speaker", "")), str(t.get("text", ""))] for t in (turns or [])],
+        ensure_ascii=True, separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def get_audio_status(extract: Dict[str, Any]) -> str:
+    """NOT_GENERATED / READY / OUTDATED for one extract. Never deletes audio on
+    a transcript edit -- OUTDATED just means "stale, regenerate when ready";
+    the old file stays live and playable until a fresh generate-audio call
+    replaces it."""
+    if not extract.get("audio_url") or not extract.get("audio_transcript_hash"):
+        return "NOT_GENERATED"
+    current = transcript_hash(extract.get("transcript") or [])
+    return "READY" if current == extract["audio_transcript_hash"] else "OUTDATED"
 
 
 async def generate_two_speaker_audio(

@@ -19,6 +19,7 @@ untouched, still admin-only.
 """
 import logging
 import re
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -29,9 +30,10 @@ from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.supabase import get_supabase
 from app.routers.admin import require_admin, require_analyst, require_owner, _write_audit_log
 from app.routers.auth import UserInfo
+from app.routers.listening import AUDIO_BUCKET, _upload_to_bucket
 from app.services import (
     blog_document_mapper, blog_publisher, content_studio, draft_generator,
-    draft_publisher, draft_store, markdown_to_portable_text, sanity_client,
+    draft_publisher, draft_store, listening_audio, markdown_to_portable_text, sanity_client,
 )
 
 logger = logging.getLogger(__name__)
@@ -360,6 +362,115 @@ async def upload_cover_image(
     return {"cover_image_ref": asset["ref"], "preview_url": asset["url"]}
 
 
+# ── LISTENING DRAFT AUDIO (Phase 7A) ─────────────────────────────────
+# Pre-publish audio for one extract of a locked-contract (Part A/B/C)
+# listening draft. Reuses the exact TTS engine and bucket production
+# sections use (app/services/listening_audio.py, listening-audio bucket) --
+# only the storage path and the write target (one extract inside
+# generated_content, via draft_store.update_content) differ from
+# listening.py's generate_section_audio.
+_draft_audio_rate_limiter = SlidingWindowRateLimiter(15, 600, name="content-studio:generate-audio")
+
+
+class GenerateDraftAudioRequest(BaseModel):
+    extract_index: int = Field(ge=0)
+    voices: Optional[Dict[str, str]] = None  # speaker label -> OpenAI voice; auto-assigned if omitted
+    model: Optional[str] = None  # None resolves to the "tts_openai" purpose (Admin > AI Models)
+
+
+@router.post("/drafts/{draft_id}/generate-audio")
+async def generate_draft_audio(
+    draft_id: int,
+    req: GenerateDraftAudioRequest,
+    current_user: UserInfo = Depends(require_admin),
+):
+    """Generate one extract's audio from its own transcript and write the
+    result back onto just that extract. Sibling extracts, and any audio they
+    already carry, are untouched -- generated_content is rebuilt with only
+    extracts[extract_index] replaced, then handed to
+    draft_store.update_content() so the normal revision/review-demote
+    workflow applies exactly as it would to a manual content edit."""
+    if _draft_audio_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail={"code": "rate_limited", "message": "Too many generations — please slow down."})
+
+    draft = draft_store.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail={"code": "draft_not_found", "message": "Draft not found"})
+    if draft["module"] != "listening":
+        raise HTTPException(status_code=400, detail={"code": "not_listening_draft", "message": "Audio generation is only for listening drafts"})
+
+    content = draft["generated_content"] or {}
+    extracts = content.get("extracts")
+    if not isinstance(extracts, list) or not extracts:
+        raise HTTPException(status_code=400, detail={"code": "invalid_extract_index", "message": "Draft has no extracts[] to generate audio for"})
+    if req.extract_index >= len(extracts):
+        raise HTTPException(status_code=400, detail={"code": "invalid_extract_index", "message": f"extract_index must be between 0 and {len(extracts) - 1}"})
+
+    extract = extracts[req.extract_index]
+    turns = extract.get("transcript")
+    if not isinstance(turns, list) or not turns:
+        raise HTTPException(status_code=400, detail={"code": "transcript_missing", "message": "This extract has no transcript to voice"})
+
+    try:
+        audio_bytes = await listening_audio.generate_two_speaker_audio(turns, req.voices, req.model)
+    except listening_audio.TtsError as e:
+        raise HTTPException(status_code=400, detail={"code": "audio_generation_failed", "message": str(e)})
+    except Exception as e:
+        logger.error("[content-studio audio] draft %s extract %s generation failed: %s", draft_id, req.extract_index, str(e)[:300])
+        raise HTTPException(status_code=502, detail={"code": "audio_generation_failed", "message": "Audio generation failed. Try again."})
+
+    duration = await listening_audio.probe_duration_seconds(audio_bytes)
+    audio_transcript_hash = listening_audio.transcript_hash(turns)
+    path = f"drafts/{draft_id}/extracts/{req.extract_index}/{uuid.uuid4().hex}.mp3"
+
+    try:
+        audio_url = await _upload_to_bucket(path, audio_bytes, "audio/mpeg")
+    except Exception as e:
+        logger.error("[content-studio audio] draft %s extract %s upload failed: %s", draft_id, req.extract_index, str(e)[:300])
+        raise HTTPException(status_code=502, detail={"code": "storage_upload_failed", "message": "Audio was generated but could not be stored. Try again."})
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+    new_extracts = list(extracts)
+    new_extracts[req.extract_index] = {
+        **extract,
+        "audio_url": audio_url,
+        "audio_generated_at": generated_at,
+        "audio_duration_seconds": duration,
+        "audio_transcript_hash": audio_transcript_hash,
+    }
+    new_content = {**content, "extracts": new_extracts}
+
+    def _cleanup_orphaned_object():
+        try:
+            get_supabase().storage.from_(AUDIO_BUCKET).remove([path])
+        except Exception:
+            logger.exception("[content-studio audio] cleanup of orphaned object %s also failed", path)
+
+    try:
+        updated_draft = draft_store.update_content(draft_id, generated_content=new_content, editor_id=current_user.id)
+    except Exception:
+        logger.exception("[content-studio audio] draft %s extract %s: audio stored but draft update failed", draft_id, req.extract_index)
+        _cleanup_orphaned_object()
+        raise HTTPException(status_code=502, detail={"code": "audio_generation_failed", "message": "Audio was generated but the draft could not be updated. Try again."})
+    if not updated_draft:
+        # Draft was deleted between the fetch above and this write.
+        _cleanup_orphaned_object()
+        raise HTTPException(status_code=404, detail={"code": "draft_not_found", "message": "Draft not found"})
+
+    _write_audit_log(
+        get_supabase(), current_user, "draft_audio_generated", "generated_content_draft",
+        target_id=draft_id, detail={"extract_index": req.extract_index, "duration_seconds": duration},
+    )
+
+    return {
+        "extract_index": req.extract_index,
+        "audio_url": audio_url,
+        "duration_seconds": duration,
+        "audio_generated_at": generated_at,
+        "audio_transcript_hash": audio_transcript_hash,
+    }
+
+
 @router.delete("/drafts/{draft_id}")
 def delete_draft(draft_id: int, current_user: UserInfo = Depends(require_admin)):
     if not draft_store.delete_draft(draft_id):
@@ -438,6 +549,16 @@ def archive_draft(draft_id: int, current_user: UserInfo = Depends(require_admin)
     return updated
 
 
+def _audio_not_ready_detail(e: "draft_publisher.AudioNotReadyError") -> Dict[str, Any]:
+    return {
+        "error": e.reason,
+        "part": e.part,
+        "missing_audio_indexes": e.missing_indexes,
+        "outdated_audio_indexes": e.outdated_indexes,
+        "message": str(e),
+    }
+
+
 @router.get("/drafts/{draft_id}/publish-preview")
 def get_publish_preview(draft_id: int, current_user: UserInfo = Depends(require_owner)):
     """Dry run for the Publish Preview dialog -- returns exactly which
@@ -451,6 +572,8 @@ def get_publish_preview(draft_id: int, current_user: UserInfo = Depends(require_
         return draft_publisher.build_preview(draft)
     except (draft_publisher.NotPublishableError, draft_publisher.InvalidPartError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except draft_publisher.AudioNotReadyError as e:
+        raise HTTPException(status_code=409, detail=_audio_not_ready_detail(e))
 
 
 def _publish_blog_draft(draft: Dict[str, Any], current_user: UserInfo) -> Dict[str, Any]:
@@ -575,6 +698,8 @@ def publish_draft(draft_id: int, current_user: UserInfo = Depends(require_owner)
 
     try:
         result = draft_publisher.publish(draft, current_user.id)
+    except draft_publisher.AudioNotReadyError as e:
+        raise HTTPException(status_code=409, detail=_audio_not_ready_detail(e))
     except (draft_publisher.NotPublishableError, draft_publisher.InvalidPartError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (draft_publisher.DuplicateTitleError, draft_publisher.AlreadyPublishedError) as e:
