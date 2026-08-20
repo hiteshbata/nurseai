@@ -1,7 +1,6 @@
-import type { MetadataRoute } from 'next'
-import { learnArticles } from './learn/articles'
-import { docsGuides } from './docs/guides'
-import { OET_COUNTRY_PAGES } from './oet/countries'
+import { learnArticles } from '../learn/articles'
+import { docsGuides } from '../docs/guides'
+import { OET_COUNTRY_PAGES } from '../oet/countries'
 import { SITE_URL } from '@/lib/site'
 import { sanityClient } from '@/lib/sanity'
 
@@ -12,7 +11,19 @@ const BUILD_DATE = new Date()
 // appear (and an unpublished one wouldn't disappear) until the next deploy.
 export const revalidate = 60
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+type SitemapEntry = { url: string; lastModified: Date }
+
+function toXml(entries: SitemapEntry[]): string {
+  const urls = entries
+    .map(
+      (entry) =>
+        `<url><loc>${entry.url}</loc><lastmod>${entry.lastModified.toISOString()}</lastmod></url>`
+    )
+    .join('')
+  return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>`
+}
+
+export async function GET() {
   const staticRoutes = ['', '/pricing', '/tools/oet-score-calculator', '/tools/oet-mock-test-free', '/tools/ai-study-plan-generator', '/about', '/learn', '/blog', '/privacy', '/terms', '/support', '/docs', '/oet/speaking'].map((path) => ({
     url: `${SITE_URL}${path}`,
     lastModified: BUILD_DATE,
@@ -41,5 +52,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     lastModified: new Date(post._updatedAt),
   }))
 
-  return [...staticRoutes, ...learnRoutes, ...docsRoutes, ...oetRoutes, ...blogRoutes]
+  const entries = [...staticRoutes, ...learnRoutes, ...docsRoutes, ...oetRoutes, ...blogRoutes]
+
+  return new Response(toXml(entries), {
+    headers: { 'Content-Type': 'application/xml' },
+  })
 }
