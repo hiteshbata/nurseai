@@ -22,7 +22,7 @@ from app.services.plan_gating import (
     is_subscription_active,
     get_plan_from_profile,
     get_effective_subscription_status,
-    get_realtime_model,
+    get_realtime_purpose,
     compute_renewed_expiry,
     parse_timestamp,
 )
@@ -105,17 +105,15 @@ def test_missing_plan_defaults_to_free():
     assert get_plan_from_profile({}, now=NOW) == "free"
 
 
-# ── get_realtime_model (free/basic -> mini, pro/elite -> flagship) ───
+# ── get_realtime_purpose (free/basic -> mini, pro/elite -> standard) ─
 
-def test_free_plan_gets_mini_realtime_model():
-    from app.core.config import settings
-    assert get_realtime_model("free") == settings.OPENAI_REALTIME_MODEL_MINI
+def test_free_plan_gets_mini_realtime_purpose():
+    assert get_realtime_purpose("free") == "realtime_voice_openai_mini"
 
 
-def test_paid_plan_gets_flagship_realtime_model():
-    from app.core.config import settings
-    assert get_realtime_model("elite") == settings.OPENAI_REALTIME_MODEL
-    assert get_realtime_model("pro") == settings.OPENAI_REALTIME_MODEL
+def test_paid_plan_gets_standard_realtime_purpose():
+    assert get_realtime_purpose("elite") == "realtime_voice_openai_standard"
+    assert get_realtime_purpose("pro") == "realtime_voice_openai_standard"
 
 
 # ── compute_renewed_expiry ────────────────────────────────────────────
