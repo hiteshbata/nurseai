@@ -39,6 +39,7 @@ from app.routers.mock import has_mock_section_access, get_pinned_test_version_id
 from app.services.mcq_grading import grade_exact_match, combine_graded_results, resolve_latest_wrong_answers
 from app.services.open_ended_grading import grade_open_ended_answers
 from app.services.listening_mistake_intelligence import get_mistake_profile
+from app.services.listening_coach import prepare_coach_context, insufficient_history_response, generate_coach_response
 from app.services.explanations import generate_mcq_explanation
 from app.services.skill_graph import record_skill_observations, get_weakness
 from app.services.listening_mistake_engine import record_listening_mistake_events
@@ -67,6 +68,7 @@ _upload_rate_limiter = SlidingWindowRateLimiter(20, 600, name="listening:upload"
 _tts_rate_limiter = SlidingWindowRateLimiter(10, 600, name="listening:tts")
 _extract_rate_limiter = SlidingWindowRateLimiter(30, 600, name="listening:extract")
 _explanation_rate_limiter = SlidingWindowRateLimiter(30, 600, name="listening:explanation")
+_coach_rate_limiter = SlidingWindowRateLimiter(10, 600, name="listening:coach")
 
 AUDIO_BUCKET = "listening-audio"
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -646,6 +648,47 @@ async def listening_weakness(
     into that sequence rather than by band."""
     rows = await get_weakness(user_db, current_user.id, "listening:", lambda s: LISTENING_PART_LABELS.get(s, s))
     return sorted(rows, key=lambda r: r["skill"])
+
+
+def _require_coach_plan(supabase, current_user: UserInfo) -> str:
+    """Stricter than _require_listening_plan on purpose -- the Coach has no
+    free-trial/mock-pinned bypass (E2.3 spec: Free is locked outright,
+    Basic/Pro/Elite allowed)."""
+    profile = supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute()
+    plan = get_plan_from_profile(profile.data[0] if profile.data else {})
+    if not has_listening_access(plan):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "Listening AI Coach requires a paid plan",
+                "upgrade_required": True,
+                "current_plan": plan,
+            },
+        )
+    return plan
+
+
+@router.get("/coach")
+async def listening_coach(
+    current_user: UserInfo = Depends(get_current_user),
+    user_db: Client = Depends(get_user_supabase),
+):
+    """E2.3 -- Listening AI Coach v1: explain the student's Listening
+    mistakes and recommend what to practice next. skill_graph stays the only
+    weakness source and listening_mistake_intelligence the only mistake-
+    pattern source (see listening_coach.py); this endpoint only gates access
+    and wires the two together into one AI call."""
+    supabase = get_supabase()
+    _require_coach_plan(supabase, current_user)
+
+    context = await prepare_coach_context(user_db, current_user.id)
+    if not context["sufficient_history"]:
+        return insufficient_history_response(context)
+
+    if _coach_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many requests — please slow down.")
+
+    return await generate_coach_response(context, current_user.id)
 
 
 # ── ADMIN: questions validation (shared by save + update) ────────────
