@@ -130,6 +130,12 @@ export default function DraftEditorPage() {
   // Skipped once right after every load()/reload so a fresh fetch never
   // fires a save-of-itself.
   useEffect(() => {
+    // Guard against React 18 Strict Mode double-invoking this effect in dev,
+    // which consumes skipNextAutosave.current on the first invocation and lets
+    // the second invocation schedule a save of the still-empty initial state
+    // before load() has hydrated draft/content. Nothing may be scheduled
+    // until draft is actually loaded.
+    if (!draft) return
     if (skipNextAutosave.current) {
       skipNextAutosave.current = false
       return
@@ -160,7 +166,7 @@ export default function DraftEditorPage() {
     }, 1000)
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content, blogMeta])
+  }, [content, blogMeta, draft])
 
   const saveName = (name: string) => {
     setDraftName(name)
