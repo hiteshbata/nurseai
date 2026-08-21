@@ -469,6 +469,51 @@ test('[MOCKED] editing the transcript marks audio Outdated but keeps the existin
   await context.close()
 })
 
+// ---- Phase 7K: Generate Voice / Generate All must not be status-gated ----
+// The editor's disabled state is role-based (canEdit), not status-based --
+// these pin that review and approved drafts both still expose working
+// Generate Voice / Generate All, the two statuses content-team iteration
+// (generate -> review/edit -> regenerate -> approve) actually happens in.
+
+for (const status of ['review', 'approved'] as const) {
+  test(`[MOCKED] ${status} draft: Generate Voice is enabled and works`, async ({ browser }) => {
+    skipIfNoCreds()
+    const { context, page } = await authedPage(browser)
+    const draftId = status === 'review' ? 2401 : 2402
+    await mockDraft(page, draftId, PART_B_CONTENT, undefined, { status })
+    await mockGenerateAudio(page, draftId)
+
+    await page.goto(`/admin/content-studio/drafts/${draftId}`)
+    await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+    const panel0 = page.getByTestId('listening-extract-0')
+    await expect(panel0.getByTestId('listening-extract-0-generate-audio')).toBeEnabled()
+    await panel0.getByTestId('listening-extract-0-generate-audio').click()
+    await expect(panel0.getByTestId('listening-extract-0-audio-status')).toHaveText('Ready')
+
+    await context.close()
+  })
+
+  test(`[MOCKED] ${status} draft: Generate All Voice is enabled and works`, async ({ browser }) => {
+    skipIfNoCreds()
+    const { context, page } = await authedPage(browser)
+    const draftId = status === 'review' ? 2403 : 2404
+    await mockDraft(page, draftId, PART_B_CONTENT, undefined, { status })
+    await mockGenerateAudio(page, draftId)
+
+    await page.goto(`/admin/content-studio/drafts/${draftId}`)
+    await expect(page.getByTestId('draft-name-input')).toBeVisible({ timeout: 15_000 })
+
+    await expect(page.getByTestId('generate-all-voice-button')).toBeEnabled()
+    await page.getByTestId('generate-all-voice-button').click()
+    await page.getByTestId('generate-all-voice-confirm-button').click()
+    await expect(page.getByTestId('generate-all-voice-result')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('generate-all-voice-result')).toContainText('Generated: 6')
+
+    await context.close()
+  })
+}
+
 // ---- Phase 7C: draft-level "Generate All Voice" ----
 // Same mocked generate-audio fixture as Phase 7B -- Gemini/real TTS never invoked.
 
