@@ -264,6 +264,47 @@ class GenerateDraftAudioTests(unittest.IsolatedAsyncioTestCase):
         _, kwargs = real_update_content.call_args
         self.assertIn("generated_content", kwargs)
 
+    # Phase 7K: Generate Voice has no status gate -- must work unchanged on
+    # review and approved drafts (the two statuses content-team iteration
+    # happens in), not just the 'draft' status the other tests above default to.
+    async def test_generation_works_on_review_status_draft(self):
+        draft = _draft(status="review", extracts=[_extract()])
+        result, tts, upload, update_content, audit = await self._call(draft=draft)
+        self.assertEqual(result["audio_url"], "https://cdn/x.mp3")
+        tts.assert_awaited_once()
+
+    async def test_generation_works_on_approved_status_draft(self):
+        draft = _draft(status="approved", extracts=[_extract()])
+        result, tts, upload, update_content, audit = await self._call(draft=draft)
+        self.assertEqual(result["audio_url"], "https://cdn/x.mp3")
+        tts.assert_awaited_once()
+
+    # Phase 7K: same demote-to-review behavior as approved (test above), for
+    # a published draft -- and audio generation only ever calls
+    # draft_store.update_content (the draft table), never draft_publisher /
+    # mark_published, so a published draft's live learner-facing row is never
+    # touched by this endpoint.
+    async def test_published_draft_demoted_to_review_via_audio_generation(self):
+        draft = _draft(status="published", published_by="owner-1", published_at="2026-08-01T00:00:00Z",
+                        extracts=[_extract()])
+        real_update_content = MagicMock(side_effect=lambda draft_id, generated_content=None, **_k: {
+            **draft, "generated_content": generated_content, "status": "review",
+            "approved_by": None, "approved_at": None,
+        })
+        with patch.object(acs, "_upload_to_bucket", AsyncMock(return_value="https://cdn/x.mp3")), \
+             patch.object(acs.draft_store, "get_draft", MagicMock(return_value=draft)), \
+             patch.object(acs.draft_store, "update_content", real_update_content), \
+             patch.object(acs._draft_audio_rate_limiter, "is_rate_limited", return_value=False), \
+             patch.object(acs.listening_audio, "generate_two_speaker_audio", AsyncMock(return_value=b"mp3")), \
+             patch.object(acs.listening_audio, "probe_duration_seconds", AsyncMock(return_value=1.5)), \
+             patch.object(acs, "_write_audit_log"), \
+             patch.object(acs, "draft_publisher") as publisher, \
+             patch.object(acs, "get_supabase", return_value=MagicMock()):
+            result = await acs.generate_draft_audio(draft_id=1, req=acs.GenerateDraftAudioRequest(extract_index=0), current_user=_user())
+        real_update_content.assert_called_once()
+        self.assertEqual(result["audio_url"], "https://cdn/x.mp3")
+        publisher.publish.assert_not_called()
+
     # 16. no duplicate audio metadata fields
     async def test_updated_extract_has_single_set_of_audio_fields(self):
         captured = {}

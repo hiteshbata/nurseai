@@ -1,18 +1,21 @@
-"""Two-speaker TTS for Listening extracts.
+"""TTS for Listening extracts, dialogue or monologue.
 
-OpenAI TTS voices each speaker turn (OpenAI has no native multi-speaker -- one
-voice per call), then ffmpeg stitches the turns into one mp3 with a short pause
-between them. Admin-only content generation, low volume, so per-turn API calls +
-an ffmpeg re-encode are fine.
+OpenAI TTS voices each turn (OpenAI has no native multi-speaker -- one voice
+per call), then ffmpeg stitches the turns into one mp3 with a pause between
+them. Admin-only content generation, low volume, so per-turn API calls + an
+ffmpeg re-encode are fine.
 
 The transcript is a list of turns [{"speaker": "...", "text": "..."}]. Each
-distinct speaker label maps to a distinct OpenAI voice so a consult sounds like
-two different people.
+distinct speaker label maps to a distinct, stable OpenAI voice. A transcript
+with exactly one distinct speaker is a monologue (Part B/C lecture, single
+narrator) and takes the single-call path instead; this is detected from the
+transcript itself, never from the OET part number.
 """
 import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -27,13 +30,71 @@ from app.services import ai_registry
 logger = logging.getLogger(__name__)
 
 OPENAI_TTS_URL = "https://api.openai.com/v1/audio/speech"
-# Voices supported by BOTH tts-1 and gpt-4o-mini-tts. Ordered so the first two
-# distinct speakers get clearly different-sounding voices by default.
-OPENAI_VOICES = ["onyx", "nova", "echo", "shimmer", "alloy", "fable"]
+# gpt-4o-mini-tts voice pool. marin/cedar lead the pool -- best-sounding pair
+# for a two-speaker consult -- with the rest available as explicit overrides.
+OPENAI_VOICES = [
+    "marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "fable",
+    "nova", "onyx", "sage", "shimmer", "verse",
+]
 MAX_TURN_CHARS = 4000   # OpenAI TTS hard limit is 4096 chars/request; stay under
 MAX_TURNS = 120
-GAP_SECONDS = 0.6       # natural pause between speaker turns
+GAP_MIN_SECONDS = 0.25   # dialogue turn-gap range -- deterministic per turn, not
+GAP_MAX_SECONDS = 0.75   # random, so regenerating the same transcript is a no-op diff
+MONO_CHUNK_GAP_SECONDS = 0.15  # gap between sentence-chunk splits within one monologue
 TTS_SAMPLE_RATE = 24000  # OpenAI TTS mp3 output rate; normalize the stitch to it
+
+
+def instructions_for_speaker(speaker: str) -> str:
+    """Role-aware delivery instructions for gpt-4o-mini-tts, keyed off the
+    speaker label already used throughout Listening content (e.g. "professional"
+    / "patient" for a consult; anything else -- lecturer, narrator, colleague --
+    falls back to a neutral informative delivery for monologue/interview parts)."""
+    s = speaker.strip().lower()
+    if "patient" in s:
+        return ("Speak as a patient describing their own situation: natural, "
+                "conversational pace, mild everyday hesitation, no performance polish.")
+    if any(k in s for k in ("professional", "nurse", "doctor", "clinician", "health")):
+        return ("Speak as a health professional: calm, clear, measured pace, "
+                "reassuring and unhurried.")
+    return ("Speak clearly at a moderate, even pace suited to note-taking, "
+            "as in a lecture or briefing.")
+
+
+def _deterministic_gap(text: str) -> float:
+    """A gap duration in [GAP_MIN_SECONDS, GAP_MAX_SECONDS] derived from the turn's
+    own text, so pacing varies turn-to-turn but regenerating the same transcript
+    reproduces byte-identical audio."""
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    frac = (int(digest[:8], 16) % 1000) / 999.0
+    return round(GAP_MIN_SECONDS + frac * (GAP_MAX_SECONDS - GAP_MIN_SECONDS), 3)
+
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _chunk_by_sentence(text: str, max_chars: int) -> List[str]:
+    """Split text on sentence boundaries into chunks each <= max_chars, so a
+    monologue longer than one TTS call still reads as continuous prose. A single
+    sentence longer than max_chars is kept whole (falls back to a hard cut)."""
+    sentences = [s for s in _SENTENCE_SPLIT_RE.split(text.strip()) if s]
+    chunks: List[str] = []
+    current = ""
+    for sentence in sentences:
+        candidate = f"{current} {sentence}".strip() if current else sentence
+        if len(candidate) <= max_chars:
+            current = candidate
+            continue
+        if current:
+            chunks.append(current)
+        if len(sentence) <= max_chars:
+            current = sentence
+        else:
+            for i in range(0, len(sentence), max_chars):
+                chunks.append(sentence[i:i + max_chars])
+            current = ""
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 class TtsError(Exception):
@@ -65,11 +126,16 @@ def assign_voices(speakers: List[str], provided: Optional[Dict[str, str]]) -> Di
     return mapping
 
 
-async def _synthesize_turn(client: httpx.AsyncClient, text: str, voice: str, model: str) -> bytes:
+async def _synthesize_turn(
+    client: httpx.AsyncClient, text: str, voice: str, model: str, instructions: str,
+) -> bytes:
     resp = await client.post(
         OPENAI_TTS_URL,
         headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
-        json={"model": model, "input": text, "voice": voice, "response_format": "mp3"},
+        json={
+            "model": model, "input": text, "voice": voice, "response_format": "mp3",
+            "instructions": instructions,
+        },
     )
     if resp.status_code != 200:
         # resp.text may include OpenAI's own error JSON; log a slice, never the key.
@@ -82,9 +148,10 @@ def _run_ffmpeg(cmd: List[str], timeout: int) -> None:
     subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
 
 
-def _stitch(segments: List[bytes], gap_seconds: float) -> bytes:
-    """Concatenate per-turn mp3 bytes into one mp3, inserting `gap_seconds` of
-    silence between turns. Uses the ffmpeg concat FILTER (decodes + re-encodes),
+def _stitch(segments: List[bytes], gaps: List[float]) -> bytes:
+    """Concatenate per-turn mp3 bytes into one mp3, inserting each gaps[i] seconds
+    of silence between segment i and i+1 (len(gaps) == len(segments) - 1, so gaps
+    can vary turn-to-turn). Uses the ffmpeg concat FILTER (decodes + re-encodes),
     which tolerates any per-segment codec/param differences -- unlike the concat
     demuxer, which needs identical params. Blocking; call via run_sync."""
     if not segments:
@@ -101,20 +168,25 @@ def _stitch(segments: List[bytes], gap_seconds: float) -> bytes:
                 f.write(data)
             seg_paths.append(p)
 
-        sil_path = os.path.join(tmpdir, "sil.mp3")
-        _run_ffmpeg(
-            ["ffmpeg", "-y", "-f", "lavfi", "-i",
-             f"anullsrc=r={TTS_SAMPLE_RATE}:cl=mono", "-t", str(gap_seconds),
-             "-c:a", "libmp3lame", sil_path],
-            timeout=30,
-        )
+        # One silence file per distinct gap duration used (usually all distinct,
+        # since gaps are deterministic-per-text, but cache in case of repeats).
+        sil_paths: Dict[float, str] = {}
+        for gap in set(gaps):
+            sil_path = os.path.join(tmpdir, f"sil_{gap}.mp3")
+            _run_ffmpeg(
+                ["ffmpeg", "-y", "-f", "lavfi", "-i",
+                 f"anullsrc=r={TTS_SAMPLE_RATE}:cl=mono", "-t", str(gap),
+                 "-c:a", "libmp3lame", sil_path],
+                timeout=30,
+            )
+            sil_paths[gap] = sil_path
 
-        # interleave: seg0, sil, seg1, sil, ..., segN
+        # interleave: seg0, sil(gaps[0]), seg1, sil(gaps[1]), ..., segN
         inputs: List[str] = []
         for i, p in enumerate(seg_paths):
             inputs.append(p)
             if i != len(seg_paths) - 1:
-                inputs.append(sil_path)
+                inputs.append(sil_paths[gaps[i]])
 
         cmd = ["ffmpeg", "-y"]
         for p in inputs:
@@ -244,12 +316,48 @@ def get_audio_status(extract: Dict[str, Any]) -> str:
     return "READY" if current == extract["audio_transcript_hash"] else "OUTDATED"
 
 
+async def _generate_monologue_audio(
+    client: httpx.AsyncClient, turns: List[dict], voice: str, model: str,
+) -> bytes:
+    """One speaker. A single TTS call when the joined transcript fits inside one
+    request (bypasses ffmpeg entirely); otherwise sentence-boundary chunks synthesized
+    with the same voice/instructions and stitched with a small fixed gap."""
+    speaker = turns[0]["speaker"]
+    instructions = instructions_for_speaker(speaker)
+    full_text = " ".join(t["text"].strip() for t in turns)
+
+    if len(full_text) <= MAX_TURN_CHARS:
+        return await _synthesize_turn(client, full_text, voice, model, instructions)
+
+    chunks = _chunk_by_sentence(full_text, MAX_TURN_CHARS)
+    segments = [await _synthesize_turn(client, c, voice, model, instructions) for c in chunks]
+    gaps = [MONO_CHUNK_GAP_SECONDS] * (len(segments) - 1)
+    return await run_sync(_stitch, segments, gaps)
+
+
+async def _generate_dialogue_audio(
+    client: httpx.AsyncClient, turns: List[dict], voice_map: Dict[str, str], model: str,
+) -> bytes:
+    """2+ speakers. One TTS call per turn (stable voice + role-aware instructions
+    per speaker), stitched with a deterministic variable gap between turns."""
+    segments = [
+        await _synthesize_turn(
+            client, t["text"], voice_map[t["speaker"]], model, instructions_for_speaker(t["speaker"]),
+        )
+        for t in turns
+    ]
+    gaps = [_deterministic_gap(t["text"]) for t in turns[:-1]]
+    return await run_sync(_stitch, segments, gaps)
+
+
 async def generate_two_speaker_audio(
     turns: List[dict],
     voices: Optional[Dict[str, str]] = None,
     model: Optional[str] = None,
 ) -> bytes:
-    """turns: [{"speaker": str, "text": str}]. Returns one stitched mp3 (bytes).
+    """turns: [{"speaker": str, "text": str}]. Returns one mp3 (bytes) -- stitched
+    for dialogue, single-pass for a monologue (transcripts with exactly one distinct
+    speaker), detected from the transcript itself rather than any OET part number.
     Raises TtsError for bad input (400-worthy), RuntimeError for a provider/ffmpeg
     failure (502-worthy). model=None resolves to the "tts_openai" purpose
     (Admin > AI Models) -- pass an explicit model to override."""
@@ -267,11 +375,10 @@ async def generate_two_speaker_audio(
         if len(t["text"]) > MAX_TURN_CHARS:
             raise TtsError(f"A line is too long (max {MAX_TURN_CHARS} characters) — split it into shorter turns.")
 
-    voice_map = assign_voices([t["speaker"] for t in turns], voices)
+    speakers = [t["speaker"] for t in turns]
+    voice_map = assign_voices(speakers, voices)
 
-    segments: List[bytes] = []
     async with httpx.AsyncClient(timeout=120.0) as client:
-        for t in turns:
-            segments.append(await _synthesize_turn(client, t["text"], voice_map[t["speaker"]], model))
-
-    return await run_sync(_stitch, segments, GAP_SECONDS)
+        if len(set(speakers)) == 1:
+            return await _generate_monologue_audio(client, turns, voice_map[speakers[0]], model)
+        return await _generate_dialogue_audio(client, turns, voice_map, model)
