@@ -38,6 +38,7 @@ from app.routers.admin import require_admin, require_owner
 from app.routers.mock import has_mock_section_access, get_pinned_test_version_id
 from app.services.mcq_grading import grade_exact_match, combine_graded_results, resolve_latest_wrong_answers
 from app.services.open_ended_grading import grade_open_ended_answers
+from app.services.listening_mistake_intelligence import get_mistake_profile
 from app.services.explanations import generate_mcq_explanation
 from app.services.skill_graph import record_skill_observations, get_weakness
 from app.services.listening_mistake_engine import record_listening_mistake_events
@@ -606,6 +607,15 @@ async def list_mistakes(
         )
         sections_by_id = {row["id"]: row["title"] for row in s.data}
 
+    persistent_qids: set = set()
+    repeated_qids: set = set()
+    try:
+        profile = await get_mistake_profile(user_db, current_user.id)
+        persistent_qids = {m["question_id"] for m in profile["persistent_mistakes"]}
+        repeated_qids = {m["question_id"] for m in profile["repeated_mistakes"]}
+    except Exception as e:
+        logger.warning("[LISTENING_MISTAKE_PROFILE_FAILED] user_id=%s error=%s", current_user.id, str(e)[:300])
+
     return [{
         "questionId": q["id"],
         "content": q["content"],
@@ -614,6 +624,11 @@ async def list_mistakes(
         "your_answer": wrong_by_qid[q["id"]].get("selected"),
         "section_title": sections_by_id.get(q.get("section_id")),
         "explanation": q.get("explanation"),
+        "pattern": (
+            "persistent" if q["id"] in persistent_qids
+            else "repeated" if q["id"] in repeated_qids
+            else None
+        ),
     } for q in qdata.data]
 
 
