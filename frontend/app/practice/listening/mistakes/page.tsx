@@ -9,6 +9,7 @@ import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { UpgradeRequired } from '@/components/UpgradeRequired'
+import { ListeningCoachCard } from '@/components/listening/ListeningCoachCard'
 
 interface Mistake {
   questionId: number
@@ -74,6 +75,8 @@ export default function ListeningMistakesPage() {
         </Link>
         <h1 className="text-3xl font-bold text-[#0F2356]">Wrong-Answer Notebook</h1>
         <p className="text-gray-500 mt-1">Every question you've missed, most recent attempt only — fixed ones drop off automatically.</p>
+
+        <ListeningCoachCard />
 
         {upgradeRequired ? (
           <UpgradeRequired
