@@ -29,7 +29,10 @@ from app.services.skill_graph import get_weakness
 logger = logging.getLogger(__name__)
 
 AI_PURPOSE = "listening_coach"
-AI_MAX_TOKENS = 700
+# gemini-flash-latest is a reasoning model: thinking tokens count against the
+# completion budget, so 700 starved the visible JSON and it arrived truncated
+# (finish_reason=MAX_TOKENS), always falling back to deterministic_fallback.
+AI_MAX_TOKENS = 1200
 AI_TEMPERATURE = 0.0
 AI_CALL_TIMEOUT_SECONDS = 15
 
