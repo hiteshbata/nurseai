@@ -360,6 +360,79 @@ def detect_jargon(nurse_message: str) -> str | None:
 
 # ── PATIENT ROLE-PLAY ────────────────────────────────────────────────
 
+def build_interlocutor_roleplay_instructions(interlocutor_card: Dict[str, Any], setting: str = "") -> str:
+    """Canonical patient-persona block shared by both roleplay runtimes:
+    get_patient_response() below (legacy text chat) and
+    _build_realtime_system_prompt() (app/routers/speaking_realtime.py, live
+    voice). Phase S2: both paths must reflect the SAME interlocutor_card
+    contract -- patient profile, persona, emotional triggers, questions,
+    withheld info, conditional_responses, and progression -- so extracted
+    here once rather than kept as two independently-drifting prompt blocks.
+    Each caller wraps this with its own opening line and its own
+    mode-specific strict/voice rules (text length vs audio delivery differ
+    enough that those don't belong in the shared part).
+
+    conditional_responses/progression are optional -- absent entirely for
+    legacy cards generated before Phase S2, so their sections are only
+    rendered when the card actually has them.
+    """
+    card = interlocutor_card or {}
+    emotional_triggers = card.get('emotional_triggers', [])
+    questions_to_ask = card.get('questions_to_ask', card.get('concerns', []))
+    info_to_withhold = card.get('information_to_withhold', [])
+    conditional_responses = card.get('conditional_responses') or []
+    progression = card.get('progression') or []
+    instructions = card.get('instructions_for_ai', card.get('persona', ''))
+
+    blocks = [f"""PATIENT PROFILE:
+- Name: {card.get('patient_name', 'Patient')}
+- Age: {card.get('age', 'adult')} years old
+- Condition: {card.get('condition', 'Not specified')}
+- Mood: {card.get('mood', 'Cooperative')}
+- Background: {card.get('background', '')}"""]
+
+    if setting:
+        blocks.append(f"SCENARIO SETTING:\n{setting}")
+
+    blocks.append(f"PERSONA & BEHAVIOUR:\n{instructions}")
+
+    blocks.append(
+        "EMOTIONAL TRIGGERS (show these emotions when these topics come up):\n"
+        + (chr(10).join(f'- {t}' for t in emotional_triggers) if emotional_triggers else '- Show general anxiety about your condition')
+    )
+
+    blocks.append(
+        "QUESTIONS YOU MUST ASK (spread these across the conversation naturally):\n"
+        + (chr(10).join(f'- {q}' for q in questions_to_ask) if questions_to_ask else '- Ask about your treatment plan')
+    )
+
+    blocks.append(
+        "INFORMATION TO WITHHOLD (only reveal if the nurse asks directly):\n"
+        + (chr(10).join(f'- {i}' for i in info_to_withhold) if info_to_withhold else '- Do not volunteer extra information')
+    )
+
+    if conditional_responses:
+        rules = chr(10).join(
+            f"- If: {r.get('trigger', '')} -> Then: {r.get('response_guidance', '')}"
+            for r in conditional_responses if isinstance(r, dict)
+        )
+        blocks.append(
+            "CONDITIONAL RESPONSES (behaviour rules -- when a trigger genuinely occurs in the conversation, "
+            "let it shape your reply naturally; do not wait for exact wording, do not treat this as a checklist "
+            "to work through, and never read the trigger/guidance text itself out loud to the nurse):\n" + rules
+        )
+
+    if progression:
+        beats = chr(10).join(f"{i + 1}. {b}" for i, b in enumerate(progression))
+        blocks.append(
+            "CONVERSATION PROGRESSION (a loose guide to how this conversation develops, beginning to resolution -- "
+            "move between beats naturally as the conversation actually goes, do not force every beat, do not "
+            "recite them in order, and do not end the conversation after just one beat):\n" + beats
+        )
+
+    return "\n\n".join(blocks)
+
+
 async def get_patient_response(
     interlocutor_card: Dict[str, Any],
     conversation_history: List[Dict[str, str]],
@@ -367,6 +440,7 @@ async def get_patient_response(
     supabase=None,
     user_id: str = "",
     session_id: Optional[int] = None,
+    setting: str = "",
 ) -> tuple[str, bool]:
     """
     Get AI patient response based on interlocutor card.
@@ -378,31 +452,10 @@ async def get_patient_response(
     student a fake "service unavailable" line as if the patient said it.
     """
     card = interlocutor_card
-    emotional_triggers = card.get('emotional_triggers', [])
-    questions_to_ask = card.get('questions_to_ask', card.get('concerns', []))
-    info_to_withhold = card.get('information_to_withhold', [])
-    instructions = card.get('instructions_for_ai', card.get('persona', ''))
 
     system_prompt = f"""You are playing a patient in an OET nursing roleplay exam. Follow this card EXACTLY.
 
-PATIENT PROFILE:
-- Name: {card.get('patient_name', 'Patient')}
-- Age: {card.get('age', 'adult')} years old
-- Condition: {card.get('condition', 'Not specified')}
-- Mood: {card.get('mood', 'Cooperative')}
-- Background: {card.get('background', '')}
-
-PERSONA & BEHAVIOUR:
-{instructions}
-
-EMOTIONAL TRIGGERS (show these emotions when these topics come up):
-{chr(10).join(f'- {t}' for t in emotional_triggers) if emotional_triggers else '- Show general anxiety about your condition'}
-
-QUESTIONS YOU MUST ASK (spread these across the conversation naturally):
-{chr(10).join(f'- {q}' for q in questions_to_ask) if questions_to_ask else '- Ask about your treatment plan'}
-
-INFORMATION TO WITHHOLD (only reveal if nurse asks directly):
-{chr(10).join(f'- {i}' for i in info_to_withhold) if info_to_withhold else '- Do not volunteer extra information'}
+{build_interlocutor_roleplay_instructions(card, setting)}
 
 STRICT RULES:
 1. Stay fully in character at all times

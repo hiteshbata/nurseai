@@ -72,7 +72,7 @@ from app.services.realtime.pricing import (
     price_openai_usage,
 )
 from app.services.cost_tracking import increment_session_cost, log_ai_usage
-from app.services.ai_scoring import MEDICAL_JARGON
+from app.services.ai_scoring import MEDICAL_JARGON, build_interlocutor_roleplay_instructions
 from app.services.plan_gating import get_plan_from_profile, get_realtime_purpose
 from app.services import ai_registry
 from app.core.feature_flags import close_if_disabled
@@ -103,6 +103,31 @@ VOICE_MAPPERS = {
     "openai": _map_gender_to_openai_voice,
     "gemini": map_gender_to_gemini_voice,
 }
+
+
+def _resolve_realtime_gender(scenario: dict) -> str | None:
+    """Phase S3 voice-selection priority: scenario.voice_config first, then
+    patient_gender, then the provider's own generic default (VOICE_MAPPERS
+    returns 'alloy'/'Aoede' for gender=None).
+
+    voice_config's voice_name/language_code (tts_service.get_default_voice_config
+    -- Google Cloud TTS voice IDs like 'en-GB-Wavenet-D') has no realtime
+    equivalent: OpenAI/Gemini realtime voices are a fixed provider enum
+    ('ash'/'shimmer'/'alloy', 'Puck'/'Aoede'/...), not Google TTS names, so
+    that value can never be sent here without breaking the provider
+    connection. The only voice_config field realtime CAN honor is an
+    optional 'gender' key, which Content Studio doesn't currently generate
+    (gender lives on interlocutor_card.gender / scenario.patient_gender,
+    already the same source voice_config's own gender-based fallback used at
+    publish time -- see draft_publisher._speaking_voice_fields), so this
+    step is a no-op today and patient_gender carries the real signal. Kept
+    as a real priority check (not deleted) so a future per-scenario realtime
+    voice override just works by adding voice_config.gender, without
+    touching this function again."""
+    voice_config = scenario.get("voice_config")
+    if isinstance(voice_config, dict) and voice_config.get("gender") in ("male", "female"):
+        return voice_config["gender"]
+    return scenario.get("patient_gender")
 
 
 _VOICE_PROVIDER_CACHE_TTL_SECONDS = 60
@@ -140,8 +165,15 @@ async def _provider_credentials(provider: str, plan: str) -> tuple[str, str]:
     raise ValueError(f"Unknown VOICE_PROVIDER: {provider!r}")
 
 
-def _build_realtime_system_prompt(interlocutor_card: dict) -> str:
+def _build_realtime_system_prompt(interlocutor_card: dict, setting: str = "") -> str:
     """Patient persona for the realtime voice path.
+
+    The shared block (patient profile, persona, emotional triggers,
+    questions, withheld info, conditional_responses, progression) comes from
+    ai_scoring.build_interlocutor_roleplay_instructions() -- the SAME
+    function get_patient_response() (services/ai_scoring.py, the legacy text
+    path) uses, so both runtimes read the same interlocutor_card contract
+    (Phase S2). Only the rules below this point are realtime-specific.
 
     The JARGON RULE below is the realtime equivalent of the legacy pipeline's
     detect_jargon() short-circuit (services/ai_scoring.py), and shares its term
@@ -165,31 +197,10 @@ def _build_realtime_system_prompt(interlocutor_card: dict) -> str:
     it's already been heard. Persona instruction is the only lever here.
     """
     card = interlocutor_card or {}
-    emotional_triggers = card.get("emotional_triggers", [])
-    questions_to_ask = card.get("questions_to_ask", card.get("concerns", []))
-    info_to_withhold = card.get("information_to_withhold", [])
-    instructions = card.get("instructions_for_ai", card.get("persona", ""))
 
     return f"""You are playing a patient in an OET nursing roleplay exam, speaking live with a nursing student over voice. Follow this card EXACTLY.
 
-PATIENT PROFILE:
-- Name: {card.get('patient_name', 'Patient')}
-- Age: {card.get('age', 'adult')} years old
-- Condition: {card.get('condition', 'Not specified')}
-- Mood: {card.get('mood', 'Cooperative')}
-- Background: {card.get('background', '')}
-
-PERSONA & BEHAVIOUR:
-{instructions}
-
-EMOTIONAL TRIGGERS (react to these topics with genuine emotion):
-{chr(10).join(f'- {t}' for t in emotional_triggers) if emotional_triggers else '- Show general anxiety about your condition'}
-
-QUESTIONS YOU MUST ASK (spread these across the conversation naturally):
-{chr(10).join(f'- {q}' for q in questions_to_ask) if questions_to_ask else '- Ask about your treatment plan'}
-
-INFORMATION TO WITHHOLD (only reveal if the nurse asks directly):
-{chr(10).join(f'- {i}' for i in info_to_withhold) if info_to_withhold else '- Do not volunteer extra information'}
+{build_interlocutor_roleplay_instructions(card, setting)}
 
 JARGON RULE (CRITICAL):
 - You are not a medical person and do not know medical words. If the nurse uses a medical term and does NOT immediately explain it in plain words, stop and ask what it means before responding to anything else — that is the single most useful thing you do for this nurse.
@@ -494,8 +505,8 @@ async def realtime_stream(websocket: WebSocket):
 
         scenario = scenario_data.data[0]
         interlocutor_card = scenario.get("interlocutor_card", {})
-        system_prompt = _build_realtime_system_prompt(interlocutor_card)
-        voice = VOICE_MAPPERS[provider](scenario.get("patient_gender"))
+        system_prompt = _build_realtime_system_prompt(interlocutor_card, scenario.get("setting", ""))
+        voice = VOICE_MAPPERS[provider](_resolve_realtime_gender(scenario))
 
     # Sent BEFORE the provider connection is attempted -- and carries the
     # audio config the frontend must capture/play back at -- so a slow or

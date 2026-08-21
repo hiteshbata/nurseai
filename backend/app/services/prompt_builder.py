@@ -42,23 +42,86 @@ def _shared_context(difficulty: str, specialty: str, topic: str, objectives: Opt
 
 
 def build_speaking_prompt(difficulty: str, specialty: str, topic: str, objectives: Optional[str] = None, instructions: Optional[str] = None) -> Tuple[str, str]:
+    # Phase S1 schema-parity: interlocutor_card now carries the same
+    # structured patient fields the runtime already reads (ai_scoring.py
+    # get_patient_response -- patient_name/age/condition/mood/background),
+    # not just a free-text persona. `persona` is kept as instructions_for_ai
+    # so older code paths reading it still work unchanged.
     schema = """{
   "title": "short descriptive title for this scenario",
-  "setting": "the ward/clinic/location and context paragraph",
+  "setting": "the ward/clinic/location and context paragraph, written from the candidate nurse's perspective",
   "difficulty": "beginner|intermediate|advanced",
   "specialty": "the medical specialty",
-  "nurse_card": {"role": "You are the nurse in charge of this patient", "tasks": ["task 1", "task 2", "task 3", "task 4", "task 5"]},
-  "interlocutor_card": {"persona": "how the patient should behave", "emotional_triggers": ["trigger 1"], "questions_to_ask": ["question 1"], "information_to_withhold": ["info 1"]}
+  "nurse_card": {
+    "role": "You are the nurse in charge of this patient",
+    "tasks": ["task 1", "task 2", "task 3", "task 4", "task 5"]
+  },
+  "interlocutor_card": {
+    "patient_name": "a full patient name",
+    "gender": "male|female|other|unspecified, matching the patient_name",
+    "age": 45,
+    "condition": "the patient's medical condition/diagnosis",
+    "mood": "the patient's overall mood/attitude, e.g. anxious, frustrated, withdrawn",
+    "background": "relevant personal/medical background for this scenario",
+    "persona": "how the patient should behave (kept for backward compatibility)",
+    "emotional_triggers": ["trigger 1"],
+    "questions_to_ask": ["question 1"],
+    "information_to_withhold": ["info 1"],
+    "conditional_responses": [
+      {"trigger": "a description of something specific the nurse says/asks/does", "response_guidance": "how the patient should behave/respond when that happens"}
+    ],
+    "progression": ["opening beat", "middle beat", "..."],
+    "voice_config": {"voice_name": "en-GB-Wavenet-A", "language_code": "en-GB", "speaking_rate": 0.95, "pitch": 0.0}
+  }
 }"""
     user = (
-        f"Create an original OET Speaking role-play card (nurse/patient interaction). Vary the specialty across "
-        f"generations (medical, surgical, emergency, community, oncology, mental health, paediatrics, aged care, "
-        f"rehabilitation, ICU, cardiology, respiratory, renal, maternity, etc.) rather than defaulting to "
-        f"post-operative care. Give the patient a distinct personality and emotional state (e.g. anxious, "
-        f"frustrated, embarrassed, confused, angry, withdrawn, overly confident, forgetful, emotional) -- vary it "
-        f"each time rather than repeating the same pattern. The persona should include a realistic communication "
-        f"barrier, genuine information the patient is holding back, and a clear consultation goal specific to this "
-        f"scenario.\n{_shared_context(difficulty, specialty, topic, objectives, instructions)}\n\n{_DIVERSITY_HINT}"
+        f"Create an original OET Speaking role-play card with two genuinely complementary, non-duplicate cards: "
+        f"a NURSE CARD for the candidate and an INTERLOCUTOR CARD for the roleplayer.\n\n"
+        f"NURSE CARD requirements:\n"
+        f"- Describe the clinical context from the candidate nurse's perspective (who they are, where they are, "
+        f"what has just happened).\n"
+        f"- 'tasks' must be concrete, OET-style communication tasks the candidate must perform in this "
+        f"consultation (e.g. establish rapport, elicit history, explain a procedure, address a concern, agree a "
+        f"plan) -- multiple actionable bullets, not vague goals.\n\n"
+        f"INTERLOCUTOR CARD requirements:\n"
+        f"- Give the roleplayer a named, specific patient identity ('patient_name'), a realistic 'age' for the "
+        f"scenario, and a clear 'condition'.\n"
+        f"- 'gender' must be 'male', 'female', 'other', or 'unspecified', and must match 'patient_name' (e.g. a "
+        f"traditionally male name gets gender 'male').\n"
+        f"- 'voice_config' selects the text-to-speech voice for this patient and must use ONLY these supported "
+        f"Google Cloud TTS voices, matched to 'gender' and 'age': gender 'male' and age over 60 -> "
+        f"{{\"voice_name\": \"en-GB-Wavenet-D\", \"language_code\": \"en-GB\", \"speaking_rate\": 0.80, \"pitch\": -3.0}}; "
+        f"gender 'male' and age 60 or under -> {{\"voice_name\": \"en-GB-Wavenet-B\", \"language_code\": \"en-GB\", "
+        f"\"speaking_rate\": 0.90, \"pitch\": -1.0}}; gender 'female' and age over 60 -> {{\"voice_name\": "
+        f"\"en-GB-Wavenet-C\", \"language_code\": \"en-GB\", \"speaking_rate\": 0.85, \"pitch\": -1.0}}; gender "
+        f"'female' and age 60 or under, or gender 'other'/'unspecified' -> {{\"voice_name\": \"en-GB-Wavenet-A\", "
+        f"\"language_code\": \"en-GB\", \"speaking_rate\": 0.95, \"pitch\": 0.0}}. Do not invent a voice_name outside "
+        f"this list.\n"
+        f"- 'background' must be information relevant to this specific scenario (history, living situation, "
+        f"prior events), not generic filler.\n"
+        f"- 'mood' must describe the patient's attitude/emotional state in this consultation.\n"
+        f"- Give the patient a distinct personality and emotional state (e.g. anxious, frustrated, embarrassed, "
+        f"confused, angry, withdrawn, overly confident, forgetful, emotional) -- vary it each time rather than "
+        f"repeating the same pattern.\n"
+        f"- 'questions_to_ask' are questions the patient may raise during the conversation.\n"
+        f"- 'information_to_withhold' is information the patient should not volunteer unless asked directly.\n"
+        f"- 'persona' summarizes how the patient should behave; it must not restate the nurse card's tasks.\n"
+        f"- The interlocutor card must never duplicate the nurse card's role/tasks -- it describes the patient, "
+        f"not the clinical procedure.\n\n"
+        f"CONDITIONAL RESPONSES ('conditional_responses'):\n"
+        f"- At least 2 conditions where the scenario genuinely calls for them. Each item has a 'trigger' "
+        f"(a specific thing the nurse says, asks, or does -- not a copy of a nurse_card task) and a "
+        f"'response_guidance' (how the patient should behave or respond when that happens -- a behavioural "
+        f"description for the roleplayer, not a scripted line to read aloud).\n"
+        f"- Ground each trigger/response pair in this specific patient's condition, mood, and background -- do "
+        f"not write generic conditions that could apply to any scenario.\n\n"
+        f"CONVERSATION PROGRESSION ('progression'):\n"
+        f"- An ordered list of conversational beats describing how the interaction should naturally develop from "
+        f"opening, through the middle, to a resolution -- e.g. initial emotional state, a concern raised, "
+        f"information exchanged, growing reassurance or a plan agreed.\n"
+        f"- Beats describe desired outcomes and direction, not exact wording -- guidance for a roleplayer, not a "
+        f"script. Use 4-7 beats.\n"
+        f"\n{_shared_context(difficulty, specialty, topic, objectives, instructions)}\n\n{_DIVERSITY_HINT}"
         f"\n\nReturn ONLY this JSON:\n{schema}"
     )
     return _SYSTEM_HEADER, user

@@ -456,23 +456,130 @@ function SpeakingEditor({ content, set, disabled }: { content: any; set: SetFn; 
   const interlocutor = content.interlocutor_card || {}
   const setNurse = (patch: any) => set('nurse_card', { ...nurse, ...patch })
   const setInterlocutor = (patch: any) => set('interlocutor_card', { ...interlocutor, ...patch })
+  const voiceConfig = interlocutor.voice_config || {}
+  const setVoiceConfig = (patch: any) => setInterlocutor({ voice_config: { ...voiceConfig, ...patch } })
 
   return (
     <div className="space-y-4">
-      <TextInput label="Title" value={content.title || ''} onChange={(v) => set('title', v)} disabled={disabled} />
-      <TextArea label="Setting" value={content.setting || ''} onChange={(v) => set('setting', v)} disabled={disabled} rows={3} />
+      <TextInput label="Title" value={content.title || ''} onChange={(v) => set('title', v)} disabled={disabled} testId="speaking-title" />
+      <TextArea label="Setting" value={content.setting || ''} onChange={(v) => set('setting', v)} disabled={disabled} rows={3} testId="speaking-setting" />
       <div className="grid grid-cols-2 gap-4">
-        <SelectInput label="Difficulty" value={content.difficulty || 'intermediate'} options={['beginner', 'intermediate', 'advanced']} onChange={(v) => set('difficulty', v)} disabled={disabled} />
-        <TextInput label="Specialty" value={content.specialty || ''} onChange={(v) => set('specialty', v)} disabled={disabled} />
+        <SelectInput label="Difficulty" value={content.difficulty || 'intermediate'} options={['beginner', 'intermediate', 'advanced']} onChange={(v) => set('difficulty', v)} disabled={disabled} testId="speaking-difficulty" />
+        <TextInput label="Specialty" value={content.specialty || ''} onChange={(v) => set('specialty', v)} disabled={disabled} testId="speaking-specialty" />
       </div>
       <SectionLabel>Nurse Card</SectionLabel>
-      <TextInput label="Role" value={nurse.role || ''} onChange={(v) => setNurse({ role: v })} disabled={disabled} />
-      <StringListEditor label="Tasks" items={nurse.tasks || []} onChange={(v) => setNurse({ tasks: v })} disabled={disabled} />
-      <SectionLabel>Interlocutor Card</SectionLabel>
-      <TextArea label="Persona" value={interlocutor.persona || ''} onChange={(v) => setInterlocutor({ persona: v })} disabled={disabled} rows={3} />
-      <StringListEditor label="Emotional Triggers" items={interlocutor.emotional_triggers || []} onChange={(v) => setInterlocutor({ emotional_triggers: v })} disabled={disabled} />
-      <StringListEditor label="Questions to Ask" items={interlocutor.questions_to_ask || []} onChange={(v) => setInterlocutor({ questions_to_ask: v })} disabled={disabled} />
-      <StringListEditor label="Information to Withhold" items={interlocutor.information_to_withhold || []} onChange={(v) => setInterlocutor({ information_to_withhold: v })} disabled={disabled} />
+      <TextInput label="Role" value={nurse.role || ''} onChange={(v) => setNurse({ role: v })} disabled={disabled} testId="speaking-nurse-role" />
+      <StringListEditor label="Tasks" items={nurse.tasks || []} onChange={(v) => setNurse({ tasks: v })} disabled={disabled} testId="speaking-nurse-tasks" />
+      <SectionLabel>Interlocutor / Patient Card</SectionLabel>
+      <div className="grid grid-cols-3 gap-4">
+        <TextInput label="Patient Name" value={interlocutor.patient_name || ''} onChange={(v) => setInterlocutor({ patient_name: v })} disabled={disabled} testId="speaking-patient-name" />
+        <NumberInput label="Age" value={Number(interlocutor.age) || 0} onChange={(v) => setInterlocutor({ age: v })} disabled={disabled} testId="speaking-patient-age" />
+        <SelectInput
+          label="Gender" value={interlocutor.gender || 'unspecified'}
+          options={['unspecified', 'male', 'female', 'other']}
+          onChange={(v) => setInterlocutor({ gender: v })} disabled={disabled} testId="speaking-patient-gender"
+        />
+      </div>
+      <TextInput label="Condition" value={interlocutor.condition || ''} onChange={(v) => setInterlocutor({ condition: v })} disabled={disabled} testId="speaking-patient-condition" />
+      <TextInput label="Mood" value={interlocutor.mood || ''} onChange={(v) => setInterlocutor({ mood: v })} disabled={disabled} testId="speaking-patient-mood" />
+      <TextArea label="Background" value={interlocutor.background || ''} onChange={(v) => setInterlocutor({ background: v })} disabled={disabled} rows={3} testId="speaking-patient-background" />
+      <TextArea label="Persona (legacy)" value={interlocutor.persona || ''} onChange={(v) => setInterlocutor({ persona: v })} disabled={disabled} rows={2} testId="speaking-patient-persona" />
+      <StringListEditor label="Emotional Triggers" items={interlocutor.emotional_triggers || []} onChange={(v) => setInterlocutor({ emotional_triggers: v })} disabled={disabled} testId="speaking-patient-triggers" />
+      <StringListEditor label="Questions to Ask" items={interlocutor.questions_to_ask || []} onChange={(v) => setInterlocutor({ questions_to_ask: v })} disabled={disabled} testId="speaking-patient-questions" />
+      <StringListEditor label="Information to Withhold" items={interlocutor.information_to_withhold || []} onChange={(v) => setInterlocutor({ information_to_withhold: v })} disabled={disabled} testId="speaking-patient-withhold" />
+      <SectionLabel>Conditional Responses</SectionLabel>
+      <ConditionalResponsesEditor
+        items={interlocutor.conditional_responses || []}
+        onChange={(v) => setInterlocutor({ conditional_responses: v })}
+        disabled={disabled}
+        testId="speaking-conditional-responses"
+      />
+      <SectionLabel>Conversation Progression</SectionLabel>
+      <StringListEditor
+        label="Ordered beats -- how the conversation should develop from opening to resolution"
+        items={interlocutor.progression || []}
+        onChange={(v) => setInterlocutor({ progression: v })}
+        disabled={disabled}
+        testId="speaking-progression"
+        reorderable
+        numbered
+      />
+      <SectionLabel>Voice Configuration</SectionLabel>
+      <div className="grid grid-cols-2 gap-4">
+        <SelectInput
+          label="Voice" value={voiceConfig.voice_name || 'en-GB-Wavenet-A'}
+          options={['en-GB-Wavenet-A', 'en-GB-Wavenet-B', 'en-GB-Wavenet-C', 'en-GB-Wavenet-D']}
+          onChange={(v) => setVoiceConfig({ voice_name: v })} disabled={disabled} testId="speaking-voice-name"
+        />
+        <SelectInput
+          label="Language" value={voiceConfig.language_code || 'en-GB'}
+          options={['en-GB']}
+          onChange={(v) => setVoiceConfig({ language_code: v })} disabled={disabled} testId="speaking-voice-language"
+        />
+        <NumberInput
+          label="Speaking Rate" value={Number(voiceConfig.speaking_rate) || 0.95}
+          onChange={(v) => setVoiceConfig({ speaking_rate: v })} disabled={disabled} testId="speaking-voice-rate"
+        />
+        <NumberInput
+          label="Pitch" value={Number(voiceConfig.pitch) || 0}
+          onChange={(v) => setVoiceConfig({ pitch: v })} disabled={disabled} testId="speaking-voice-pitch"
+        />
+      </div>
+    </div>
+  )
+}
+
+function ConditionalResponsesEditor({ items, onChange, disabled, testId }: {
+  items: { trigger?: string; response_guidance?: string }[]
+  onChange: (items: { trigger?: string; response_guidance?: string }[]) => void
+  disabled: boolean
+  testId?: string
+}) {
+  const update = (i: number, patch: { trigger?: string; response_guidance?: string }) => {
+    const next = items.slice()
+    next[i] = { ...next[i], ...patch }
+    onChange(next)
+  }
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= items.length) return
+    const next = items.slice()
+    ;[next[i], next[j]] = [next[j], next[i]]
+    onChange(next)
+  }
+  return (
+    <div data-testid={testId} className="space-y-3">
+      {items.map((item, i) => (
+        <div key={i} className="border rounded-lg p-3 space-y-2" data-testid={testId ? `${testId}-${i}` : undefined}>
+          <div className="flex justify-between items-center">
+            <span className="text-xs font-semibold text-gray-500">Condition {i + 1}</span>
+            {!disabled && (
+              <div className="flex gap-2">
+                <button onClick={() => move(i, -1)} disabled={i === 0} className="text-gray-400 hover:text-gray-700 text-xs disabled:opacity-30" data-testid={testId ? `${testId}-${i}-up` : undefined}>↑</button>
+                <button onClick={() => move(i, 1)} disabled={i === items.length - 1} className="text-gray-400 hover:text-gray-700 text-xs disabled:opacity-30" data-testid={testId ? `${testId}-${i}-down` : undefined}>↓</button>
+                <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} className="text-red-500 text-xs" data-testid={testId ? `${testId}-${i}-remove` : undefined}>Remove</button>
+              </div>
+            )}
+          </div>
+          <TextArea
+            label="Trigger (what the nurse says/asks/does)" value={item.trigger || ''}
+            onChange={(v) => update(i, { trigger: v })} disabled={disabled} rows={2}
+            testId={testId ? `${testId}-${i}-trigger` : undefined}
+          />
+          <TextArea
+            label="Response Guidance (how the patient should react)" value={item.response_guidance || ''}
+            onChange={(v) => update(i, { response_guidance: v })} disabled={disabled} rows={2}
+            testId={testId ? `${testId}-${i}-guidance` : undefined}
+          />
+        </div>
+      ))}
+      {!disabled && (
+        <button
+          onClick={() => onChange([...items, { trigger: '', response_guidance: '' }])}
+          data-testid={testId ? `${testId}-add` : undefined}
+          className="text-sm text-blue-600 hover:underline"
+        >+ Add condition</button>
+      )}
     </div>
   )
 }
@@ -1098,25 +1205,41 @@ function QuestionsEditor({ label, questions, onChange, disabled, withExplanation
   )
 }
 
-function StringListEditor({ label, items, onChange, disabled }: {
-  label: string; items: string[]; onChange: (items: string[]) => void; disabled: boolean
+function StringListEditor({ label, items, onChange, disabled, testId, reorderable, numbered }: {
+  label: string; items: string[]; onChange: (items: string[]) => void; disabled: boolean; testId?: string
+  reorderable?: boolean; numbered?: boolean
 }) {
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= items.length) return
+    const next = items.slice()
+    ;[next[i], next[j]] = [next[j], next[i]]
+    onChange(next)
+  }
   return (
-    <div>
+    <div data-testid={testId}>
       <label className="block text-sm text-gray-500 mb-1">{label}</label>
       <div className="space-y-1">
         {items.map((v, i) => (
-          <div key={i} className="flex gap-2">
+          <div key={i} className="flex gap-2 items-center">
+            {numbered && <span className="text-xs text-gray-400 w-4 text-right">{i + 1}.</span>}
             <input
               value={v} disabled={disabled}
               onChange={(e) => { const next = items.slice(); next[i] = e.target.value; onChange(next) }}
+              data-testid={testId ? `${testId}-${i}` : undefined}
               className="flex-1 px-2 py-1.5 border rounded text-sm"
             />
-            {!disabled && <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} className="text-red-500 text-sm px-2">✕</button>}
+            {!disabled && reorderable && (
+              <>
+                <button onClick={() => move(i, -1)} disabled={i === 0} className="text-gray-400 hover:text-gray-700 text-xs disabled:opacity-30" data-testid={testId ? `${testId}-${i}-up` : undefined}>↑</button>
+                <button onClick={() => move(i, 1)} disabled={i === items.length - 1} className="text-gray-400 hover:text-gray-700 text-xs disabled:opacity-30" data-testid={testId ? `${testId}-${i}-down` : undefined}>↓</button>
+              </>
+            )}
+            {!disabled && <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} className="text-red-500 text-sm px-2" data-testid={testId ? `${testId}-${i}-remove` : undefined}>✕</button>}
           </div>
         ))}
         {!disabled && (
-          <button onClick={() => onChange([...items, ''])} className="text-sm text-blue-600 hover:underline">+ Add</button>
+          <button onClick={() => onChange([...items, ''])} data-testid={testId ? `${testId}-add` : undefined} className="text-sm text-blue-600 hover:underline">+ Add</button>
         )}
       </div>
     </div>

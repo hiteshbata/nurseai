@@ -863,6 +863,7 @@ async def chat_with_patient(
             supabase=supabase,
             user_id=current_user.id,
             session_id=session_id,
+            setting=scenario.get("setting", ""),
         )
     except Exception:
         logger.exception(

@@ -38,11 +38,12 @@ behavior.
 """
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
 from app.core.supabase import get_supabase
-from app.services import listening_audio
+from app.services import listening_audio, tts_service
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,39 @@ def _title(draft: Dict[str, Any], content: Dict[str, Any]) -> str:
     return str(content.get("title") or draft.get("ai_title") or draft.get("draft_name") or "").strip()
 
 
+def _coerce_speaking_age(value: Any) -> Any:
+    """interlocutor_card.age passes draft_generator's _valid_speaking_age as
+    either a plain number or a numeric/range string ('40-50') -- but
+    scenarios.patient_age is an integer column, so a range string must be
+    reduced to its first number (an approximation good enough for the
+    gender/age voice fallback it feeds -- not used for scoring)."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        m = re.match(r"\d{1,3}", value.strip())
+        if m:
+            return int(m.group())
+    return None
+
+
+def _speaking_voice_fields(card: Dict[str, Any]) -> Dict[str, Any]:
+    """Phase S3: maps interlocutor_card.gender/age/voice_config (Content
+    Studio draft contract) onto scenarios.patient_gender/patient_age/
+    voice_config (runtime contract). voice_config is resolved here --
+    never left for the DB column default -- so a new Content Studio
+    scenario always publishes with the exact voice an admin approved, or
+    (if they didn't set one) the same deterministic gender/age fallback the
+    legacy runtime already computes at read time."""
+    patient_gender = card.get("gender")
+    patient_age = _coerce_speaking_age(card.get("age"))
+    voice_config = card.get("voice_config")
+    if not (isinstance(voice_config, dict) and voice_config):
+        voice_config = tts_service.get_default_voice_config(gender=patient_gender, age=patient_age)
+    return {"patient_gender": patient_gender, "patient_age": patient_age, "voice_config": voice_config}
+
+
 def _scenario_payload(draft: Dict[str, Any]) -> Dict[str, Any]:
     module = draft["module"]
     content = draft["generated_content"]
@@ -123,7 +157,9 @@ def _scenario_payload(draft: Dict[str, Any]) -> Dict[str, Any]:
     if module == "speaking":
         payload["setting"] = content.get("setting", "")
         payload["nurse_card"] = content.get("nurse_card", {})
-        payload["interlocutor_card"] = content.get("interlocutor_card", {})
+        card = content.get("interlocutor_card", {}) or {}
+        payload["interlocutor_card"] = card
+        payload.update(_speaking_voice_fields(card))
     else:  # writing -- case_notes lives in `setting`, task lives in nurse_card.role
         # (matches how writing.py already reads existing scenarios, see
         # `case_notes=scenario.get("setting", "")` in routers/writing.py)

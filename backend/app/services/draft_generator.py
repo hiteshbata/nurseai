@@ -548,7 +548,159 @@ def _validate_listening_part_c(content: Dict[str, Any]) -> List[str]:
     )
 
 
+_SPEAKING_DIFFICULTIES = {"easy", "medium", "hard", "beginner", "intermediate", "advanced"}
+_SPEAKING_LIST_FIELDS = ("emotional_triggers", "questions_to_ask", "information_to_withhold")
+
+# Phase S3: vocabulary accepted for interlocutor_card.gender. "male"/"female"
+# select a gendered voice (tts_service.get_default_voice_config, realtime's
+# VOICE_MAPPERS); "other"/"unspecified" are valid but fall through to the
+# same gender-neutral default both runtimes already use for a missing/None
+# gender -- they exist so the editor has an explicit choice instead of an
+# empty field reading as "not set yet".
+_SPEAKING_GENDERS = {"male", "female", "other", "unspecified"}
+
+# Phase S3: voice_config fields the runtime actually reads (tts_service.
+# synthesize_speech's params) -- anything else in the object is left alone
+# (forward-compatible) but these, when present, must be well-formed.
+_VOICE_CONFIG_STRING_FIELDS = ("voice_name", "language_code")
+_VOICE_CONFIG_NUMERIC_FIELDS = ("speaking_rate", "pitch")
+
+# Phase S2: progression is an ordered list of conversation beats fed straight
+# into a roleplay prompt (ai_scoring.build_interlocutor_roleplay_instructions)
+# -- an unbounded list from a misbehaving generation would bloat every future
+# roleplay turn's prompt, hence the cap. Optional on every draft (legacy
+# drafts have neither field) -- draft_generator only checks shape/emptiness
+# when the key is present, never requires it.
+_PROGRESSION_MAX_BEATS = 12
+
+
+def _validate_speaking_conditional_responses(card: Dict[str, Any]) -> List[str]:
+    errors: List[str] = []
+    if "conditional_responses" not in card:
+        return errors
+    items = card["conditional_responses"]
+    if not isinstance(items, list):
+        errors.append("'interlocutor_card.conditional_responses' must be a list.")
+        return errors
+    for i, item in enumerate(items):
+        n = i + 1
+        if not isinstance(item, dict):
+            errors.append(f"'interlocutor_card.conditional_responses[{n}]' must be an object.")
+            continue
+        if not str(item.get("trigger") or "").strip():
+            errors.append(f"'interlocutor_card.conditional_responses[{n}].trigger' must be non-empty.")
+        if not str(item.get("response_guidance") or "").strip():
+            errors.append(f"'interlocutor_card.conditional_responses[{n}].response_guidance' must be non-empty.")
+    return errors
+
+
+def _validate_speaking_progression(card: Dict[str, Any]) -> List[str]:
+    errors: List[str] = []
+    if "progression" not in card:
+        return errors
+    beats = card["progression"]
+    if not isinstance(beats, list):
+        errors.append("'interlocutor_card.progression' must be a list.")
+        return errors
+    if len(beats) > _PROGRESSION_MAX_BEATS:
+        errors.append(f"'interlocutor_card.progression' must have at most {_PROGRESSION_MAX_BEATS} beats; got {len(beats)}.")
+    for i, beat in enumerate(beats):
+        if not str(beat or "").strip():
+            errors.append(f"'interlocutor_card.progression[{i + 1}]' must be a non-empty string.")
+    return errors
+
+
+def _validate_speaking_voice_config(card: Dict[str, Any]) -> List[str]:
+    errors: List[str] = []
+    if "voice_config" not in card:
+        return errors
+    voice_config = card["voice_config"]
+    if not isinstance(voice_config, dict):
+        errors.append("'interlocutor_card.voice_config' must be an object.")
+        return errors
+    for field in _VOICE_CONFIG_STRING_FIELDS:
+        if field in voice_config and not str(voice_config[field] or "").strip():
+            errors.append(f"'interlocutor_card.voice_config.{field}' must be non-empty when provided.")
+    for field in _VOICE_CONFIG_NUMERIC_FIELDS:
+        if field in voice_config and (isinstance(voice_config[field], bool) or not isinstance(voice_config[field], (int, float))):
+            errors.append(f"'interlocutor_card.voice_config.{field}' must be numeric when provided; got {voice_config[field]!r}.")
+    return errors
+
+
+def _valid_speaking_age(value: Any) -> bool:
+    """Accepts a plain number (45) or a numeric/range string ('45', '40-50')."""
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, (int, float)):
+        return value > 0
+    if isinstance(value, str):
+        return bool(re.fullmatch(r"\d{1,3}(\s*-\s*\d{1,3})?", value.strip()))
+    return False
+
+
+def _validate_speaking(content: Dict[str, Any]) -> List[str]:
+    """Phase S1 schema-parity check: the generated interlocutor_card must
+    carry the same structured patient fields the runtime already reads
+    (ai_scoring.get_patient_response), not just a free-text persona."""
+    errors: List[str] = []
+
+    if not str(content.get("title") or "").strip():
+        errors.append("'title' must be non-empty.")
+    if not str(content.get("setting") or "").strip():
+        errors.append("'setting' must be non-empty.")
+    if content.get("difficulty") not in _SPEAKING_DIFFICULTIES:
+        errors.append(f"'difficulty' must be one of {sorted(_SPEAKING_DIFFICULTIES)}; got {content.get('difficulty')!r}.")
+    if not str(content.get("specialty") or "").strip():
+        errors.append("'specialty' must be non-empty.")
+
+    nurse_card = content.get("nurse_card")
+    if not isinstance(nurse_card, dict):
+        errors.append("'nurse_card' must be an object.")
+    else:
+        if not str(nurse_card.get("role") or "").strip():
+            errors.append("'nurse_card.role' must be non-empty.")
+        tasks = nurse_card.get("tasks")
+        if not isinstance(tasks, list) or len(tasks) < 1:
+            errors.append("'nurse_card.tasks' must be a list with at least 1 item.")
+
+    card = content.get("interlocutor_card")
+    if not isinstance(card, dict):
+        errors.append("'interlocutor_card' must be an object.")
+        return errors
+
+    if not str(card.get("patient_name") or "").strip():
+        errors.append("'interlocutor_card.patient_name' must be non-empty.")
+    if not _valid_speaking_age(card.get("age")):
+        errors.append(f"'interlocutor_card.age' must be a valid age; got {card.get('age')!r}.")
+    if not str(card.get("condition") or "").strip():
+        errors.append("'interlocutor_card.condition' must be non-empty.")
+    if not str(card.get("mood") or "").strip():
+        errors.append("'interlocutor_card.mood' must be non-empty.")
+    if not str(card.get("background") or "").strip():
+        errors.append("'interlocutor_card.background' must be non-empty.")
+    if "gender" in card and card["gender"] not in _SPEAKING_GENDERS:
+        errors.append(f"'interlocutor_card.gender' must be one of {sorted(_SPEAKING_GENDERS)}; got {card.get('gender')!r}.")
+
+    for field in _SPEAKING_LIST_FIELDS:
+        if field in card and not isinstance(card[field], list):
+            errors.append(f"'interlocutor_card.{field}' must be a list.")
+
+    errors.extend(_validate_speaking_conditional_responses(card))
+    errors.extend(_validate_speaking_progression(card))
+    errors.extend(_validate_speaking_voice_config(card))
+
+    return errors
+
+
 def _validate(module: str, content: Dict[str, Any]) -> List[str]:
+    if module == "speaking":
+        speaking_errors = _validate_speaking(content)
+        if speaking_errors:
+            raise DraftGenerationError(
+                "Generated Speaking content violates the contract: " + " ".join(speaking_errors)
+            )
+        return []
+
     if module == "listening" and content.get("part") in ("A", "B", "C"):
         # Locked Part A/B/C shape ("extracts": [...]) doesn't have the legacy
         # top-level transcript/questions, so it must bypass the generic

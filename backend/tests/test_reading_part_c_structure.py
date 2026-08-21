@@ -179,7 +179,15 @@ def test_validate_passes_valid_part_b_content():
 def test_validate_ignores_part_c_for_non_reading_modules():
     """A non-reading draft happening to contain part='C' must never be routed
     through the Part C validator -- that dispatch is gated on module=='reading'."""
-    content = {"title": "t", "setting": "s", "nurse_card": {"role": "r"}, "interlocutor_card": {"persona": "p"}, "part": "C"}
+    content = {
+        "title": "t", "setting": "s", "difficulty": "intermediate", "specialty": "general",
+        "nurse_card": {"role": "r", "tasks": ["task 1"]},
+        "interlocutor_card": {
+            "persona": "p", "patient_name": "Pat", "age": 40, "condition": "c",
+            "mood": "calm", "background": "b",
+        },
+        "part": "C",
+    }
     assert _validate("speaking", content) == []
 
 
