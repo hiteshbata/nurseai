@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 EMA_ALPHA = 0.3  # weight on the newest observation; higher = more reactive to recent attempts
 
+PRODUCT = "OET"  # only exam product today; see 20260808010000_learner_brain_product_column.sql
+
 # Ignore a skill until the student has attempted it a couple of times, so one
 # unlucky question doesn't brand a whole skill as a weakness.
 WEAKNESS_MIN_ATTEMPTS = 2
@@ -36,7 +38,7 @@ def _record_sync(user_id: str, tag_scores: Dict[str, float]) -> None:
     tags = list(tag_scores.keys())
     existing = (
         supabase.table("user_skill_stats").select("skill_tag, attempts, ema_score")
-        .eq("user_id", user_id).in_("skill_tag", tags).execute()
+        .eq("user_id", user_id).eq("product", PRODUCT).in_("skill_tag", tags).execute()
     )
     existing_by_tag = {row["skill_tag"]: row for row in existing.data}
 
@@ -47,11 +49,12 @@ def _record_sync(user_id: str, tag_scores: Dict[str, float]) -> None:
         old_ema = float(prev["ema_score"]) if prev else 0.0
         rows.append({
             "user_id": user_id,
+            "product": PRODUCT,
             "skill_tag": tag,
             "attempts": attempts + 1,
             "ema_score": update_ema(old_ema, attempts, float(score)),
         })
-    supabase.table("user_skill_stats").upsert(rows, on_conflict="user_id,skill_tag").execute()
+    supabase.table("user_skill_stats").upsert(rows, on_conflict="user_id,product,skill_tag").execute()
 
 
 async def record_skill_observations(user_id: str, tag_scores: Dict[str, float]) -> None:
