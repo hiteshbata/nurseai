@@ -9,6 +9,7 @@ import toast from 'react-hot-toast'
 import { UpgradeRequired } from '@/components/UpgradeRequired'
 import { FullTestCard } from '@/components/practice/FullTestCard'
 import { WeakSpots } from '@/components/practice/WeakSpots'
+import { TargetedPracticeCard } from '@/components/listening/TargetedPracticeCard'
 
 interface TestSummary {
   id: number
@@ -65,6 +66,8 @@ export default function ListeningPracticePage() {
         </div>
 
         <WeakSpots endpoint="/listening/weakness" />
+
+        <TargetedPracticeCard />
 
         {upgradeRequired ? (
           <UpgradeRequired
