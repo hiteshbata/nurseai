@@ -68,3 +68,6 @@ diffstat.txt
 /*.png
 backend/dev-server.log
 .impeccable/
+
+# Git worktrees used for isolated feature-branch work
+.worktrees/
