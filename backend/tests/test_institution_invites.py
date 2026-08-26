@@ -312,3 +312,104 @@ def test_preview_rejects_unknown_token_with_generic_404(monkeypatch):
 class _FakeRequest:
     client = type("C", (), {"host": "127.0.0.1"})()
     headers = {}
+
+
+class _FakeRpcResult:
+    def __init__(self, data):
+        self.data = data
+
+
+class _FakeRpcCall:
+    def __init__(self, recorder, name, params, response_row):
+        self.recorder = recorder
+        self.name = name
+        self.params = params
+        self.response_row = response_row
+
+    def execute(self):
+        self.recorder.append((self.name, self.params))
+        return _FakeRpcResult([self.response_row] if self.response_row else [])
+
+
+class _FakeAcceptSupabase:
+    def __init__(self, response_row):
+        self.response_row = response_row
+        self.rpc_calls = []
+
+    def rpc(self, name, params):
+        return _FakeRpcCall(self.rpc_calls, name, params, self.response_row)
+
+
+def _student_user():
+    return UserInfo(id=str(uuid.uuid4()), email="student@example.com")
+
+
+def _anonymous_user():
+    return UserInfo(id=str(uuid.uuid4()), email=None, is_anonymous=True)
+
+
+def test_accept_rejects_anonymous_session_with_401_and_never_calls_rpc(monkeypatch):
+    # Authorization requirement (spec §5.3), not a frontend-only UX rule --
+    # an anonymous/guest Supabase session still passes get_current_user
+    # (it's a valid JWT), so this must be an explicit is_anonymous check.
+    fake = _FakeAcceptSupabase({
+        "result_status": "joined", "institution_id": str(uuid.uuid4()),
+        "institution_name": "ABC Nursing Institute", "modules": ["speaking"],
+    })
+    monkeypatch.setattr(institutions_module, "get_supabase", lambda: fake)
+
+    with __import__("pytest").raises(HTTPException) as excinfo:
+        institutions_module.accept_institution_invite_endpoint(
+            token="abc123", current_user=_anonymous_user()
+        )
+    assert excinfo.value.status_code == 401
+    assert fake.rpc_calls == []  # RPC must never be reached for an anonymous session
+
+
+def test_accept_success_calls_rpc_with_token_and_verified_user_id(monkeypatch):
+    user = _student_user()
+    fake = _FakeAcceptSupabase({
+        "result_status": "joined", "institution_id": str(uuid.uuid4()),
+        "institution_name": "ABC Nursing Institute", "modules": ["speaking"],
+    })
+    monkeypatch.setattr(institutions_module, "get_supabase", lambda: fake)
+
+    result = institutions_module.accept_institution_invite_endpoint(
+        token="abc123", current_user=user
+    )
+
+    assert fake.rpc_calls == [("accept_institution_invite", {"p_token": "abc123", "p_user_id": user.id})]
+    assert result == {
+        "status": "joined",
+        "institution_name": "ABC Nursing Institute",
+        "modules": ["speaking"],
+    }
+
+
+def test_accept_rejects_invalid_invite_with_generic_400(monkeypatch):
+    fake = _FakeAcceptSupabase({
+        "result_status": "invalid", "institution_id": None,
+        "institution_name": None, "modules": None,
+    })
+    monkeypatch.setattr(institutions_module, "get_supabase", lambda: fake)
+
+    with __import__("pytest").raises(HTTPException) as excinfo:
+        institutions_module.accept_institution_invite_endpoint(
+            token="bad-token", current_user=_student_user()
+        )
+    assert excinfo.value.status_code == 400
+    assert excinfo.value.detail == "This invitation cannot be used"
+
+
+def test_accept_rejects_exhausted_invite(monkeypatch):
+    fake = _FakeAcceptSupabase({
+        "result_status": "exhausted", "institution_id": None,
+        "institution_name": None, "modules": None,
+    })
+    monkeypatch.setattr(institutions_module, "get_supabase", lambda: fake)
+
+    with __import__("pytest").raises(HTTPException) as excinfo:
+        institutions_module.accept_institution_invite_endpoint(
+            token="full-token", current_user=_student_user()
+        )
+    assert excinfo.value.status_code == 400
