@@ -8,7 +8,7 @@ from pydantic import BaseModel, field_validator
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.supabase import get_supabase
 from app.routers.admin import require_admin, _write_audit_log
-from app.routers.auth import UserInfo
+from app.routers.auth import UserInfo, _client_ip
 
 router = APIRouter(prefix="/institutions", tags=["institutions"])
 
@@ -96,8 +96,7 @@ _INVITE_NOT_FOUND = HTTPException(
 def get_invite_preview(token: str, request: Request):
     """Public, token-gated. Never returns the raw token or any internal id --
     see spec 2026-08-26 §5.2 for the exact allow-list."""
-    client_ip = request.client.host if request.client else "unknown"
-    if preview_rate_limiter.is_rate_limited(client_ip):
+    if preview_rate_limiter.is_rate_limited(_client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many requests. Try again shortly.")
 
     supabase = get_supabase()
