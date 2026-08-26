@@ -8,7 +8,7 @@ from pydantic import BaseModel, field_validator
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.supabase import get_supabase
 from app.routers.admin import require_admin, _write_audit_log
-from app.routers.auth import UserInfo, _client_ip
+from app.routers.auth import UserInfo, _client_ip, get_current_user
 
 router = APIRouter(prefix="/institutions", tags=["institutions"])
 
@@ -143,4 +143,40 @@ def get_invite_preview(token: str, request: Request):
         "logo_url": institution.get("logo_url"),
         "modules": [m["module"] for m in modules.data],
         "expires_at": invite.get("expires_at"),
+    }
+
+
+@router.post("/invites/{token}/accept")
+def accept_institution_invite_endpoint(
+    token: str,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Authenticated. institution/role/status are entirely server-derived --
+    see spec 2026-08-26 §5.3/§6. Delegates the atomic check-and-write to the
+    accept_institution_invite Postgres function (Task 1)."""
+    if current_user.is_anonymous:
+        # Authorization boundary, not a UX rule -- get_current_user returns
+        # a valid UserInfo for an anonymous/guest Supabase session, so this
+        # must be checked explicitly before the RPC is ever reached. The
+        # frontend already hides the Accept button for an anonymous
+        # session, but that alone does not stop a direct POST.
+        raise HTTPException(
+            status_code=401,
+            detail="A registered account is required to accept this invitation",
+        )
+
+    supabase = get_supabase()
+    result = supabase.rpc(
+        "accept_institution_invite",
+        {"p_token": token, "p_user_id": current_user.id},
+    ).execute()
+
+    row = result.data[0] if result.data else {"result_status": "invalid"}
+    if row["result_status"] not in ("joined", "already_member"):
+        raise HTTPException(status_code=400, detail="This invitation cannot be used")
+
+    return {
+        "status": row["result_status"],
+        "institution_name": row["institution_name"],
+        "modules": row["modules"] or [],
     }
