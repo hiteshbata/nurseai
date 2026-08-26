@@ -11,16 +11,7 @@ import toast from 'react-hot-toast'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { AuthLeftPanel } from '@/components/auth/auth-left-panel'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
-
-// Only allow same-origin relative paths (e.g. "/practice/speaking") as a
-// redirect target — never an absolute URL or protocol-relative "//host" path,
-// which would let a crafted returnTo param send the user off-site after login.
-function getSafeReturnTo(): string | null {
-  if (typeof window === 'undefined') return null
-  const returnTo = new URLSearchParams(window.location.search).get('returnTo')
-  if (!returnTo || !returnTo.startsWith('/') || returnTo.startsWith('//')) return null
-  return returnTo
-}
+import { getSafeReturnTo } from '@/lib/auth-redirect'
 
 function GoogleIcon() {
   return (
@@ -65,10 +56,12 @@ export default function LoginPage() {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true)
     try {
+      const returnTo = getSafeReturnTo()
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + '/auth/callback',
+          redirectTo: window.location.origin + '/auth/callback' +
+            (returnTo ? '?returnTo=' + encodeURIComponent(returnTo) : ''),
         },
       })
       if (error) throw error
@@ -81,10 +74,12 @@ export default function LoginPage() {
   const handleMicrosoftSignIn = async () => {
     setMicrosoftLoading(true)
     try {
+      const returnTo = getSafeReturnTo()
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'azure',
         options: {
-          redirectTo: window.location.origin + '/auth/callback',
+          redirectTo: window.location.origin + '/auth/callback' +
+            (returnTo ? '?returnTo=' + encodeURIComponent(returnTo) : ''),
           scopes: 'email',
         },
       })
