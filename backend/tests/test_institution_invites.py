@@ -185,3 +185,129 @@ def test_invite_create_rejects_already_expired_expires_at(monkeypatch):
         assert False, "expected ValidationError for an already-expired expires_at"
     except ValidationError:
         pass
+
+
+from fastapi import Request  # noqa: E402
+
+
+class _FakeSelectQuery:
+    def __init__(self, rows, selected_cols_log, filters=None):
+        self.rows = rows
+        self.selected_cols_log = selected_cols_log  # shared list, records every .select() call
+        self.filters = filters or {}
+
+    def select(self, cols):
+        self.selected_cols_log.append(cols)
+        return self
+
+    def eq(self, col, val):
+        f = dict(self.filters)
+        f[col] = val
+        return _FakeSelectQuery(self.rows, self.selected_cols_log, f)
+
+    def execute(self):
+        out = [r for r in self.rows if all(r.get(k) == v for k, v in self.filters.items())]
+        return _FakeResult(out)
+
+
+class _FakePreviewSupabase:
+    def __init__(self, invite_rows, institution_rows, module_rows):
+        self.invite_rows = invite_rows
+        self.institution_rows = institution_rows
+        self.module_rows = module_rows
+        # one shared log per table so a test can assert exactly which
+        # columns the preview endpoint asked for from each table
+        self.invite_selects = []
+        self.institution_selects = []
+        self.module_selects = []
+
+    def table(self, name):
+        if name == "institution_invites":
+            return _FakeSelectQuery(self.invite_rows, self.invite_selects)
+        if name == "institutions":
+            return _FakeSelectQuery(self.institution_rows, self.institution_selects)
+        if name == "institution_modules":
+            return _FakeSelectQuery(self.module_rows, self.module_selects)
+        raise AssertionError(f"unexpected table {name}")
+
+
+def _valid_invite_fixture():
+    institution_id = str(uuid.uuid4())
+    invite = {
+        "id": str(uuid.uuid4()),
+        "institution_id": institution_id,
+        "token": "abc123",
+        "status": "active",
+        "expires_at": None,
+        "max_uses": None,
+        "use_count": 0,
+    }
+    institution = {
+        "id": institution_id, "name": "ABC Nursing Institute",
+        "logo_url": "https://cdn/logo.png", "status": "active",
+    }
+    modules = [{"institution_id": institution_id, "module": "speaking", "enabled": True}]
+    return invite, institution, modules
+
+
+def test_preview_returns_allowlisted_fields_only(monkeypatch):
+    invite, institution, modules = _valid_invite_fixture()
+    fake = _FakePreviewSupabase([invite], [institution], modules)
+    monkeypatch.setattr(institutions_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(
+        institutions_module.preview_rate_limiter, "is_rate_limited", lambda key: False
+    )
+
+    result = institutions_module.get_invite_preview(token="abc123", request=_FakeRequest())
+
+    assert result == {
+        "institution_name": "ABC Nursing Institute",
+        "logo_url": "https://cdn/logo.png",
+        "modules": ["speaking"],
+        "expires_at": None,
+    }
+
+
+def test_preview_queries_are_intentionally_minimal(monkeypatch):
+    # Query-layer data minimization (spec §5.2), independent of the
+    # already-allow-listed response: the preview endpoint must not fetch
+    # whole rows with select("*"). Assert the forbidden columns never
+    # appear in what was actually requested from each table.
+    invite, institution, modules = _valid_invite_fixture()
+    fake = _FakePreviewSupabase([invite], [institution], modules)
+    monkeypatch.setattr(institutions_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(
+        institutions_module.preview_rate_limiter, "is_rate_limited", lambda key: False
+    )
+
+    institutions_module.get_invite_preview(token="abc123", request=_FakeRequest())
+
+    assert fake.invite_selects and "*" not in fake.invite_selects
+    for cols in fake.invite_selects:
+        for forbidden in ("id", "token", "role", "created_by", "created_at"):
+            assert forbidden not in cols.replace(" ", "").split(",")
+
+    assert fake.institution_selects and "*" not in fake.institution_selects
+    for cols in fake.institution_selects:
+        for forbidden in ("contact_email", "speaking_sessions_per_month", "created_at", "id"):
+            assert forbidden not in cols.replace(" ", "").split(",")
+
+    assert fake.module_selects and "*" not in fake.module_selects
+    for cols in fake.module_selects:
+        assert cols.replace(" ", "").split(",") == ["module"]
+
+
+def test_preview_rejects_unknown_token_with_generic_404(monkeypatch):
+    fake = _FakePreviewSupabase([], [], [])
+    monkeypatch.setattr(institutions_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(
+        institutions_module.preview_rate_limiter, "is_rate_limited", lambda key: False
+    )
+
+    with __import__("pytest").raises(HTTPException) as excinfo:
+        institutions_module.get_invite_preview(token="does-not-exist", request=_FakeRequest())
+    assert excinfo.value.status_code == 404
+
+
+class _FakeRequest:
+    client = type("C", (), {"host": "127.0.0.1"})()
