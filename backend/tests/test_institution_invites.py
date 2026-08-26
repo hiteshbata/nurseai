@@ -311,3 +311,4 @@ def test_preview_rejects_unknown_token_with_generic_404(monkeypatch):
 
 class _FakeRequest:
     client = type("C", (), {"host": "127.0.0.1"})()
+    headers = {}
