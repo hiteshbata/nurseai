@@ -26,7 +26,8 @@ from app.core.threading import run_sync
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo, _client_ip
 from app.routers.admin import require_admin, require_owner
-from app.services.plan_gating import has_mock_test_access, get_plan_from_profile
+from app.services.plan_gating import has_effective_module_access, get_plan_from_profile
+from app.services.institution_access import get_effective_speaking_limit
 from app.routers.sessions import _usage_payload, get_month_start_utc
 from app.services.assessment_versioning import (
     publish_mock_version, latest_version_id, get_version_row,
@@ -358,7 +359,8 @@ async def start_mock(req: StartMockRequest, request: Request, current_user: User
     # the Elite-only gate here -- eligibility for a free trial is enforced below
     # instead (one lifetime attempt, an IP rate limit for anonymous), not by plan.
     # Basic/Pro get neither: Mock Test stays an Elite-or-free-trial feature.
-    if not has_mock_test_access(plan) and not current_user.is_anonymous and plan != "free":
+    has_mock_access = await run_sync(has_effective_module_access, supabase, current_user.id, plan, "mock_tests")
+    if not has_mock_access and not current_user.is_anonymous and plan != "free":
         raise HTTPException(
             status_code=403,
             detail={
@@ -807,7 +809,8 @@ async def speaking_next(
     )
     plan = get_plan_from_profile(profile.data[0] if profile.data else {})
     if plan == "free":
-        usage = _usage_payload(profile.data[0] if profile.data else {}, get_month_start_utc())
+        plan_limit = await run_sync(get_effective_speaking_limit, supabase, current_user.id, plan)
+        usage = _usage_payload(profile.data[0] if profile.data else {}, get_month_start_utc(), plan_limit)
         needed = 2 if roleplay == 1 else 1
         if usage["sessions_remaining"] < needed:
             raise HTTPException(
