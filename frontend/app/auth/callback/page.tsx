@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import api from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
 import { trackMetaEvent } from '@/lib/meta-pixel'
+import { getSafeReturnTo } from '@/lib/auth-redirect'
 import Link from 'next/link'
 
 // A brand-new OAuth signup creates the auth.users row and signs the user in
@@ -37,6 +38,11 @@ export default function AuthCallbackPage() {
       } else {
         trackEvent('login_completed', { method: 'oauth' })
         trackMetaEvent('UserLoggedIn', { method: 'oauth' }, { email: session.user.email })
+      }
+      const returnTo = getSafeReturnTo()
+      if (returnTo) {
+        router.push(returnTo)
+        return
       }
       try {
         const statusRes = await api.get('/onboarding/status')
