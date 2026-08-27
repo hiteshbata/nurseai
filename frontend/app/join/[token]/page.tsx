@@ -75,7 +75,9 @@ export default function JoinInvitePage() {
           Join {preview.institution_name} on SpeakOET
         </h2>
         <p className="text-muted-foreground mb-6">
-          You've been invited to practice {preview.modules.join(', ')} with SpeakOET.
+          {preview.modules.length > 0
+            ? `You've been invited to practice ${preview.modules.join(', ')} with SpeakOET.`
+            : "You've been invited to join SpeakOET."}
         </p>
 
         {authStatus === 'loading' && <Loader2 className="h-6 w-6 animate-spin mx-auto" />}
