@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase, signUp, signOut } from '@/lib/supabase'
+import { getSafeReturnTo } from '@/lib/auth-redirect'
 import { trackEvent } from '@/lib/analytics'
 import { trackMetaEvent } from '@/lib/meta-pixel'
 import toast from 'react-hot-toast'
@@ -35,6 +36,7 @@ function MicrosoftIcon() {
 
 export default function RegisterPage() {
   const router = useRouter()
+  const returnTo = getSafeReturnTo()
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' })
   const [isLoading, setIsLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
@@ -67,7 +69,8 @@ export default function RegisterPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + '/auth/callback',
+          redirectTo: window.location.origin + '/auth/callback' +
+            (returnTo ? '?returnTo=' + encodeURIComponent(returnTo) : ''),
         },
       })
       if (error) throw error
@@ -83,7 +86,8 @@ export default function RegisterPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'azure',
         options: {
-          redirectTo: window.location.origin + '/auth/callback',
+          redirectTo: window.location.origin + '/auth/callback' +
+            (returnTo ? '?returnTo=' + encodeURIComponent(returnTo) : ''),
           scopes: 'email',
         },
       })
@@ -100,20 +104,20 @@ export default function RegisterPage() {
     if (!validate()) return
     setIsLoading(true)
     try {
-      const data = await signUp(formData.email, formData.password, formData.name)
+      const emailRedirectTo = window.location.origin + '/auth/callback' +
+        (returnTo ? '?returnTo=' + encodeURIComponent(returnTo) : '')
+      const data = await signUp(formData.email, formData.password, formData.name, emailRedirectTo)
       trackEvent('signup_completed', { method: 'email' })
       trackMetaEvent('CompleteRegistration', { registration_method: 'email' }, { email: formData.email })
       if (data.session) {
         toast.success('Registration successful! Redirecting to setup...')
-        setTimeout(() => router.push('/onboarding'), 2000)
+        setTimeout(() => router.push(returnTo || '/onboarding'), 2000)
       } else {
-        // Registering while already signed in as someone else leaves that old
-        // session in place — sign out so the login page's authenticated-user
-        // redirect doesn't bounce back into the old account's dashboard.
         await signOut()
         toast.success('Registration successful! Check your email to confirm your account, then sign in.')
         setFormData({ name: '', email: '', password: '', confirmPassword: '' })
-        setTimeout(() => router.push('/auth/login'), 2000)
+        const loginUrl = '/auth/login' + (returnTo ? '?returnTo=' + encodeURIComponent(returnTo) : '')
+        setTimeout(() => router.push(loginUrl), 2000)
       }
     } catch (error: any) {
       setError(error.message || 'Registration failed')

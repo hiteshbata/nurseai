@@ -130,13 +130,16 @@ export function humanizeAuthError(message: string | undefined): string {
   return message || 'Something went wrong. Please try again.'
 }
 
-export async function signUp(email: string, password: string, name: string) {
+export async function signUp(email: string, password: string, name: string, emailRedirectTo?: string) {
   const client = getClient()
   if (!client) throw new Error('Supabase is not configured.')
   const { data, error } = await client.auth.signUp({
     email,
     password,
-    options: { data: { name } },
+    options: {
+      data: { name },
+      ...(emailRedirectTo ? { emailRedirectTo } : {}),
+    },
   })
   if (error) throw error
   return data
