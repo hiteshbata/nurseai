@@ -38,6 +38,7 @@ function MicrosoftIcon() {
 export default function LoginPage() {
   const router = useRouter()
   const { session, status: authStatus } = useSupabaseSession()
+  const returnTo = getSafeReturnTo()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -305,7 +306,7 @@ export default function LoginPage() {
             <p className="text-center text-sm text-muted-foreground">
               Don&apos;t have an account?{' '}
               <Link
-                href="/auth/register"
+                href={returnTo ? '/auth/register?returnTo=' + encodeURIComponent(returnTo) : '/auth/register'}
                 className="font-semibold text-foreground transition-colors hover:text-emerald-600 focus-visible:outline-none focus-visible:underline"
               >
                 Get Started Free

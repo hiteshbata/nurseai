@@ -104,8 +104,9 @@ export default function RegisterPage() {
     if (!validate()) return
     setIsLoading(true)
     try {
-      const emailRedirectTo = window.location.origin + '/auth/callback' +
-        (returnTo ? '?returnTo=' + encodeURIComponent(returnTo) : '')
+      const emailRedirectTo = returnTo
+        ? window.location.origin + '/auth/callback?returnTo=' + encodeURIComponent(returnTo)
+        : undefined
       const data = await signUp(formData.email, formData.password, formData.name, emailRedirectTo)
       trackEvent('signup_completed', { method: 'email' })
       trackMetaEvent('CompleteRegistration', { registration_method: 'email' }, { email: formData.email })
@@ -113,6 +114,9 @@ export default function RegisterPage() {
         toast.success('Registration successful! Redirecting to setup...')
         setTimeout(() => router.push(returnTo || '/onboarding'), 2000)
       } else {
+        // Registering while already signed in as someone else leaves that old
+        // session in place -- sign out so the login page's authenticated-user
+        // redirect doesn't bounce back into the old account's dashboard.
         await signOut()
         toast.success('Registration successful! Check your email to confirm your account, then sign in.')
         setFormData({ name: '', email: '', password: '', confirmPassword: '' })
@@ -344,7 +348,7 @@ export default function RegisterPage() {
             <p className="text-center text-sm text-muted-foreground">
               Already have an account?{' '}
               <Link
-                href="/auth/login"
+                href={returnTo ? '/auth/login?returnTo=' + encodeURIComponent(returnTo) : '/auth/login'}
                 className="font-semibold text-foreground transition-colors hover:text-emerald-600 focus-visible:outline-none focus-visible:underline"
               >
                 Sign In
