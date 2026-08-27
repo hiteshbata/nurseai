@@ -489,6 +489,22 @@ POST /institutions/invites/{token}/accept
 
 ### 7.4 Security tradeoffs, documented as asked
 
+- **Deployment prerequisite — Supabase Redirect URL allow-list (found during
+  final review, not just a tradeoff):** `redirectTo`/`emailRedirectTo` now
+  carry a query string (`…/auth/callback?returnTo=%2Fjoin%2F<token>`).
+  GoTrue glob-matches the *full* URL against the project's configured
+  Redirect URLs. If either Supabase project (QA and prod both need
+  checking) has an exact, no-wildcard entry like
+  `https://app.speakoet.com/auth/callback`, a query-bearing URL fails that
+  match and GoTrue silently falls back to the Site URL — the OAuth and
+  email-confirmation branches of this flow would drop the invite with no
+  error surfaced anywhere in the app. Before the pilot: confirm both
+  projects' Authentication → URL Configuration includes a wildcard
+  pattern covering the callback path (e.g. `https://app.speakoet.com/**`,
+  the QA project's own equivalent, and `http://localhost:3000/**` for
+  local dev) rather than only an exact match. This is an external
+  dashboard change, not something this branch's code can enforce or
+  verify.
 - **Browser history / URL bar**: `returnTo=/join/<token>` sits in the URL
   through login/register/callback. This is the *same* exposure class the
   existing mechanism already accepts for any protected deep link — not a
