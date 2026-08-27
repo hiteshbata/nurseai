@@ -50,7 +50,7 @@ from app.services.listening_audio import (
 )
 from app.services.ai_scoring import _call_ai
 from app.services.mock_reference_guard import block_if_referenced_by_mock_test
-from app.services.plan_gating import has_listening_access, has_free_module_attempt, get_plan_from_profile
+from app.services.plan_gating import has_effective_module_access, has_free_module_attempt, get_plan_from_profile
 from app.services.assessment_versioning import (
     publish_listening_version, latest_version_id, get_version_row,
     listening_snapshot_student_payload, listening_snapshot_questions_by_id, listening_snapshot_transcripts,
@@ -115,7 +115,7 @@ def _require_listening_plan(supabase, current_user: UserInfo, test_id: Optional[
     eats the other."""
     profile = supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute()
     plan = get_plan_from_profile(profile.data[0] if profile.data else {})
-    if has_listening_access(plan):
+    if has_effective_module_access(supabase, current_user.id, plan, "listening"):
         return plan
     if plan == "free" and has_free_module_attempt(supabase, current_user.id, "listening"):
         return plan
@@ -656,7 +656,7 @@ def _require_coach_plan(supabase, current_user: UserInfo) -> str:
     Basic/Pro/Elite allowed)."""
     profile = supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute()
     plan = get_plan_from_profile(profile.data[0] if profile.data else {})
-    if not has_listening_access(plan):
+    if not has_effective_module_access(supabase, current_user.id, plan, "listening"):
         raise HTTPException(
             status_code=403,
             detail={

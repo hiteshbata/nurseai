@@ -4,8 +4,8 @@ from app.core.config import settings
 from app.routers.auth import get_current_user, get_user_supabase, UserInfo
 from app.core.supabase import get_supabase
 from supabase import Client
-from app.core.plans import PLAN_LIMITS
 from app.services.plan_gating import get_plan_from_profile, parse_timestamp
+from app.services.institution_access import get_effective_speaking_limit
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -20,17 +20,20 @@ def get_month_start_utc():
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
 
 
-def _usage_payload(profile_data: dict, month_start: str) -> dict:
+def _usage_payload(profile_data: dict, month_start: str, plan_limit: int) -> dict:
     """Pure computation, no DB access. If the stored reset_date is stale,
     reports sessions_used as 0 without writing -- the actual reset write
     only happens on the check-and-increment (POST) path.
+
+    plan_limit is resolved by the caller (get_effective_speaking_limit) --
+    an active institution speaking grant replaces the B2C plan limit
+    entirely, so this function never re-derives it from PLAN_LIMITS itself.
 
     bonus_sessions (from referrals/admin grants) is a spend-down wallet, not
     a monthly allowance: it's only drawn on once the plan's own monthly quota
     is exhausted, and unlike sessions_used_this_month it's never reset --
     unspent bonus carries over across months untouched."""
     plan = get_plan_from_profile(profile_data)
-    plan_limit = PLAN_LIMITS.get(plan, 3)
     bonus_sessions = profile_data.get("bonus_sessions", 0)
 
     reset_date = profile_data.get("sessions_reset_date")
@@ -61,7 +64,7 @@ def get_session_usage(current_user: UserInfo = Depends(get_current_user)):
     ).eq("user_id", current_user.id).execute()
 
     if not profile.data:
-        free_limit = PLAN_LIMITS["free"]
+        free_limit = get_effective_speaking_limit(supabase, current_user.id, "free")
         return {
             "sessions_used": 0,
             "sessions_limit": free_limit,
@@ -72,7 +75,9 @@ def get_session_usage(current_user: UserInfo = Depends(get_current_user)):
             "plan_expires_at": None,
         }
 
-    return _usage_payload(profile.data[0], get_month_start_utc())
+    plan = get_plan_from_profile(profile.data[0])
+    plan_limit = get_effective_speaking_limit(supabase, current_user.id, plan)
+    return _usage_payload(profile.data[0], get_month_start_utc(), plan_limit)
 
 
 @router.post("/check-and-increment")
@@ -118,7 +123,9 @@ def check_and_increment_session(
                 "sessions_reset_date": month_start,
             }
 
-        usage = _usage_payload(profile_data, month_start)
+        plan = get_plan_from_profile(profile_data)
+        plan_limit = get_effective_speaking_limit(supabase, current_user.id, plan)
+        usage = _usage_payload(profile_data, month_start, plan_limit)
 
         if usage["sessions_remaining"] <= 0:
             raise HTTPException(
@@ -134,7 +141,6 @@ def check_and_increment_session(
         # Spend the plan's own monthly quota before touching the bonus
         # wallet, so a never-expiring referral/bonus credit is saved for
         # whenever the plan quota runs dry rather than drained first.
-        plan_limit = PLAN_LIMITS.get(usage["plan"], 3)
         spending_bonus = usage["sessions_used"] >= plan_limit
 
         # Compare-and-swap: only succeeds if the counter being spent hasn't

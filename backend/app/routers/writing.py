@@ -10,7 +10,7 @@ from app.routers.admin import require_admin
 from app.routers.mock import has_mock_section_access
 from app.core.feature_flags import require_feature
 from app.services.ai_scoring import score_writing, _call_ai, WRITING_CRITERIA_MAX
-from app.services.plan_gating import has_writing_access, get_plan_from_profile
+from app.services.plan_gating import has_effective_module_access, get_plan_from_profile
 from app.services.skill_graph import record_skill_observations, get_weakness
 from app.services.observation_service import validate_and_normalize
 from app.services.coaching_messages import RECOMMENDATION_REASON, ACTIONABLE_IMPROVEMENT, CONFIDENCE_MESSAGE
@@ -109,7 +109,7 @@ async def _require_writing_plan(supabase, user_id: str, scenario_id: Optional[in
         supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", user_id).execute
     )
     plan = get_plan_from_profile(profile.data[0] if profile.data else {})
-    if has_writing_access(plan):
+    if await run_sync(has_effective_module_access, supabase, user_id, plan, "writing"):
         return plan
     if scenario_id is not None and has_mock_section_access(supabase, user_id, "writing", scenario_id):
         return plan

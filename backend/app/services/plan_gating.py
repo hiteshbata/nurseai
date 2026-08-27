@@ -138,6 +138,29 @@ def has_study_plan_access(plan: str) -> bool:
     return plan in STUDY_PLAN_PLANS
 
 
+_MODULE_PLAN_GATES = {
+    "reading": has_reading_access,
+    "listening": has_listening_access,
+    "writing": has_writing_access,
+    "mock_tests": has_mock_test_access,
+}
+
+
+def has_effective_module_access(supabase, user_id: str, plan: str, module: str) -> bool:
+    """Single source of truth for module authorization: B2C plan access OR
+    an active institution grant (see app.services.institution_access). Every
+    module gate (reading/listening/writing/mock) should call this instead of
+    its own has_X_access(plan) directly, so a future institution grant is
+    enforced at the same backend boundary rather than only in the frontend.
+    "speaking" has no boolean gate here -- it's quota-based, not plan-gated
+    (see institution_access.get_effective_speaking_limit)."""
+    b2c_gate = _MODULE_PLAN_GATES.get(module)
+    if b2c_gate is not None and b2c_gate(plan):
+        return True
+    from app.services.institution_access import has_institution_module_access
+    return has_institution_module_access(supabase, user_id, module)
+
+
 def get_scoring_criteria_count(plan: str) -> int:
     """All plans now score against the full 9 OET criteria — differentiation
     between tiers is the scoring model (see get_scoring_purpose), not criteria
