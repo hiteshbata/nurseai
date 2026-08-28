@@ -83,6 +83,11 @@ class FakeQuery:
             return self._exec_user_profiles()
         if self.table_name == "session_usage":
             return self._exec_session_usage()
+        if self.table_name == "institution_members":
+            # No institution ties in these tests -- effective quota must
+            # equal the plain B2C plan limit (see test_institution_access.py
+            # for the institution-quota-override behavior itself).
+            return FakeResult([])
         raise AssertionError(f"unexpected table {self.table_name!r}")
 
     def _match_profile(self):

@@ -27,7 +27,7 @@ from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo, _client_ip
 from app.routers.admin import require_admin, require_owner
 from app.services.plan_gating import has_effective_module_access, get_plan_from_profile
-from app.services.institution_access import get_effective_speaking_limit
+from app.services.institution_access import get_effective_speaking_limit, is_active_institution_member
 from app.routers.sessions import _usage_payload, get_month_start_utc
 from app.services.assessment_versioning import (
     publish_mock_version, latest_version_id, get_version_row,
@@ -360,7 +360,14 @@ async def start_mock(req: StartMockRequest, request: Request, current_user: User
     # instead (one lifetime attempt, an IP rate limit for anonymous), not by plan.
     # Basic/Pro get neither: Mock Test stays an Elite-or-free-trial feature.
     has_mock_access = await run_sync(has_effective_module_access, supabase, current_user.id, plan, "mock_tests")
-    if not has_mock_access and not current_user.is_anonymous and plan != "free":
+    # An active institution member on the free plan does not get the
+    # anonymous/free-plan lifetime-attempt bypass below -- their access is
+    # governed entirely by their institution's module grants, same as
+    # reading/listening (see is_active_institution_member).
+    is_institution_member = not current_user.is_anonymous and await run_sync(
+        is_active_institution_member, supabase, current_user.id
+    )
+    if not has_mock_access and not current_user.is_anonymous and (plan != "free" or is_institution_member):
         raise HTTPException(
             status_code=403,
             detail={
@@ -389,9 +396,11 @@ async def start_mock(req: StartMockRequest, request: Request, current_user: User
         session = await _ensure_section_started(supabase, session)
         return _client_payload(session)
 
-    if current_user.is_anonymous or plan == "free":
+    if not has_mock_access and (current_user.is_anonymous or plan == "free"):
         # One lifetime free attempt per anonymous or free-plan account, regardless
         # of its status -- a completed or awaiting-speaking mock still counts as used.
+        # Skipped entirely when has_mock_access is already True (e.g. an institution
+        # grant enabled mock_tests) -- that access isn't capped at one attempt.
         prior = await run_sync(
             supabase.table("mock_test_sessions").select("id").eq("user_id", current_user.id).limit(1).execute
         )
