@@ -104,9 +104,8 @@ export default function RegisterPage() {
     if (!validate()) return
     setIsLoading(true)
     try {
-      const emailRedirectTo = returnTo
-        ? window.location.origin + '/auth/callback?returnTo=' + encodeURIComponent(returnTo)
-        : undefined
+      const emailRedirectTo = window.location.origin + '/auth/callback' +
+        (returnTo ? '?returnTo=' + encodeURIComponent(returnTo) : '')
       const data = await signUp(formData.email, formData.password, formData.name, emailRedirectTo)
       trackEvent('signup_completed', { method: 'email' })
       trackMetaEvent('CompleteRegistration', { registration_method: 'email' }, { email: formData.email })
