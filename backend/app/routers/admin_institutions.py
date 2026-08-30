@@ -550,6 +550,17 @@ def _resolve_auth_user(supabase, email: str):
     return user.id, "unconfirmed"
 
 
+def _is_concurrent_account_creation_race(exc: Exception) -> bool:
+    """True only for Supabase Auth's exact "Database error saving new user"
+    signature -- the specific 500 GoTrue returns to the LOSING side of two
+    concurrent invite_user_by_email calls for the same brand-new email, when
+    its own users.email unique constraint fires (observed live in QA Phase
+    5.3b). Narrow substring match, same convention as _resolve_auth_user's
+    "not found" check above -- anything else (rate limit, network error,
+    a genuine Auth outage) must keep surfacing as 502, not be reclassified."""
+    return "database error saving new user" in str(exc).lower()
+
+
 def _other_active_staff_institution(supabase, user_id: str, institution_id: str) -> Optional[str]:
     """id of another institution where `user_id` already holds an active
     teacher/institution_admin membership, or None. Best-effort, not
@@ -590,7 +601,22 @@ def assign_institution_staff(
             invite_resp = supabase.auth.admin.invite_user_by_email(
                 req.email, {"redirect_to": f"{settings.FRONTEND_URL}/auth/callback"},
             )
-        except Exception:
+        except Exception as e:
+            if _is_concurrent_account_creation_race(e):
+                # Two concurrent requests for the SAME brand-new email both
+                # passed _resolve_auth_user's pre-invite existence check (no
+                # Auth user yet), then raced inside Supabase Auth's own user
+                # creation -- the loser hits Auth's users.email unique
+                # constraint and GoTrue surfaces it as a generic 500 with
+                # this exact message (observed live in QA Phase 5.3b), not
+                # as a structured "already exists" error. No membership row
+                # or Auth user is created on this path, so there is nothing
+                # to roll back -- the client should simply retry, which will
+                # now resolve the winner's Auth user via generate_link.
+                logger.info(
+                    "institution staff assignment: concurrent account creation race | email=%s", req.email,
+                )
+                raise HTTPException(status_code=409, detail={"error": "concurrent_account_creation"})
             logger.exception("institution staff assignment: invite_user_by_email failed | email=%s", req.email)
             raise HTTPException(status_code=502, detail="Could not create account. Try again.")
         user_id = invite_resp.user.id
