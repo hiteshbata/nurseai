@@ -323,7 +323,155 @@ No files under `institution_access.py`, `institution_admin.py`, `institution.py`
 
 ---
 
+## 17. Phase 5.3 — Staff assignment endpoint (final revision)
+
+**Status: design only. No code, schema, QA, or production changes made while producing this section.**
+**Date:** 2026-08-29. **Supersedes:** §2's `POST /admin/institutions/{id}/admins` row, §4's provisioning workflow, §9's `InstitutionAdminAssign` model, and §8's `institution_admin_assigned` audit event. Everything else in §1-§16 is unchanged.
+
+Confirmed by grep before writing this: no `/institution/activate` route exists anywhere in `backend/app` today. §17.1 is a decision not to build one, not a removal of existing code.
+
+### 17.1 No `POST /institution/activate`
+
+Not built. `AuthCallbackPage` (frontend `app/auth/callback`) and `require_active_institution_role()` (`backend/app/services/institution_admin.py:66-87`) are **not modified** by this phase.
+
+**Why:** a staff-created `institution_members` row is itself the authoritative provisioning action — writing `status='active'` at creation time *is* activation. A second "activate" endpoint would be a redundant state machine for a state that's already correct the moment staff creates it. Authentication (does this person have a working login) stays fully separate from authorization (does this login have institution access) — exactly the split `require_active_institution_role()` already enforces today by reading `institution_members.status` directly.
+
+**Lifecycle (all three branches land in the same place — an active membership row, checked by unmodified existing code):**
+
+- Existing confirmed Auth user → `institution_members` row inserted with `status='active'` directly. Next login already carries institution access.
+- New Auth user → `invite_user_by_email()` creates the `auth.users` row → `institution_members` row inserted `status='active'` in the same request → Supabase's native invite email lets the user set a password → they log in → `require_active_institution_role()` finds the already-active row, unchanged, no second acceptance step.
+- Existing **unconfirmed** Auth user (pending signup or a prior invite) → the staff assignment is itself the authorization decision, so `institution_members` is still inserted `status='active'` in the same request, not `status='invited'`. The Auth invite is reissued best-effort (`invite_user_by_email`, resend) purely to give the user a fresh link to finish *authentication* — a resend failure surfaces as a `warning` in the response and never downgrades the membership row. Once they complete Auth setup, their already-active membership grants institution access immediately; no separate acceptance step reads or flips this row.
+
+### 17.2 Route
+
+Replaces §2's admin-assignment row:
+
+| Method | Path | Min staff role | Purpose |
+|---|---|---|---|
+| POST | `/admin/institutions/{institution_id}/staff` | admin | Assign a teacher or institution_admin to an institution (§17.4-17.6) |
+
+Lives in `backend/app/routers/admin_institutions.py` (existing file, existing router, existing `require_admin`, existing `_get_institution_or_404` for the path-scoped existence check — no new file).
+
+Replaces §9's `InstitutionAdminAssign`:
+
+```python
+StaffRole = Literal["teacher", "institution_admin"]
+
+class StaffAssignRequest(BaseModel):
+    email: EmailStr
+    role: StaffRole
+```
+
+No `user_id` field, no `institution_id` field in the body — `institution_id` comes from the path (validated by the existing `_get_institution_or_404`, §7's convention), `user_id` is resolved server-side (§17.3), `role` is a closed two-value `Literal` so no other `institution_members.role` value (`student`) is reachable through this endpoint — matches §7's existing "no arbitrary `institution_members.role` mutation" control, just widened from a hardcoded single value to a two-value enum.
+
+### 17.3 Existing Auth user resolution — QA-gated, not decided yet
+
+`public.users` (the mirror table, `supabase/migrations/20260718000800_users_mirror.sql`) is **not** authoritative — it's populated lazily on login (`get_current_user`, `auth.py`) and can lag or miss users who've never hit an authenticated route since the mirror was introduced (2026-07-18). It may be used as a non-authoritative fast-path hint at most, never as the source of truth for "does this email have an Auth account."
+
+Checked the installed SDK (`supabase==2.5.3`, `backend/venv`) directly — `gotrue._sync.gotrue_admin_api.SyncGoTrueAdminAPI` exposes: `create_user`, `delete_user`, `generate_link`, `get_user_by_id`, `invite_user_by_email`, `list_users`, `sign_out`, `update_user_by_id`. **No `get_user_by_email` and no email filter on `list_users`** (`list_users(page, per_page)` only — no query param). So the direct "email → user_id" lookup the ideal design wants does not exist in this SDK version. Two candidates, in preference order, both **must be verified in QA (§17.10) before this endpoint is implemented**:
+
+1. **Preferred — call `invite_user_by_email(email)` first, unconditionally.** It's also the exact call needed to provision a genuinely new user, so the happy path costs nothing extra. QA must confirm: what does this call return/raise when the email already has an Auth account — a distinguishable error, and does that error (or a success-with-existing-user response, if GoTrue no-ops instead of erroring) expose the existing `user_id`?
+2. **Fallback if (1) doesn't expose `user_id` on the existing-user branch — `generate_link({"type": "recovery", "email": ...})`.** This returns the full `User` object (including `id` and confirmation state) without an email actually going out (the admin API only *generates* the link; nothing sends it unless the caller relays it, and this endpoint never does). QA must confirm in the QA project specifically: no session invalidation, no unwanted side effect on the target account, no email actually dispatched, before this is used as a standing identity probe rather than a one-off.
+
+**Explicitly excluded:** paginating `list_users` to find an email by scanning. Ruled out by instruction regardless of QA outcome — if neither (1) nor (2) verifies safe in QA, this endpoint is blocked pending a Supabase SDK upgrade to a version exposing a direct lookup, not implemented with a full-table scan as a stopgap.
+
+This section is intentionally a decision tree, not a decision — §17.10 is the concrete QA step that resolves it, and the final `_resolve_auth_user(email)` helper in `admin_institutions.py` gets written only after that.
+
+### 17.4 Membership resolution — create-only, never update
+
+The endpoint's entire write surface is: at most one `INSERT` into `institution_members`. It never runs `UPDATE institution_members SET role = ...` for an existing row — the table's own `UNIQUE(institution_id, user_id)` constraint (`20260826000000_institution_foundation.sql:56`) already makes "one row per user per institution" a DB-level fact; this endpoint just needs to branch its HTTP response correctly around that fact rather than trying to promote/demote through it.
+
+Server-side sequence, all within the existing `institution_id` 404-checked scope (§7):
+
+1. `_check_existing_membership(institution_id, user_id)` — a plain `SELECT` on `institution_members` for the `(institution_id, user_id)` pair, run **before** any insert (so the response can be discriminated by status/role, which a bare unique-violation catch can't do).
+2. Branch on the result:
+
+| Existing row for (institution_id, user_id) | Response |
+|---|---|
+| none | proceed to §17.5 cross-institution check, then create `status='active'`, `role=<requested>` → **201** |
+| `status='active'`, `role='institution_admin'` | **200**, "already assigned" (idempotent no-op — an existing admin already outranks any request through this endpoint, whether the request asked for `teacher` or `institution_admin`) |
+| `status='active'`, `role` in (`teacher`, `student`) | **409**, generic "already a member with a different role" — no implicit promotion/demotion, matches §MEMBERSHIP-4 exactly |
+| `status='revoked'` | **409**, generic "revoked membership" — no implicit reactivation |
+| `status='invited'` | **409**, generic "pending membership" — no implicit role change |
+
+3. Race safety net: if the pre-check finds no row but the subsequent `INSERT` still hits the unique constraint (concurrent second call), catch it the same way §12/§13 already catch `institutions.slug` duplicate-key errors (`admin_institutions.py:416-420` convention) and return a generic 409 rather than a 500 — this is a defensive fallback for a genuine race, not the primary branching logic.
+
+### 17.5 Cross-institution conflict — MVP-wide single active staff membership
+
+Before creating a **new** row (i.e., only in the "no existing row" branch of §17.4), check whether the target user already holds an active qualifying staff membership (`role` in `teacher`, `institution_admin`) in **any other** institution. If so: **409**, generic safe wording (e.g. "user already has an active staff role at another institution"), and no row is created.
+
+Reuse, don't reimplement: `institution_admin.py:27-63`'s `get_qualifying_memberships(supabase, user_id, min_role="teacher")` already returns exactly this set (active memberships with `ROLE_RANK[role] >= ROLE_RANK["teacher"]`) — call it as-is, filter out rows matching the *target* `institution_id` (that case is §17.4's territory, not this check), and 409 if anything remains.
+
+**Why:** `require_active_institution_role()` (`institution_admin.py:66-87`) already fails closed with a `409 multiple_qualifying_institutions` the moment a user has more than one qualifying membership, and there is no institution switcher UI yet. Letting this endpoint create a second one would immediately lock the newly-assigned staff member out of `/institution/*` entirely — worse than not assigning them at all. Not a new rule invented for this endpoint; it's this endpoint declining to create a state the *existing*, unmodified dependency already can't serve.
+
+### 17.6 New Auth user path
+
+When §17.3 resolves "no existing Auth account": call `invite_user_by_email(email)`, then in the same request create `institution_members` with `role=<requested>`, `status='active'` (not `'invited'` — see §17.1, the Auth invite already carries the "pending" state; a second `invited` status on the membership row would be a redundant, divergeable copy of state GoTrue already owns), `joined_at=now()`, `invited_by=<staff user id>`.
+
+No separate "invited" membership status is introduced for this flow — the two systems' pending-states stay owned by their respective systems: GoTrue owns "has this person set a password yet," `institution_members.status` only ever answers "does this membership grant access," which is `true` (`active`) from the moment staff assigns it.
+
+### 17.7 Failure matrix
+
+Auth and Postgres are two separate systems with no shared transaction — this table is exhaustive over both failure points:
+
+| Step | Outcome | Action |
+|---|---|---|
+| `invite_user_by_email` succeeds | — | proceed to membership insert |
+| `invite_user_by_email` fails (existing account, per §17.3 branch 1) | not a failure | proceed to §17.3 resolution, not this path |
+| `invite_user_by_email` fails (genuine error — network, invalid email, GoTrue 5xx) | Auth user not created | **do not** create a membership row; return an error to the caller; nothing to roll back |
+| Auth invite succeeded, membership `INSERT` fails | orphaned Auth user, no membership | **do not** delete the Auth user automatically (§ per instruction — an invited-but-unassigned Auth account is a recoverable state, not a security problem); retry the membership insert once, same request |
+| Retry also fails | still orphaned | emit an audit failure event (`institution_staff_assign_failed`, §17.8) and return a retryable error (5xx or 409 depending on cause) to the caller |
+| Caller retries the whole request later | Auth user already exists this time | §17.3's existing-user branch picks it up correctly and continues — the flow is naturally idempotent-safe on retry because §17.4's pre-check runs every time, not just on the "new user" path |
+
+### 17.8 Audit
+
+Reuse `_write_audit_log()` verbatim (`admin.py:93-114`), same call shape as every other event in §8. Two events (success and the failure case from §17.7):
+
+| Action | target_type | target_id | detail |
+|---|---|---|---|
+| `institution_staff_assigned` | `institution` | institution id | `{email, role, auth_state: "existing" \| "invited", membership_status: "active"}` |
+| `institution_staff_assign_failed` | `institution` | institution id | `{email, role, auth_state, membership_status: "insert_failed"}` |
+
+Never logged, in either event or anywhere else in this flow: password, token, invite link, or any other Auth credential — matches §7's existing "Auth credential exposure" control (`invite_user_by_email` never returns a password; nothing new to leak here since this phase adds no credential-shaped data to the flow).
+
+### 17.9 Rate limit
+
+One `SlidingWindowRateLimiter` instance (`backend/app/core/rate_limit.py:8-55`, same class `institution.py:31-33`'s `invite_create_rate_limiter` already uses), keyed on the **acting staff user's** id (`current_user.id`) since this is a staff-initiated action, not a target-user-initiated one. Suggested starting point `max_calls=20, window_seconds=3600` — the same numbers as the existing self-serve invite limiter, tunable later, not load-bearing enough to need its own analysis at pilot scale.
+
+### 17.10 QA prerequisite — run before writing the endpoint
+
+This is investigation, not implementation — a scratch script or direct calls against the **QA** Supabase project only (per the existing QA environment from Milestones 1/3/4 — never production), to resolve §17.3's open branch. Cases to run, each observed for: invite email sent (Y/N), Auth user created (Y/N), what the call returns/raises, whether `user_id` is recoverable from that return/raise, login/set-password behavior afterward, and any redirect behavior:
+
+1. `invite_user_by_email` on an email with no existing Auth account.
+2. `invite_user_by_email` on an email with an existing **confirmed** Auth account.
+3. `invite_user_by_email` on an email with an existing **unconfirmed** Auth account (invited but never completed).
+4. `invite_user_by_email` on an email that was already invited once before (repeat of case 1/3, sent twice).
+5. `generate_link({"type": "recovery", ...})` on an existing confirmed account — confirm no email actually sends, no session invalidated, no other observable side effect, before it's approved as the §17.3 fallback.
+
+Outcome of this step decides which branch of §17.3 the implementation actually uses — write it up before touching `admin_institutions.py`.
+
+### 17.11 Exact files (when implementation is authorized)
+
+Backend, touched, additive only:
+
+- `backend/app/routers/admin_institutions.py` — new `StaffRole`/`StaffAssignRequest` models, new `POST .../staff` route, new `_resolve_auth_user`/`_check_existing_membership`/`_check_cross_institution_conflict` helpers, new rate limiter instance. Existing routes/models in this file untouched.
+- `backend/tests/test_admin_institutions.py` — new cases covering §17.4's five-way branch, §17.5's cross-institution 409, §17.6's new-user path, §17.7's failure/retry matrix, §17.9's rate limit, following the existing `_FakeSupabase`/`monkeypatch` fixture pattern already in this file (`test_admin_institutions.py:26-227`).
+- `docs/PHASE5_INSTITUTION_ADMIN_SPEC.md` — this section.
+
+Not touched, confirmed by this section:
+
+- `backend/app/routers/institution.py` (no `/activate` route added)
+- `backend/app/services/institution_admin.py` (`require_active_institution_role`, `get_qualifying_memberships` — read/reused, never edited)
+- `frontend/app/auth/callback` (`AuthCallbackPage`)
+- Any migration — `institution_members`'s existing `status` CHECK (`invited`,`active`,`revoked`) and `role` CHECK (`institution_admin`,`teacher`,`student`) already cover every value this design writes.
+
+No frontend "assign staff" UI is speced here — out of scope for this pass, follows §16 step 6 once the backend route is live.
+
+---
+
 ## Final recommendation
+
+**Amended by §17 (2026-08-29):** the admin-assignment piece below is superseded by §17's `POST /admin/institutions/{institution_id}/staff` (role-selectable teacher/institution_admin, create-only membership rules, no `/institution/activate`). §1-§16 otherwise stand as the recommendation.
 
 - **Recommended Phase 5 MVP:** exactly the scope in §1-§10 — one new staff-only router (`admin_institutions.py`) and three new frontend pages, entirely additive, zero schema changes, reusing `require_admin`/`require_role`/`_write_audit_log`/`institution_members`/`institution_modules` as-is. First institution_admin is assigned via direct staff-authorized `institution_members` insert (using Supabase's native `invite_user_by_email` when the account doesn't exist yet), **not** via the existing public invite/RPC flow, because that flow is deliberately hardened to reject non-student roles.
 - **What NOT to build yet:** institution deletion, generic role editing, usage analytics/charts, bulk import, self-service signup. All listed in §14.
