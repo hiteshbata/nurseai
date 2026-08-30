@@ -1061,6 +1061,66 @@ def test_staff_assign_new_user_invite_failure_creates_no_membership(monkeypatch)
     assert fake.tables.get("institution_members", []) == []
 
 
+def test_staff_assign_concurrent_new_email_auth_race_returns_409_not_502(monkeypatch):
+    """Two simultaneous requests for the SAME brand-new email: request A's
+    invite_user_by_email wins and creates the Auth user; request B's Auth
+    call loses the race inside Supabase Auth itself and GoTrue returns a
+    generic 500 "Database error saving new user" (observed live in QA
+    Phase 5.3b) -- distinct from the insert-level duplicate-key race below,
+    which happens AFTER both sides already have a user_id. The loser must
+    get a clean 409, not the blanket 502 an unrelated invite failure gets,
+    and must create no membership row."""
+    inst_id = str(uuid.uuid4())
+
+    class _RacingAdminAuth(_FakeAdminAuth):
+        def invite_user_by_email(self, email, options=None):
+            self.invite_calls.append(email)
+            raise Exception("AuthApiError: Database error saving new user")
+
+    fake = _staff_fake(inst_id, auth_admin=_RacingAdminAuth())
+    with pytest.raises(HTTPException) as excinfo:
+        _assign(monkeypatch, fake, inst_id, "racing@example.com", "teacher")
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.detail == {"error": "concurrent_account_creation"}
+    assert fake.tables.get("institution_members", []) == []
+
+
+def test_staff_assign_unrelated_invite_failure_still_returns_502_not_409(monkeypatch):
+    """Guards the narrowness of the race detection above: a generic Auth
+    failure whose message does not match the exact "database error saving
+    new user" signature (rate limit, outage, anything else) must keep
+    surfacing as 502, never be reclassified as a conflict."""
+    inst_id = str(uuid.uuid4())
+
+    class _OutageAdminAuth(_FakeAdminAuth):
+        def invite_user_by_email(self, email, options=None):
+            self.invite_calls.append(email)
+            raise Exception("AuthApiError: internal server error")
+
+    fake = _staff_fake(inst_id, auth_admin=_OutageAdminAuth())
+    with pytest.raises(HTTPException) as excinfo:
+        _assign(monkeypatch, fake, inst_id, "outage@example.com", "teacher")
+    assert excinfo.value.status_code == 502
+    assert fake.tables.get("institution_members", []) == []
+
+
+def test_is_concurrent_account_creation_race_detection_is_narrow():
+    """Unit-level check on the classifier itself: case-insensitive match on
+    the exact GoTrue signature, nothing broader."""
+    assert ai_module._is_concurrent_account_creation_race(
+        Exception("AuthApiError: Database error saving new user")
+    )
+    assert ai_module._is_concurrent_account_creation_race(
+        Exception("DATABASE ERROR SAVING NEW USER")
+    )
+    assert not ai_module._is_concurrent_account_creation_race(
+        Exception("AuthApiError: Error sending invite email")
+    )
+    assert not ai_module._is_concurrent_account_creation_race(
+        Exception("AuthApiError: rate limit exceeded")
+    )
+
+
 # ── Existing-membership rules ────────────────────────────────────────────
 
 def test_staff_assign_existing_student_membership_returns_409(monkeypatch):
