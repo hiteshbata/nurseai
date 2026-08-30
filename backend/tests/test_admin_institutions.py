@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest  # noqa: E402
 from pydantic import ValidationError  # noqa: E402
-from fastapi import HTTPException  # noqa: E402
+from fastapi import HTTPException, Response  # noqa: E402
 
 from app.routers import admin as admin_module  # noqa: E402
 from app.routers import admin_institutions as ai_module  # noqa: E402
@@ -779,3 +779,547 @@ def test_phase52_adds_no_new_module_level_dependency_functions():
     require_active_institution_role, keeping the two role systems isolated
     exactly as Phase 5.1 established (spec Section 7)."""
     assert not hasattr(ai_module, "require_active_institution_role")
+
+
+# ── POST /admin/institutions/{id}/staff (Phase 5.3b) ────────────────────
+# Auth resolution is stubbed with a fake standing in for Supabase Auth's
+# admin API (generate_link/invite_user_by_email) -- error strings and
+# creation semantics below match what was observed live against the QA
+# project's Supabase Auth in Phase 5.3a
+# (backend/scripts/qa_verify_phase5_3a_auth_behavior.py), not guessed.
+
+class _FakeAuthUser:
+    def __init__(self, id, email, email_confirmed_at=None):
+        self.id = id
+        self.email = email
+        self.email_confirmed_at = email_confirmed_at
+
+
+class _FakeLinkResp:
+    def __init__(self, user):
+        self.user = user
+
+
+class _FakeAdminAuth:
+    def __init__(self, users=None, invite_fails=False):
+        self.users = {u.email: u for u in (users or [])}
+        self.invite_fails = invite_fails
+        self.invite_calls = []
+        self.generate_link_calls = []
+
+    def generate_link(self, params):
+        email = params["email"]
+        self.generate_link_calls.append(email)
+        user = self.users.get(email)
+        if user is None:
+            raise Exception("AuthApiError: User with this email not found")
+        return _FakeLinkResp(user)
+
+    def invite_user_by_email(self, email, options=None):
+        self.invite_calls.append(email)
+        if self.invite_fails:
+            raise Exception("AuthApiError: Error sending invite email")
+        user = self.users.get(email)
+        if user is None:
+            user = _FakeAuthUser(id=str(uuid.uuid4()), email=email, email_confirmed_at=None)
+            self.users[email] = user
+        return _FakeLinkResp(user)
+
+
+class _FakeAuthNamespace:
+    def __init__(self, admin):
+        self.admin = admin
+
+
+def _staff_fake(institution_id, *, members=None, auth_admin=None):
+    fake = _FakeSupabase(institutions=[_institution(institution_id)], institution_members=members or [])
+    fake.auth = _FakeAuthNamespace(auth_admin if auth_admin is not None else _FakeAdminAuth())
+    return fake
+
+
+def _existing_membership_fake(inst_id, email, *, membership_role, membership_status, confirmed=True):
+    uid = str(uuid.uuid4())
+    auth_user = _FakeAuthUser(
+        id=uid, email=email,
+        email_confirmed_at="2026-01-01T00:00:00+00:00" if confirmed else None,
+    )
+    fake = _staff_fake(
+        inst_id,
+        members=[_membership(uid, inst_id, role=membership_role, status=membership_status)],
+        auth_admin=_FakeAdminAuth(users=[auth_user]),
+    )
+    return fake, uid
+
+
+def _assign(monkeypatch, fake, institution_id, email, role, current_user=None, stub_audit=True, capture_response=None):
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(ai_module.staff_assign_rate_limiter, "is_rate_limited", lambda key: False)
+    if stub_audit:
+        monkeypatch.setattr(ai_module, "_write_audit_log", lambda *a, **k: None)
+    response = Response()
+    result = ai_module.assign_institution_staff(
+        institution_id, ai_module.StaffAssign(email=email, role=role),
+        http_response=response, current_user=current_user or _user(),
+    )
+    if capture_response is not None:
+        capture_response.append(response)
+    return result
+
+
+# ── Authorization: reuses require_admin verbatim, never require_active_institution_role ──
+
+def test_staff_assign_reuses_admin_modules_require_admin():
+    assert ai_module.require_admin is admin_module.require_admin
+
+
+def test_staff_assign_admin_role_allowed(monkeypatch):
+    user = _user()
+    fake = _FakeSupabase(user_roles=[{"user_id": user.id, "role": "admin"}])
+    monkeypatch.setattr(admin_module, "get_supabase", lambda: fake)
+    assert ai_module.require_admin(current_user=user) is user
+
+
+def test_staff_assign_owner_role_allowed(monkeypatch):
+    user = _user()
+    fake = _FakeSupabase(user_roles=[{"user_id": user.id, "role": "owner"}])
+    monkeypatch.setattr(admin_module, "get_supabase", lambda: fake)
+    assert ai_module.require_admin(current_user=user) is user
+
+
+def test_staff_assign_analyst_role_denied(monkeypatch):
+    user = _user()
+    fake = _FakeSupabase(user_roles=[{"user_id": user.id, "role": "analyst"}])
+    monkeypatch.setattr(admin_module, "get_supabase", lambda: fake)
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.require_admin(current_user=user)
+    assert excinfo.value.status_code == 403
+
+
+def test_staff_assign_support_role_denied(monkeypatch):
+    user = _user()
+    fake = _FakeSupabase(user_roles=[{"user_id": user.id, "role": "support"}])
+    monkeypatch.setattr(admin_module, "get_supabase", lambda: fake)
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.require_admin(current_user=user)
+    assert excinfo.value.status_code == 403
+
+
+def test_staff_assign_plain_user_role_denied(monkeypatch):
+    user = _user()
+    fake = _FakeSupabase(user_roles=[{"user_id": user.id, "role": "user"}])
+    monkeypatch.setattr(admin_module, "get_supabase", lambda: fake)
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.require_admin(current_user=user)
+    assert excinfo.value.status_code == 403
+
+
+def test_staff_assign_institution_admin_without_staff_role_denied(monkeypatch):
+    """institution_members.role='institution_admin' grants nothing against
+    require_admin -- the two role systems stay isolated (spec Section 7)."""
+    user = _user()
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(
+        user_roles=[], institution_members=[_membership(user.id, inst_id, role="institution_admin")],
+    )
+    monkeypatch.setattr(admin_module, "get_supabase", lambda: fake)
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.require_admin(current_user=user)
+    assert excinfo.value.status_code == 403
+
+
+# ── 404 / request validation ────────────────────────────────────────────
+
+def test_staff_assign_unknown_institution_returns_404(monkeypatch):
+    fake = _staff_fake(str(uuid.uuid4()))
+    with pytest.raises(HTTPException) as excinfo:
+        _assign(monkeypatch, fake, str(uuid.uuid4()), "new@example.com", "teacher")
+    assert excinfo.value.status_code == 404
+
+
+def test_staff_assign_malformed_email_rejected_by_model():
+    with pytest.raises(ValidationError):
+        ai_module.StaffAssign.model_validate({"email": "not-an-email", "role": "teacher"})
+
+
+def test_staff_assign_invalid_role_rejected_by_model():
+    with pytest.raises(ValidationError):
+        ai_module.StaffAssign.model_validate({"email": "new@example.com", "role": "student"})
+    with pytest.raises(ValidationError):
+        ai_module.StaffAssign.model_validate({"email": "new@example.com", "role": "owner"})
+
+
+def test_staff_assign_institution_id_field_is_not_declared_on_model():
+    """No institution_id field on the body -- the only scope is the path
+    parameter (InviteCreate/InstitutionUpdate convention). An injected value
+    is silently dropped by pydantic, never read by the endpoint."""
+    parsed = ai_module.StaffAssign.model_validate({
+        "email": "new@example.com", "role": "teacher", "institution_id": str(uuid.uuid4()),
+    })
+    assert not hasattr(parsed, "institution_id")
+
+
+def test_staff_assign_user_id_field_is_not_declared_on_model():
+    """No user_id field either -- the only way to name a target is by email,
+    resolved server-side; a client cannot smuggle in an arbitrary user_id."""
+    parsed = ai_module.StaffAssign.model_validate({
+        "email": "new@example.com", "role": "teacher", "user_id": str(uuid.uuid4()),
+    })
+    assert not hasattr(parsed, "user_id")
+
+
+# ── Auth resolution: new / existing confirmed / existing unconfirmed ────
+
+def test_staff_assign_new_auth_user_creates_active_membership(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _staff_fake(inst_id)
+
+    result = _assign(monkeypatch, fake, inst_id, "brand-new@example.com", "teacher")
+
+    assert result["auth_state"] == "not_found"
+    assert result["status"] == "active"
+    row = fake.tables["institution_members"][0]
+    assert row["status"] == "active"
+    assert row["role"] == "teacher"
+    assert row["joined_at"] is not None
+    assert fake.auth.admin.invite_calls == ["brand-new@example.com"]
+
+
+def test_staff_assign_existing_confirmed_user_creates_active_membership_no_invite_sent(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    existing = _FakeAuthUser(id=str(uuid.uuid4()), email="confirmed@example.com",
+                              email_confirmed_at="2026-01-01T00:00:00+00:00")
+    admin_auth = _FakeAdminAuth(users=[existing])
+    fake = _staff_fake(inst_id, auth_admin=admin_auth)
+
+    result = _assign(monkeypatch, fake, inst_id, "confirmed@example.com", "institution_admin")
+
+    assert result["auth_state"] == "confirmed"
+    assert result["status"] == "active"
+    assert admin_auth.invite_calls == []
+    row = fake.tables["institution_members"][0]
+    assert row["user_id"] == existing.id
+    assert row["status"] == "active"
+
+
+def test_staff_assign_existing_unconfirmed_user_creates_active_membership_no_duplicate_auth_user(monkeypatch):
+    """Staff assignment IS the authorization decision -- an unconfirmed Auth
+    user still gets an active institution_members row immediately. The Auth
+    invite only controls the user's own login/password setup and is
+    reissued best-effort alongside it (spec Section 1/2)."""
+    inst_id = str(uuid.uuid4())
+    existing = _FakeAuthUser(id=str(uuid.uuid4()), email="pending@example.com", email_confirmed_at=None)
+    admin_auth = _FakeAdminAuth(users=[existing])
+    fake = _staff_fake(inst_id, auth_admin=admin_auth)
+
+    result = _assign(monkeypatch, fake, inst_id, "pending@example.com", "teacher")
+
+    assert result["auth_state"] == "unconfirmed"
+    assert result["status"] == "active"
+    assert admin_auth.invite_calls == ["pending@example.com"]  # resend attempted
+    assert len(admin_auth.users) == 1  # no duplicate Auth user created
+    row = fake.tables["institution_members"][0]
+    assert row["user_id"] == existing.id
+    assert row["status"] == "active"
+    assert row["joined_at"] is not None
+
+
+def test_staff_assign_unconfirmed_resend_failure_still_creates_active_membership_with_warning(monkeypatch):
+    """Resend failure must not downgrade the membership -- it's already the
+    authorization grant, independent of whether the Auth email went out."""
+    inst_id = str(uuid.uuid4())
+    existing = _FakeAuthUser(id=str(uuid.uuid4()), email="pending2@example.com", email_confirmed_at=None)
+    admin_auth = _FakeAdminAuth(users=[existing], invite_fails=True)
+    fake = _staff_fake(inst_id, auth_admin=admin_auth)
+
+    result = _assign(monkeypatch, fake, inst_id, "pending2@example.com", "teacher")
+
+    assert result["status"] == "active"
+    assert result["warning"] == "invite_resend_failed"
+    assert fake.tables["institution_members"][0]["status"] == "active"
+
+
+def test_staff_assign_auth_probe_failure_creates_no_membership(monkeypatch):
+    inst_id = str(uuid.uuid4())
+
+    class _BrokenAdminAuth(_FakeAdminAuth):
+        def generate_link(self, params):
+            raise Exception("AuthApiError: rate limit exceeded")
+
+    fake = _staff_fake(inst_id, auth_admin=_BrokenAdminAuth())
+    with pytest.raises(HTTPException) as excinfo:
+        _assign(monkeypatch, fake, inst_id, "x@example.com", "teacher")
+    assert excinfo.value.status_code == 502
+    assert fake.tables.get("institution_members", []) == []
+
+
+def test_staff_assign_new_user_invite_failure_creates_no_membership(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _staff_fake(inst_id, auth_admin=_FakeAdminAuth(invite_fails=True))
+    with pytest.raises(HTTPException) as excinfo:
+        _assign(monkeypatch, fake, inst_id, "fresh@example.com", "teacher")
+    assert excinfo.value.status_code == 502
+    assert fake.tables.get("institution_members", []) == []
+
+
+# ── Existing-membership rules ────────────────────────────────────────────
+
+def test_staff_assign_existing_student_membership_returns_409(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake, _ = _existing_membership_fake(inst_id, "student@example.com", membership_role="student", membership_status="active")
+    with pytest.raises(HTTPException) as excinfo:
+        _assign(monkeypatch, fake, inst_id, "student@example.com", "teacher")
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.detail["error"] == "already_student"
+
+
+def test_staff_assign_existing_teacher_membership_returns_409(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake, _ = _existing_membership_fake(inst_id, "teacher@example.com", membership_role="teacher", membership_status="active")
+    with pytest.raises(HTTPException) as excinfo:
+        _assign(monkeypatch, fake, inst_id, "teacher@example.com", "institution_admin")
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.detail["error"] == "already_teacher"
+
+
+def test_staff_assign_existing_revoked_membership_returns_409_not_reactivated(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake, _ = _existing_membership_fake(inst_id, "revoked@example.com", membership_role="teacher", membership_status="revoked")
+    with pytest.raises(HTTPException) as excinfo:
+        _assign(monkeypatch, fake, inst_id, "revoked@example.com", "teacher")
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.detail["error"] == "revoked_membership"
+    assert fake.tables["institution_members"][0]["status"] == "revoked"
+
+
+def test_staff_assign_existing_invited_membership_returns_409(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake, _ = _existing_membership_fake(inst_id, "invited@example.com", membership_role="teacher",
+                                         membership_status="invited", confirmed=False)
+    with pytest.raises(HTTPException) as excinfo:
+        _assign(monkeypatch, fake, inst_id, "invited@example.com", "teacher")
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.detail["error"] == "pending_membership"
+
+
+def test_staff_assign_existing_institution_admin_returns_200_already_assigned(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake, _ = _existing_membership_fake(inst_id, "admin@example.com", membership_role="institution_admin", membership_status="active")
+    captured = []
+    result = _assign(monkeypatch, fake, inst_id, "admin@example.com", "institution_admin", capture_response=captured)
+    assert result["status"] == "already_assigned"
+    assert len(fake.tables["institution_members"]) == 1
+    assert captured[0].status_code == 200
+
+
+def test_staff_assign_new_membership_returns_201(monkeypatch):
+    """Phase 5.3b API contract: new staff membership creation is HTTP 201,
+    matching the sibling POST /admin/institutions status_code=201."""
+    inst_id = str(uuid.uuid4())
+    fake = _staff_fake(inst_id)
+    captured = []
+    result = _assign(monkeypatch, fake, inst_id, "new201@example.com", "teacher", capture_response=captured)
+    assert result["status"] == "active"
+    assert captured[0].status_code == 201
+
+
+def test_staff_assign_repeated_call_does_not_create_duplicate_membership(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _staff_fake(inst_id)
+    first = _assign(monkeypatch, fake, inst_id, "repeat@example.com", "teacher")
+    assert first["status"] == "active"
+    assert len(fake.tables["institution_members"]) == 1
+
+    with pytest.raises(HTTPException) as excinfo:
+        _assign(monkeypatch, fake, inst_id, "repeat@example.com", "teacher")
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.detail["error"] == "already_teacher"
+    assert len(fake.tables["institution_members"]) == 1
+
+
+def test_staff_assign_insert_level_duplicate_key_race_returns_409(monkeypatch):
+    """Simulates a concurrent second request landing between the pre-check
+    read and this request's insert -- the UNIQUE(institution_id, user_id)
+    constraint is the actual backstop, caught the same
+    "duplicate key" convention as create_institution/update_institution."""
+    inst_id = str(uuid.uuid4())
+    fake = _staff_fake(inst_id)
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(ai_module.staff_assign_rate_limiter, "is_rate_limited", lambda key: False)
+    monkeypatch.setattr(ai_module, "_write_audit_log", lambda *a, **k: None)
+
+    real_table = fake.table
+
+    def _table(name):
+        qb = real_table(name)
+        if name == "institution_members":
+            def _insert(row):
+                raise Exception(
+                    'duplicate key value violates unique constraint "institution_members_institution_id_user_id_key"'
+                )
+            qb.insert = _insert
+        return qb
+    monkeypatch.setattr(fake, "table", _table)
+
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.assign_institution_staff(
+            inst_id, ai_module.StaffAssign(email="race@example.com", role="teacher"),
+            http_response=Response(), current_user=_user(),
+        )
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.detail["error"] == "already_assigned"
+
+
+# ── Multiple-institution safety ──────────────────────────────────────────
+
+def test_staff_assign_admin_already_active_staff_in_another_institution_returns_409(monkeypatch):
+    inst_a, inst_b = str(uuid.uuid4()), str(uuid.uuid4())
+    uid = str(uuid.uuid4())
+    auth_user = _FakeAuthUser(id=uid, email="multi@example.com", email_confirmed_at="2026-01-01T00:00:00+00:00")
+    fake = _FakeSupabase(
+        institutions=[_institution(inst_a), _institution(inst_b)],
+        institution_members=[_membership(uid, inst_b, role="institution_admin", status="active")],
+    )
+    fake.auth = _FakeAuthNamespace(_FakeAdminAuth(users=[auth_user]))
+
+    with pytest.raises(HTTPException) as excinfo:
+        _assign(monkeypatch, fake, inst_a, "multi@example.com", "teacher")
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.detail["error"] == "already_staff_elsewhere"
+    assert excinfo.value.detail["institution_id"] == inst_b
+    assert len(fake.tables["institution_members"]) == 1
+
+
+# ── Self-assignment: no speculative block ────────────────────────────────
+
+def test_staff_assign_self_assignment_allowed(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _staff_fake(inst_id)
+    staff_user = UserInfo(id=str(uuid.uuid4()), email="self-assign@example.com")
+
+    result = _assign(monkeypatch, fake, inst_id, "self-assign@example.com", "institution_admin", current_user=staff_user)
+
+    assert result["status"] == "active"
+    assert fake.tables["institution_members"][0]["invited_by"] == staff_user.id
+
+
+# ── Failure/retry handling ────────────────────────────────────────────────
+
+def test_staff_assign_membership_insert_transient_failure_retries_once_then_succeeds(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _staff_fake(inst_id)
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(ai_module.staff_assign_rate_limiter, "is_rate_limited", lambda key: False)
+    monkeypatch.setattr(ai_module, "_write_audit_log", lambda *a, **k: None)
+
+    real_table = fake.table
+    call_count = {"n": 0}
+
+    def _table(name):
+        qb = real_table(name)
+        if name == "institution_members":
+            original_insert = qb.insert
+
+            def _insert(row):
+                call_count["n"] += 1
+                if call_count["n"] == 1:
+                    raise Exception("connection reset by peer")
+                return original_insert(row)
+            qb.insert = _insert
+        return qb
+    monkeypatch.setattr(fake, "table", _table)
+
+    result = ai_module.assign_institution_staff(
+        inst_id, ai_module.StaffAssign(email="retry@example.com", role="teacher"),
+        http_response=Response(), current_user=_user(),
+    )
+    assert result["status"] == "active"
+    assert call_count["n"] == 2
+    assert len(fake.tables["institution_members"]) == 1
+
+
+def test_staff_assign_membership_insert_failure_after_retry_writes_failure_audit_no_auth_user_deleted(monkeypatch):
+    """"do NOT delete Auth user" is proven structurally: _FakeAdminAuth has
+    no delete_user method at all, so any accidental call to it would raise
+    AttributeError and fail this test before the assertions below run."""
+    inst_id = str(uuid.uuid4())
+    admin_auth = _FakeAdminAuth()
+    fake = _staff_fake(inst_id, auth_admin=admin_auth)
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(ai_module.staff_assign_rate_limiter, "is_rate_limited", lambda key: False)
+    calls = []
+    _record_audit_log(monkeypatch, calls)
+
+    real_table = fake.table
+
+    def _table(name):
+        qb = real_table(name)
+        if name == "institution_members":
+            def _insert(row):
+                raise Exception("connection reset by peer")
+            qb.insert = _insert
+        return qb
+    monkeypatch.setattr(fake, "table", _table)
+
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.assign_institution_staff(
+            inst_id, ai_module.StaffAssign(email="failure@example.com", role="teacher"),
+            http_response=Response(), current_user=_user(),
+        )
+    assert excinfo.value.status_code == 500
+    failed = [c for c in calls if c["action"] == "institution_staff_assignment_failed"]
+    assert len(failed) == 1
+    assert admin_auth.invite_calls == ["failure@example.com"]
+
+
+# ── Audit logging ─────────────────────────────────────────────────────────
+
+def test_staff_assign_writes_institution_staff_assigned_audit_log_no_secrets(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _staff_fake(inst_id)
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(ai_module.staff_assign_rate_limiter, "is_rate_limited", lambda key: False)
+    calls = []
+    _record_audit_log(monkeypatch, calls)
+
+    ai_module.assign_institution_staff(
+        inst_id, ai_module.StaffAssign(email="audit@example.com", role="teacher"),
+        http_response=Response(), current_user=_user(),
+    )
+
+    assigned = [c for c in calls if c["action"] == "institution_staff_assigned"]
+    assert len(assigned) == 1
+    detail = assigned[0]["detail"]
+    assert detail["email"] == "audit@example.com"
+    assert detail["role"] == "teacher"
+    assert detail["auth_state"] == "not_found"
+    assert detail["membership_status"] == "active"
+    for forbidden in ("password", "token", "invite_url", "access_token", "refresh_token"):
+        assert forbidden not in str(detail).lower()
+
+
+# ── Rate limiting ─────────────────────────────────────────────────────────
+
+def test_staff_assign_rate_limited_returns_429(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _staff_fake(inst_id)
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(ai_module.staff_assign_rate_limiter, "is_rate_limited", lambda key: True)
+
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.assign_institution_staff(
+            inst_id, ai_module.StaffAssign(email="limited@example.com", role="teacher"),
+            http_response=Response(), current_user=_user(),
+        )
+    assert excinfo.value.status_code == 429
+    assert fake.tables.get("institution_members", []) == []
+
+
+def test_staff_assign_rate_limit_20_allowed_21st_blocked():
+    """Exercises the real SlidingWindowRateLimiter (in-process fallback --
+    no REDIS_URL in tests), same convention as institution.py's
+    invite_create_rate_limiter test."""
+    key = str(uuid.uuid4())
+    limiter = ai_module.staff_assign_rate_limiter
+    for _ in range(20):
+        assert limiter.is_rate_limited(key) is False
+    assert limiter.is_rate_limited(key) is True

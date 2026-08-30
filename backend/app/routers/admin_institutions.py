@@ -13,21 +13,31 @@ institution_admin.py). Staff routes are cross-tenant BY DESIGN (that is the
 point of an internal admin tool); the per-route `institution_id` existence
 check below is a target-validation check, not an authorization check.
 
-Phase 5.2 adds create (POST) and configuration update (PATCH). Still not
-implemented (later Phase 5 tasks, see spec Section 14/16): institution
-status-toggle endpoint, institution_admin assignment, invite wrappers,
-frontend create UI.
+Phase 5.2 adds create (POST) and configuration update (PATCH). Phase 5.3b
+(see docs/superpowers/specs/2026-08-29-institution-phase5.3-admin-assignment.md)
+adds staff role assignment (POST .../staff) -- teacher/institution_admin
+only, resolved by email against Supabase Auth per that spec's Section 4.
+Still not implemented: institution status-toggle endpoint, invite wrappers,
+frontend create/assign UI, POST /institution/activate (membership
+activation on sign-in stays out of scope for this endpoint -- see spec
+Section 2/3).
 """
+import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, EmailStr, Field
 
+from app.core.config import settings
+from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.supabase import get_supabase
 from app.routers.admin import _write_audit_log, require_admin, require_analyst
 from app.routers.auth import UserInfo
 from app.routers.institution import _invite_summary, _latest_speaking_scores
 from app.routers.sessions import _usage_payload, get_month_start_utc
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/institutions", tags=["admin"])
 
@@ -496,3 +506,176 @@ def update_institution(
         _sync_modules(supabase, institution_id, req.modules, current_user)
 
     return get_institution_detail(institution_id, current_user=current_user)
+
+
+# ── POST /admin/institutions/{id}/staff (Phase 5.3b) ──────────────────────
+# Staff-only teacher/institution_admin assignment by email. Never gated by
+# require_active_institution_role, never reachable from /institution/* --
+# same cross-tenant require_admin trust boundary as create_institution/
+# update_institution above. "student" is not a valid role here; that stays
+# on institution.py's token-invite flow (accept_institution_invite),
+# unmodified by this endpoint.
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class StaffAssign(BaseModel):
+    email: EmailStr
+    role: Literal["teacher", "institution_admin"]
+
+
+staff_assign_rate_limiter = SlidingWindowRateLimiter(
+    max_calls=20, window_seconds=3600, name="admin_institutions:staff_assign"
+)
+
+
+def _resolve_auth_user(supabase, email: str):
+    """(user_id, auth_state) for `email`, auth_state in "not_found",
+    "confirmed", "unconfirmed". Uses generate_link(type="recovery") as the
+    non-mutating existence probe -- never sends an email, requires an
+    existing user (errors "User with this email not found" otherwise) --
+    verified against the live QA Supabase Auth API in Phase 5.3a. Any other
+    exception is a genuine Auth-API failure, not a "doesn't exist" signal,
+    and is re-raised for the caller to surface as a retryable error."""
+    try:
+        resp = supabase.auth.admin.generate_link({"type": "recovery", "email": email})
+    except Exception as e:
+        if "not found" in str(e).lower():
+            return None, "not_found"
+        raise
+    user = resp.user
+    if user.email_confirmed_at:
+        return user.id, "confirmed"
+    return user.id, "unconfirmed"
+
+
+def _other_active_staff_institution(supabase, user_id: str, institution_id: str) -> Optional[str]:
+    """id of another institution where `user_id` already holds an active
+    teacher/institution_admin membership, or None. Best-effort, not
+    row-locked (spec Section 6) -- exists to give the admin an earlier,
+    clearer signal than require_active_institution_role's later 409."""
+    rows = (
+        supabase.table("institution_members")
+        .select("institution_id")
+        .eq("user_id", user_id).eq("status", "active")
+        .in_("role", ["teacher", "institution_admin"])
+        .execute()
+    ).data or []
+    for r in rows:
+        if r["institution_id"] != institution_id:
+            return r["institution_id"]
+    return None
+
+
+@router.post("/{institution_id}/staff", status_code=201)
+def assign_institution_staff(
+    institution_id: str, req: StaffAssign, http_response: Response, current_user: UserInfo = Depends(require_admin),
+):
+    if staff_assign_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many requests. Try again shortly.")
+
+    supabase = get_supabase()
+    _get_institution_or_404(supabase, institution_id)
+
+    try:
+        user_id, auth_state = _resolve_auth_user(supabase, req.email)
+    except Exception:
+        logger.exception("institution staff assignment: auth probe failed | email=%s", req.email)
+        raise HTTPException(status_code=502, detail="Could not verify account status. Try again.")
+
+    invite_warning = None
+    if user_id is None:
+        try:
+            invite_resp = supabase.auth.admin.invite_user_by_email(
+                req.email, {"redirect_to": f"{settings.FRONTEND_URL}/auth/callback"},
+            )
+        except Exception:
+            logger.exception("institution staff assignment: invite_user_by_email failed | email=%s", req.email)
+            raise HTTPException(status_code=502, detail="Could not create account. Try again.")
+        user_id = invite_resp.user.id
+        membership_status = "active"
+        joined_at = _now_iso()
+    elif auth_state == "confirmed":
+        membership_status = "active"
+        joined_at = _now_iso()
+    else:
+        # Existing, unconfirmed: resend is best-effort -- membership is
+        # active regardless of whether the resend succeeds (spec Section 6).
+        # The staff assignment itself is the authorization decision; Auth
+        # invite state only controls the user's own login/password setup.
+        try:
+            supabase.auth.admin.invite_user_by_email(
+                req.email, {"redirect_to": f"{settings.FRONTEND_URL}/auth/callback"},
+            )
+        except Exception:
+            invite_warning = "invite_resend_failed"
+        membership_status = "active"
+        joined_at = _now_iso()
+
+    existing = (
+        supabase.table("institution_members")
+        .select("role, status")
+        .eq("institution_id", institution_id).eq("user_id", user_id).execute()
+    ).data
+    if existing:
+        row = existing[0]
+        if row["status"] == "revoked":
+            raise HTTPException(status_code=409, detail={"error": "revoked_membership"})
+        if row["status"] == "invited":
+            raise HTTPException(status_code=409, detail={"error": "pending_membership"})
+        if row["role"] == "institution_admin":
+            http_response.status_code = 200
+            return {
+                "status": "already_assigned", "institution_id": institution_id,
+                "email": req.email, "role": row["role"],
+            }
+        if row["role"] == "teacher":
+            raise HTTPException(status_code=409, detail={"error": "already_teacher"})
+        raise HTTPException(status_code=409, detail={"error": "already_student"})
+
+    other = _other_active_staff_institution(supabase, user_id, institution_id)
+    if other:
+        raise HTTPException(status_code=409, detail={"error": "already_staff_elsewhere", "institution_id": other})
+
+    insert_row = {
+        "institution_id": institution_id,
+        "user_id": user_id,
+        "role": req.role,
+        "status": membership_status,
+        "invited_by": current_user.id,
+        "joined_at": joined_at,
+    }
+
+    def _insert():
+        return supabase.table("institution_members").insert(insert_row).execute()
+
+    try:
+        _insert()
+    except Exception as e:
+        if "duplicate key" in str(e).lower():
+            raise HTTPException(status_code=409, detail={"error": "already_assigned"})
+        try:
+            _insert()
+        except Exception:
+            _write_audit_log(
+                supabase, current_user, "institution_staff_assignment_failed", "institution_member",
+                target_id=institution_id, target_label=req.email,
+                detail={"email": req.email, "role": req.role, "auth_state": auth_state},
+            )
+            raise HTTPException(status_code=500, detail="Assignment could not be completed. Retry.")
+
+    _write_audit_log(
+        supabase, current_user, "institution_staff_assigned", "institution_member",
+        target_id=institution_id, target_label=req.email,
+        detail={"email": req.email, "role": req.role, "auth_state": auth_state, "membership_status": membership_status},
+    )
+
+    http_response.status_code = 201
+    result = {
+        "institution_id": institution_id, "email": req.email, "role": req.role,
+        "auth_state": auth_state, "status": membership_status,
+    }
+    if invite_warning:
+        result["warning"] = invite_warning
+    return result
