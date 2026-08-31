@@ -243,6 +243,44 @@ class InviteCreate(BaseModel):
         return v
 
 
+def _create_invite_row(
+    supabase, institution_id: str, max_uses: Optional[int], expires_at: Optional[datetime], created_by: str,
+) -> dict:
+    """DB lifecycle only -- role is always "student", token generation/entropy
+    is the sole source of truth for every invite-creation call site (self-
+    service here, staff-facing in admin_institutions.py). Callers own their
+    own authorization, institution scope source, rate limiting, response
+    shape, and audit logging -- none of that lives here."""
+    token = secrets.token_urlsafe(24)
+    row = {
+        "institution_id": institution_id,
+        "token": token,
+        "role": "student",
+        "max_uses": max_uses,
+        "expires_at": expires_at.isoformat() if expires_at else None,
+        "created_by": created_by,
+    }
+    result = supabase.table("institution_invites").insert(row).execute()
+    return result.data[0]
+
+
+def _revoke_invite_row(supabase, institution_id: str, invite_id: str) -> bool:
+    """True if `invite_id` belongs to `institution_id` and was revoked,
+    False if no such invite exists in that institution -- callers turn False
+    into a generic 404 so a cross-tenant guess can't be distinguished from
+    "doesn't exist" (spec 5.5/8). DB lifecycle only, same division of
+    responsibility as _create_invite_row above."""
+    invites = (
+        supabase.table("institution_invites")
+        .select("id")
+        .eq("id", invite_id).eq("institution_id", institution_id).execute()
+    )
+    if not invites.data:
+        return False
+    supabase.table("institution_invites").update({"status": "revoked"}).eq("id", invite_id).execute()
+    return True
+
+
 @router.post("/invites", status_code=201)
 def create_institution_invite(
     req: InviteCreate,
@@ -253,17 +291,7 @@ def create_institution_invite(
         raise HTTPException(status_code=429, detail="Too many requests. Try again shortly.")
 
     supabase = get_supabase()
-    token = secrets.token_urlsafe(24)
-    row = {
-        "institution_id": scope.institution_id,
-        "token": token,
-        "role": "student",
-        "max_uses": req.max_uses,
-        "expires_at": req.expires_at.isoformat() if req.expires_at else None,
-        "created_by": current_user.id,
-    }
-    result = supabase.table("institution_invites").insert(row).execute()
-    created = result.data[0]
+    created = _create_invite_row(supabase, scope.institution_id, req.max_uses, req.expires_at, current_user.id)
 
     _write_audit_log(
         supabase, current_user, "institution_invite_created", "institution_invite",
@@ -294,15 +322,8 @@ def revoke_institution_invite(
     invite by guessing/enumerating {invite_id}. Generic 404 (not 403) so a
     mismatch can't be distinguished from "doesn't exist" (spec 5.5/8)."""
     supabase = get_supabase()
-    invites = (
-        supabase.table("institution_invites")
-        .select("id")
-        .eq("id", invite_id).eq("institution_id", scope.institution_id).execute()
-    )
-    if not invites.data:
+    if not _revoke_invite_row(supabase, scope.institution_id, invite_id):
         raise HTTPException(status_code=404, detail="Invitation not found")
-
-    supabase.table("institution_invites").update({"status": "revoked"}).eq("id", invite_id).execute()
 
     _write_audit_log(
         supabase, current_user, "institution_invite_revoked", "institution_invite",

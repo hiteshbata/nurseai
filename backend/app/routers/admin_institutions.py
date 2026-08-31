@@ -2,9 +2,10 @@
 
 A staff-facing layer over the existing institution tables (institutions,
 institution_members, institution_modules, institution_invites) and existing
-institution services -- it does not replace or modify institution.py,
-institutions.py, institution_access.py, or institution_admin.py. See
-docs/PHASE5_INSTITUTION_ADMIN_SPEC.md.
+institution services -- it does not replace institution.py, institutions.py,
+institution_access.py, or institution_admin.py, and only ever imports their
+shared, authorization-free helpers (_invite_summary, _latest_speaking_scores,
+_create_invite_row, _revoke_invite_row). See docs/PHASE5_INSTITUTION_ADMIN_SPEC.md.
 
 Two role systems stay fully isolated: staff access here is gated purely by
 require_analyst/require_admin (public.user_roles, admin.py) -- never by
@@ -17,24 +18,28 @@ Phase 5.2 adds create (POST) and configuration update (PATCH). Phase 5.3b
 (see docs/superpowers/specs/2026-08-29-institution-phase5.3-admin-assignment.md)
 adds staff role assignment (POST .../staff) -- teacher/institution_admin
 only, resolved by email against Supabase Auth per that spec's Section 4.
-Still not implemented: institution status-toggle endpoint, invite wrappers,
-frontend create/assign UI, POST /institution/activate (membership
-activation on sign-in stays out of scope for this endpoint -- see spec
-Section 2/3).
+Phase 5.4 Step 1 adds a dedicated status endpoint (POST .../status) and its
+shared _apply_status_change helper, reused by PATCH's status field. Phase
+5.4 Step 2 adds staff-facing invite create (POST .../invites) and revoke
+(POST .../invites/{id}/revoke), both require_admin, built on institution.py's
+extracted _create_invite_row/_revoke_invite_row -- GET .../invites (list)
+was already implemented in Phase 5.1. Still not implemented: Settings/
+invitation frontend, POST /institution/activate (membership activation on
+sign-in stays out of scope for this endpoint -- see spec Section 2/3).
 """
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.core.config import settings
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.supabase import get_supabase
 from app.routers.admin import _write_audit_log, require_admin, require_analyst
 from app.routers.auth import UserInfo
-from app.routers.institution import _invite_summary, _latest_speaking_scores
+from app.routers.institution import _create_invite_row, _invite_summary, _latest_speaking_scores, _revoke_invite_row
 from app.routers.sessions import _usage_payload, get_month_start_utc
 
 logger = logging.getLogger(__name__)
@@ -340,6 +345,103 @@ def list_institution_invites(institution_id: str, current_user: UserInfo = Depen
     return [_invite_summary(row) for row in invites]
 
 
+# ── POST /admin/institutions/{id}/invites, .../invites/{id}/revoke ───────
+# (Phase 5.4 Step 2) Staff-facing create/revoke over the same
+# institution_invites rows institutions.py/institution.py already manage --
+# reuses institution.py's _create_invite_row/_revoke_invite_row (DB
+# lifecycle only) instead of a third copy of the insert/update logic. This
+# router still owns its own authorization (require_admin), institution
+# scope source (path, not the caller's own membership), rate limiting,
+# response shape, and audit logging, same division of responsibility as
+# Phase 5.3b's staff assignment endpoint above.
+
+class AdminInviteCreate(BaseModel):
+    """No `role` field, deliberately -- staff-created invites are always
+    role="student" (see _create_invite_row). No `institution_id` field
+    either -- the target institution comes only from the path parameter,
+    matching InstitutionUpdate's convention above."""
+    max_uses: Optional[int] = None
+    expires_at: Optional[datetime] = None
+
+    @field_validator("max_uses")
+    @classmethod
+    def _max_uses_positive_or_none(cls, v):
+        if v is not None and v < 1:
+            raise ValueError("max_uses must be null (unlimited) or >= 1")
+        return v
+
+    @field_validator("expires_at")
+    @classmethod
+    def _expires_at_in_future(cls, v):
+        if v is not None:
+            check_time = v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+            if check_time <= datetime.now(timezone.utc):
+                raise ValueError("expires_at must be in the future")
+        return v
+
+
+# Defense against a compromised/abused admin credential minting invites in a
+# loop, same convention as institution.py's invite_create_rate_limiter --
+# not a substitute for require_admin, not a cap on active invites held.
+admin_invite_create_rate_limiter = SlidingWindowRateLimiter(
+    max_calls=20, window_seconds=3600, name="admin_institutions:invite_create"
+)
+
+
+@router.post("/{institution_id}/invites", status_code=201)
+def create_institution_invite(
+    institution_id: str, req: AdminInviteCreate, current_user: UserInfo = Depends(require_admin),
+):
+    if admin_invite_create_rate_limiter.is_rate_limited(current_user.id):
+        raise HTTPException(status_code=429, detail="Too many requests. Try again shortly.")
+
+    supabase = get_supabase()
+    inst = _get_institution_or_404(supabase, institution_id)
+    if inst["status"] != "active":
+        raise HTTPException(status_code=400, detail="Institution is not active")
+
+    created = _create_invite_row(supabase, institution_id, req.max_uses, req.expires_at, current_user.id)
+
+    _write_audit_log(
+        supabase, current_user, "institution_invite_created", "institution_invite",
+        target_id=created["id"], target_label=institution_id,
+    )
+
+    # Server-constructed from the configured FRONTEND_URL, never a
+    # client-supplied origin -- same convention as institution.py's
+    # create_institution_invite.
+    return {
+        "id": created["id"],
+        "token": created["token"],
+        "join_url": f"{settings.FRONTEND_URL}/join/{created['token']}",
+        "role": "student",
+        "max_uses": created.get("max_uses"),
+        "expires_at": created.get("expires_at"),
+    }
+
+
+@router.post("/{institution_id}/invites/{invite_id}/revoke")
+def revoke_institution_invite(
+    institution_id: str, invite_id: str, current_user: UserInfo = Depends(require_admin),
+):
+    """Ownership-filtered by the path institution_id, not just invite_id --
+    staff acting through Institution A's path must not be able to revoke
+    Institution B's invite by guessing/enumerating {invite_id}. Generic 404
+    (not 403) either way, so a cross-tenant mismatch can't be distinguished
+    from "doesn't exist" -- same contract as institution.py's self-service
+    revoke_institution_invite."""
+    supabase = get_supabase()
+    if not _revoke_invite_row(supabase, institution_id, invite_id):
+        raise HTTPException(status_code=404, detail="Invitation not found")
+
+    _write_audit_log(
+        supabase, current_user, "institution_invite_revoked", "institution_invite",
+        target_id=invite_id, target_label=institution_id,
+    )
+
+    return {"status": "revoked"}
+
+
 # ── POST /admin/institutions, PATCH /admin/institutions/{id} (Phase 5.2) ──
 # Configuration only: name/slug/logo_url/contact_email/status/modules/quota.
 # No institution_admin assignment, no status-toggle endpoint, no invite
@@ -367,6 +469,30 @@ class InstitutionUpdate(BaseModel):
     status: Optional[Literal["active", "suspended"]] = None
     modules: Optional[List[ModuleName]] = None
     speaking_sessions_per_month: Optional[int] = Field(gt=0, default=None)
+
+
+class StatusUpdate(BaseModel):
+    status: Literal["active", "suspended"]
+
+
+def _apply_status_change(
+    supabase, institution_id: str, new_status: str, before: dict, current_user: UserInfo,
+) -> bool:
+    """Single choke point for every status transition (POST .../status and
+    PATCH's status field both route through this) -- same status is a no-op
+    (no write, no audit), an actual transition is exactly one institutions
+    update plus one institution_status_changed audit entry. Returns whether
+    a transition happened."""
+    old_status = before["status"]
+    if old_status == new_status:
+        return False
+    supabase.table("institutions").update({"status": new_status}).eq("id", institution_id).execute()
+    _write_audit_log(
+        supabase, current_user, "institution_status_changed", "institution",
+        target_id=institution_id, target_label=before.get("name"),
+        detail={"old_status": old_status, "new_status": new_status},
+    )
+    return True
 
 
 def _sync_modules(
@@ -471,14 +597,12 @@ def update_institution(
         core_fields["logo_url"] = req.logo_url
     if req.contact_email is not None:
         core_fields["contact_email"] = req.contact_email
-    if req.status is not None:
-        core_fields["status"] = req.status
 
     update_data = dict(core_fields)
     if req.speaking_sessions_per_month is not None:
         update_data["speaking_sessions_per_month"] = req.speaking_sessions_per_month
 
-    if not update_data and req.modules is None:
+    if not update_data and req.modules is None and req.status is None:
         raise HTTPException(status_code=400, detail="No fields to update")
 
     if update_data:
@@ -502,9 +626,22 @@ def update_institution(
                 detail={"old_quota": before.get("speaking_sessions_per_month"), "new_quota": update_data["speaking_sessions_per_month"]},
             )
 
+    if req.status is not None:
+        _apply_status_change(supabase, institution_id, req.status, before, current_user)
+
     if req.modules is not None:
         _sync_modules(supabase, institution_id, req.modules, current_user)
 
+    return get_institution_detail(institution_id, current_user=current_user)
+
+
+@router.post("/{institution_id}/status")
+def update_institution_status(
+    institution_id: str, req: StatusUpdate, current_user: UserInfo = Depends(require_admin),
+):
+    supabase = get_supabase()
+    before = _get_institution_or_404(supabase, institution_id)
+    _apply_status_change(supabase, institution_id, req.status, before, current_user)
     return get_institution_detail(institution_id, current_user=current_user)
 
 
