@@ -10,7 +10,7 @@ from app.core.supabase import get_supabase
 from app.core.redis_client import get_redis
 from app.core import circuit_breaker
 from app.core.request_id import RequestIDMiddleware, RequestIDLogFilter, get_request_id
-from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, admin_ai_models, admin_content_studio, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads, reading, listening, hub, vocab, mock, referrals, tools, technique, practice, institutions, institution
+from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, admin_ai_models, admin_content_studio, admin_institutions, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads, reading, listening, hub, vocab, mock, referrals, tools, technique, practice, institutions, institution
 from app.services.oet_questions import oet_service
 from app.services.seed_scenarios import seed_scenarios
 
@@ -223,6 +223,7 @@ app.include_router(technique.router)
 app.include_router(practice.router)
 app.include_router(institutions.router)
 app.include_router(institution.router)
+app.include_router(admin_institutions.router)
 
 @app.get("/")
 def read_root():
