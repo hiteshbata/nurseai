@@ -50,6 +50,7 @@ const NAV_GROUPS = [
     label: 'Users',
     items: [
       { href: '/admin/users', label: 'Users' },
+      { href: '/admin/institutions', label: 'Institutions' },
       { href: '/admin/audit-log', label: 'Action History' },
     ],
   },
