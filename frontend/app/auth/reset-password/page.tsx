@@ -8,30 +8,26 @@ import toast from 'react-hot-toast'
 import { Loader2, Eye, EyeOff, Check } from 'lucide-react'
 import { AuthLeftPanel } from '@/components/auth/auth-left-panel'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
+import { hasUrlError as hasUrlErrorParams, hasRecoveryParams as hasRecoveryParamsParams } from './helpers'
 
 type LinkStatus = 'verifying' | 'valid' | 'invalid'
 
+function currentParams(): { search: URLSearchParams; hash: URLSearchParams } | null {
+  if (typeof window === 'undefined') return null
+  return {
+    search: new URLSearchParams(window.location.search),
+    hash: new URLSearchParams(window.location.hash.replace(/^#/, '')),
+  }
+}
+
 function hasUrlError(): boolean {
-  if (typeof window === 'undefined') return false
-  const search = new URLSearchParams(window.location.search)
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-  return Boolean(search.get('error') || hash.get('error'))
+  const params = currentParams()
+  return params ? hasUrlErrorParams(params.search, params.hash) : false
 }
 
 function hasRecoveryParams(): boolean {
-  if (typeof window === 'undefined') return false
-  const search = new URLSearchParams(window.location.search)
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-  // Covers both the PKCE flow (?code=...) and the implicit flow
-  // (#access_token=...&type=recovery) -- this page is only ever the
-  // redirectTo target for password recovery (see requestPasswordReset
-  // in lib/supabase.ts), so any of these params landing here can only
-  // have come from a real recovery email link, regardless of which
-  // flow this Supabase project is configured for.
-  return Boolean(
-    search.get('code') || search.get('type') === 'recovery' ||
-    hash.get('access_token') || hash.get('type') === 'recovery'
-  )
+  const params = currentParams()
+  return params ? hasRecoveryParamsParams(params.search, params.hash) : false
 }
 
 export default function ResetPasswordPage() {

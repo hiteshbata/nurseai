@@ -23,7 +23,7 @@ const mod = new Module(srcPath)
 mod.filename = srcPath
 mod.paths = Module._nodeModulePaths(path.dirname(srcPath))
 mod._compile(outputText, srcPath)
-const { sanitizeNext } = mod.exports
+const { sanitizeNext, resolveConfirmNext } = mod.exports
 
 const ORIGIN = 'https://qa.speakoet.com'
 
@@ -54,4 +54,38 @@ test('null/empty next is rejected', () => {
 
 test('bare non-URL garbage is rejected', () => {
   assert.equal(sanitizeNext('not a url', ORIGIN), null)
+})
+
+// ── resolveConfirmNext: default redirect target for /auth/confirm ────────
+
+test('type=invite with no explicit next defaults to reset-password?type=invite', () => {
+  assert.equal(resolveConfirmNext('invite', null, ORIGIN), '/auth/reset-password?type=invite')
+})
+
+test('type=signup with no explicit next keeps the existing callback default', () => {
+  assert.equal(resolveConfirmNext('signup', null, ORIGIN), '/auth/callback')
+})
+
+test('type=recovery with no explicit next keeps the existing callback default', () => {
+  assert.equal(resolveConfirmNext('recovery', null, ORIGIN), '/auth/callback')
+})
+
+test('type=invite with an explicit sanitized next uses that next instead of the invite default', () => {
+  assert.equal(
+    resolveConfirmNext('invite', '/auth/callback?returnTo=%2Fjoin%2Fabc123', ORIGIN),
+    '/auth/callback?returnTo=%2Fjoin%2Fabc123'
+  )
+})
+
+test('type=invite with a malicious next still rejects it and falls back to the invite default', () => {
+  assert.equal(resolveConfirmNext('invite', '//evil.example', ORIGIN), '/auth/reset-password?type=invite')
+  assert.equal(resolveConfirmNext('invite', 'https://evil.example', ORIGIN), '/auth/reset-password?type=invite')
+})
+
+test('type=signup with a malicious next still rejects it and falls back to /auth/callback', () => {
+  assert.equal(resolveConfirmNext('signup', '//evil.example', ORIGIN), '/auth/callback')
+})
+
+test('null type with no next falls back to /auth/callback (existing behavior)', () => {
+  assert.equal(resolveConfirmNext(null, null, ORIGIN), '/auth/callback')
 })

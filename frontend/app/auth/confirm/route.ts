@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import type { EmailOtpType } from '@supabase/supabase-js'
-import { sanitizeNext } from '@/lib/auth-redirect'
+import { resolveConfirmNext } from '@/lib/auth-redirect'
 
 // Server-side leg of the token-hash email confirmation pattern: GoTrue's
 // email points here (not straight at /auth/callback) so verifyOtp() runs
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
   const token_hash = searchParams.get('token_hash')
   const type = searchParams.get('type') as EmailOtpType | null
-  const next = sanitizeNext(searchParams.get('next'), origin) || '/auth/callback'
+  const next = resolveConfirmNext(type, searchParams.get('next'), origin)
 
   if (!token_hash || !type) {
     return NextResponse.redirect(`${origin}/auth/login?error=invalid_confirmation_link`)

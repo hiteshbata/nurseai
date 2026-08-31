@@ -26,3 +26,17 @@ export function sanitizeNext(next: string | null, origin: string): string | null
   }
   return null
 }
+
+// Picks the redirect target for /auth/confirm once `next` has been
+// sanitized. An invite confirmation has no password yet, so it must land on
+// the password-setting page (not /auth/callback, which assumes the account
+// is already usable) unless the link explicitly carried its own `next`.
+export function resolveConfirmNext(
+  type: string | null,
+  rawNext: string | null,
+  origin: string
+): string {
+  const sanitized = sanitizeNext(rawNext, origin)
+  if (sanitized) return sanitized
+  return type === 'invite' ? '/auth/reset-password?type=invite' : '/auth/callback'
+}

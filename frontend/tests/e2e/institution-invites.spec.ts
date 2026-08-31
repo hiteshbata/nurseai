@@ -7,6 +7,7 @@ import path from 'path'
 // account actually holding an institution_admin membership row.
 const email = process.env.PLAYWRIGHT_TEST_USER_EMAIL
 const password = process.env.PLAYWRIGHT_TEST_USER_PASSWORD
+const apiBaseURL = process.env.PLAYWRIGHT_API_URL || 'http://localhost:8000'
 
 function skipIfNoCreds() {
   test.skip(!email || !password, 'PLAYWRIGHT_TEST_USER_EMAIL/PASSWORD not set')
@@ -52,7 +53,7 @@ const baseUsage = {
 }
 
 function mockUsage(page: Page, institution_admin_role: 'teacher' | 'institution_admin' | null) {
-  return page.route('**/sessions/usage', (route) =>
+  return page.route(`${apiBaseURL}/sessions/usage`, (route) =>
     route.fulfill({ json: { ...baseUsage, institution_admin_role } })
   )
 }
@@ -77,7 +78,7 @@ const CREATE_RESPONSE = {
 }
 
 function mockList(page: Page, body: any[]) {
-  return page.route('**/institution/invites', (route) => {
+  return page.route(`${apiBaseURL}/institution/invites`, (route) => {
     if (route.request().method() === 'GET') return route.fulfill({ json: body })
     return route.continue()
   })
@@ -95,7 +96,7 @@ test('institution_admin: list renders, create unlimited invite, join_url shown, 
 
   let created = false
   let revoked = false
-  await page.route('**/institution/invites', (route) => {
+  await page.route(`${apiBaseURL}/institution/invites`, (route) => {
     const method = route.request().method()
     if (method === 'GET') {
       return route.fulfill({ json: created ? [LIST_INVITE, { ...CREATE_RESPONSE, status: 'active', use_count: 0, remaining_uses: null }] : [LIST_INVITE] })
@@ -109,7 +110,7 @@ test('institution_admin: list renders, create unlimited invite, join_url shown, 
     }
     return route.continue()
   })
-  await page.route('**/institution/invites/*/revoke', (route) => {
+  await page.route(`${apiBaseURL}/institution/invites/*/revoke`, (route) => {
     revoked = true
     return route.fulfill({ json: { status: 'revoked' } })
   })
@@ -170,7 +171,7 @@ test('teacher: Invitations nav absent, direct navigation shows access-denied', a
   await page.goto('/institution')
   await expect(nav.getByRole('link', { name: 'Invitations' })).toHaveCount(0)
 
-  await page.route('**/institution/invites', (route) =>
+  await page.route(`${apiBaseURL}/institution/invites`, (route) =>
     route.fulfill({ status: 403, json: { detail: 'No qualifying institution role.' } })
   )
   await page.goto('/institution/invites')
@@ -200,7 +201,7 @@ test('409: safe multi-institution message, no ids leaked', async ({ browser }) =
   skipIfNoCreds()
   const { context, page } = await authedPage(browser)
   await mockUsage(page, 'institution_admin')
-  await page.route('**/institution/invites', (route) =>
+  await page.route(`${apiBaseURL}/institution/invites`, (route) =>
     route.fulfill({ status: 409, json: { detail: { error: 'multiple_qualifying_institutions', institutions: ['a', 'b'] } } })
   )
 
