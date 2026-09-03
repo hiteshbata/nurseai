@@ -58,3 +58,28 @@ export function classifySaveError(httpStatus: number | undefined, detail?: unkno
   if (httpStatus === 422) return 'Check the highlighted fields and try again.'
   return 'Something went wrong. Please try again.'
 }
+
+// Maps a POST .../staff failure to a user-facing message. 409's `detail` is
+// the structured {error: "..."} shape from assign_institution_staff in
+// admin_institutions.py (Phase 5.3b) -- every other code carries a plain
+// string detail that's safe to show verbatim.
+const STAFF_ASSIGN_409_MESSAGES: Record<string, string> = {
+  revoked_membership: 'This email’s access was previously revoked. Contact support to restore it.',
+  pending_membership: 'This email already has a pending invitation here.',
+  already_teacher: 'This email is already a teacher at this institution.',
+  already_student: 'This email is already a student at this institution.',
+  already_staff_elsewhere: 'This person is already staff at another institution.',
+  concurrent_account_creation: 'That account just started signing up elsewhere. Try again in a moment.',
+}
+
+export function classifyStaffAssignError(httpStatus: number | undefined, detail?: unknown): string {
+  if (httpStatus === 403) return "You don't have permission to assign staff."
+  if (httpStatus === 404) return 'Institution not found.'
+  if (httpStatus === 409) {
+    const key = detail && typeof detail === 'object' ? (detail as { error?: string }).error : undefined
+    return (key && STAFF_ASSIGN_409_MESSAGES[key]) || 'That email conflicts with an existing assignment.'
+  }
+  if (httpStatus === 422) return 'Check the email address and try again.'
+  if (typeof detail === 'string') return detail
+  return 'Something went wrong. Please try again.'
+}
