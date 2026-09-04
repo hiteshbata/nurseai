@@ -172,18 +172,18 @@ export default function InstitutionOverviewPage() {
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold tabular-nums text-foreground">{data.sessions_used_this_month}</p>
-            <p className="text-xs text-muted-foreground">used this month</p>
+            <p className="text-xs text-muted-foreground">used this month, all students combined</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex-row items-center gap-3 space-y-0">
             <Gauge className="h-5 w-5 text-emerald-700" aria-hidden="true" />
-            <CardTitle className="text-sm font-semibold text-muted-foreground">Monthly capacity</CardTitle>
+            <CardTitle className="text-sm font-semibold text-muted-foreground">Per-student monthly quota</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold tabular-nums text-foreground">{quotaLabel}</p>
-            <p className="text-xs text-muted-foreground">speaking sessions / month</p>
+            <p className="text-xs text-muted-foreground">speaking sessions / month, per student</p>
           </CardContent>
         </Card>
 
