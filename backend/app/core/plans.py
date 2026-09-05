@@ -89,6 +89,25 @@ PLANS = [
 
 PLAN_LIMITS = {"free": 3, "basic": 20, "pro": 40, "elite": 80}
 
+# Strict self-serve plan ordering (Free < Basic < Pro < Elite) -- the single
+# source of truth for "is this a purchase or a downgrade". Used by both
+# GET /plans/me (is_purchasable) and the payment endpoints (payments.py),
+# so the rule can't drift between the UI hint and the server-side gate.
+PLAN_RANK = {"free": 0, "basic": 1, "pro": 2, "elite": 3}
+
+
+def is_strict_upgrade(current_plan: str, target_plan: str) -> bool:
+    """True only if target_plan strictly outranks current_plan on the
+    self-serve ladder. Free is never a valid purchase target regardless of
+    current_plan -- self-serve plans are upgrade-only, so a same-plan
+    re-purchase is also not an "upgrade" even though nothing here is a
+    downgrade either."""
+    return (
+        target_plan in PLAN_RANK
+        and target_plan != "free"
+        and PLAN_RANK[target_plan] > PLAN_RANK.get(current_plan, 0)
+    )
+
 # Monthly INR price per plan, keyed by profile_plan -- single source of
 # truth for anything that needs to turn a plan name into a rupee amount
 # (MRR/ARR/ARPU calculations in admin.py and founder_metrics.py).
