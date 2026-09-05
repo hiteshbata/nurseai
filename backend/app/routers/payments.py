@@ -13,7 +13,8 @@ import razorpay
 import requests
 from razorpay.errors import SignatureVerificationError
 from app.core.config import settings
-from app.core.plans import PLANS, PLAN_PERIOD_DAYS, GRACE_PERIOD_DAYS
+from app.core.plans import PLANS, PLAN_PERIOD_DAYS, GRACE_PERIOD_DAYS, PLAN_RANK, is_strict_upgrade
+from app.services.plan_gating import get_plan_from_profile
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.routers.auth import get_current_user, UserInfo
 from app.core.supabase import get_supabase
@@ -164,6 +165,74 @@ def get_subscription_expected_amount_paise(client: "razorpay.Client", subscripti
     return plan["item"]["amount"]
 
 
+def is_subscription_webhook_stale(
+    user_id: str, subscription_id: str, subscription_created_at: Optional[int]
+) -> bool:
+    """True only if `subscription_id`'s subscription.charged webhook is for
+    a subscription that has genuinely been SUPERSEDED by a newer one --
+    e.g. a cancelled Basic subscription's last cycle-end charge arriving
+    after the user has already upgraded to a new Pro subscription (see the
+    billing audit: this webhook branch used to finalize unconditionally,
+    letting a stale charge silently overwrite the current plan back down).
+
+    Deliberately NOT a naive `subscription_id != stored_id` check -- a
+    brand-new subscription's very first charge can legitimately arrive
+    before /verify-subscription-payment has written its id to
+    user_profiles (see cancel_subscription, which flips auto_renew_enabled
+    off but leaves razorpay_subscription_id pointing at the OLD
+    subscription until the new one's verify call overwrites it). In that
+    window, the NEW subscription's id differs from what's on record too,
+    but rejecting it would silently discard a real, already-captured
+    payment -- exactly what the audit calls out as unacceptable.
+
+    Instead this compares Razorpay's own subscription creation timestamps:
+    whichever subscription was created LATER is the one currently
+    superseding the other, regardless of which one user_profiles happens
+    to have recorded yet. A mismatch is only stale if the id on record
+    belongs to a subscription created AFTER this webhook's subscription --
+    i.e. a genuinely older subscription's charge landing late. If nothing
+    is on record yet, or the ids match, or the webhook's subscription is
+    the newer one, it's legitimate.
+    """
+    stored = get_supabase().table("user_profiles").select(
+        "razorpay_subscription_id"
+    ).eq("user_id", user_id).execute()
+    stored_id = stored.data[0].get("razorpay_subscription_id") if stored.data else None
+
+    if not stored_id or stored_id == subscription_id:
+        return False
+
+    if subscription_created_at is None:
+        # Razorpay always sends created_at on subscription entities -- this
+        # is defensive only. Can't prove staleness without it, and silently
+        # discarding an already-captured payment is worse than the rare
+        # risk of accepting a truly stale one -- fail open, but loudly.
+        logger.error(
+            "subscription.charged missing created_at, cannot check staleness | subscription_id=%s user_id=%s",
+            subscription_id, user_id,
+        )
+        send_alert(
+            "Stale-webhook check skipped (missing created_at)",
+            f"subscription_id={subscription_id} user_id={user_id} -- verify manually",
+        )
+        return False
+
+    try:
+        stored_subscription = get_razorpay_client().subscription.fetch(stored_id)
+    except Exception:
+        logger.exception(
+            "stale-webhook check: failed to fetch stored subscription %s for user %s", stored_id, user_id,
+        )
+        send_alert(
+            "Stale-webhook check failed (Razorpay fetch error)",
+            f"stored_subscription_id={stored_id} incoming_subscription_id={subscription_id} user_id={user_id} -- verify manually",
+        )
+        return False
+
+    stored_created_at = stored_subscription.get("created_at")
+    return stored_created_at is not None and stored_created_at > subscription_created_at
+
+
 def validate_billing_cycle(billing_cycle: str) -> str:
     if billing_cycle not in BILLING_CYCLES:
         raise HTTPException(status_code=400, detail=f"Unrecognized billing_cycle: {billing_cycle}")
@@ -185,25 +254,49 @@ def parse_process_payment_result(data) -> str:
     raise RuntimeError(f"process_payment RPC returned unexpected shape: {data!r}")
 
 
-def process_payment_rpc(
+def process_payment_and_grant_rpc(
     user_id: str,
     order_id: str,
     payment_id: str,
     plan_id: str,
     amount: int,
     profile_plan: str,
+    previous_plan: Optional[str],
+    period_days: int = PLAN_PERIOD_DAYS,
     currency: str = "INR",
     status: str = "paid",
 ) -> str:
+    """Record the payment AND extend/start plan_expires_at in a single
+    Postgres transaction (process_payment_and_grant -- see
+    supabase/migrations/20260905000000_atomic_payment_grant.sql).
+
+    Replaces the old two-RPC-call sequence (process_payment, then
+    separately grant_subscription_period): those were two independent
+    PostgREST round trips / two independent transactions, so a payment
+    could get permanently recorded while the very next call (the grant)
+    failed -- and since the payment row is what every retry's idempotency
+    check keys off, a retry would then see "already_processed" and skip
+    the grant forever, leaving a paying customer stuck on their old
+    plan/expiry with no automatic recovery. Now, if the grant fails inside
+    the same transaction, the payment insert rolls back too, so a retry
+    starts clean instead of short-circuiting on a half-applied payment.
+
+    previous_plan must be captured by the caller via get_current_plan
+    BEFORE this call, same invariant as the old grant_subscription_period
+    wrapper -- this RPC still overwrites user_profiles.plan internally.
+    """
     now = datetime.now(timezone.utc).isoformat()
     supabase = get_supabase()
-    result = supabase.rpc("process_payment", {
+    result = supabase.rpc("process_payment_and_grant", {
         "p_user_id": user_id,
         "p_order_id": order_id,
         "p_payment_id": payment_id,
         "p_plan_id": plan_id,
         "p_amount": amount,
         "p_profile_plan": profile_plan,
+        "p_previous_plan": previous_plan,
+        "p_period_days": period_days,
+        "p_grace_days": GRACE_PERIOD_DAYS,
         "p_currency": currency,
         "p_status": status,
         "p_verified_at": now,
@@ -213,7 +306,7 @@ def process_payment_rpc(
 
 def get_current_plan(user_id: str) -> Optional[str]:
     """Read the plan a user has RIGHT NOW. Must be called BEFORE
-    process_payment_rpc, which unconditionally overwrites
+    process_payment_and_grant_rpc, which unconditionally overwrites
     user_profiles.plan on every successful payment — reading it
     afterward would always just echo back the new plan being granted,
     making a same-plan-renewal check meaningless."""
@@ -222,26 +315,107 @@ def get_current_plan(user_id: str) -> Optional[str]:
     return existing.data[0].get("plan") if existing.data else None
 
 
+def get_effective_current_plan(user_id: str) -> str:
+    """The self-serve plan to enforce upgrade-only transitions against --
+    expiry-aware (mirrors GET /plans/me's self_serve_plan), NOT the raw
+    stored `plan` column that get_current_plan reads. A lapsed paid plan
+    still sitting as e.g. "pro" in user_profiles must be treated as "free"
+    here, or a legitimate re-purchase after the grace period lapsed would
+    be wrongly rejected as a same-rank/downgrade attempt. get_current_plan
+    stays separate -- it feeds grant_subscription_period's raw same-plan
+    renewal detection, a different, expiry-independent concern."""
+    supabase = get_supabase()
+    existing = supabase.table("user_profiles").select(
+        "plan, plan_expires_at, subscription_status"
+    ).eq("user_id", user_id).execute()
+    profile = existing.data[0] if existing.data else {}
+    return get_plan_from_profile(profile)
+
+
+def payment_already_recorded(payment_id: str) -> bool:
+    """Whether this Razorpay payment_id has already been committed via
+    process_payment_and_grant_rpc, by the other verification path or the
+    webhook racing this call. The upgrade-only check below must be skipped for a
+    payment that's merely being re-confirmed: by the time a race like that
+    reaches here, the plan has already been correctly applied elsewhere,
+    so the "current" plan read back can legitimately already equal the
+    target -- rejecting that as a non-upgrade would turn a successful
+    payment into a client-visible verification failure. Only a genuinely
+    new payment needs its transition validated."""
+    existing = get_supabase().table("payments").select("id").eq("payment_id", payment_id).limit(1).execute()
+    return bool(existing.data)
+
+
+def reject_if_downgrade(current_plan: str, target_plan: str, *, context: str, user_id: str) -> None:
+    """Defense-in-depth transition guard for the payment verification
+    endpoints -- independent of GET /plans/me, since a direct API call
+    bypasses the frontend entirely. Rejects only a true downgrade (target
+    rank < current rank); a same-rank result is allowed through here
+    (contrast with is_strict_upgrade, used at create-order/create-subscription
+    time, which requires a strictly higher rank) purely so the idempotent
+    webhook-race case above can't misfire -- it can never be reached for a
+    genuinely new payment anyway, since creation-time already enforced the
+    strict upgrade rule."""
+    if PLAN_RANK.get(target_plan, -1) < PLAN_RANK.get(current_plan, 0):
+        logger.error(
+            "%s downgrade rejected | user_id=%s current_plan=%s target_plan=%s",
+            context, user_id, current_plan, target_plan,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot switch from '{current_plan}' to '{target_plan}' -- self-serve plans only support upgrades.",
+        )
+
+
+def get_active_recurring_subscription_id(user_id: str) -> Optional[str]:
+    """The Razorpay subscription id if the user has a live auto-renewing
+    subscription on record, else None. Shared by create_subscription (must
+    cancel before starting another) and create_order (must cancel before a
+    one-time/annual purchase -- see create_order's docstring note)."""
+    existing = get_supabase().table("user_profiles").select(
+        "razorpay_subscription_id, auto_renew_enabled"
+    ).eq("user_id", user_id).execute()
+    if existing.data and existing.data[0].get("auto_renew_enabled") and existing.data[0].get("razorpay_subscription_id"):
+        return existing.data[0]["razorpay_subscription_id"]
+    return None
+
+
+def ensure_new_purchase_is_upgrade(user_id: str, target_plan: str) -> None:
+    """Pre-payment gate for create_order/create_subscription: reject a
+    non-upgrade before we ever talk to Razorpay, so an invalid transition
+    doesn't burn a checkout attempt or leave an unused order/subscription
+    object behind. Independent of (and stricter than) reject_if_downgrade,
+    which only guards the post-payment verification step."""
+    current_plan = get_effective_current_plan(user_id)
+    if not is_strict_upgrade(current_plan, target_plan):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot purchase '{target_plan}' -- self-serve plans only support upgrading from your current plan ('{current_plan}').",
+        )
+
+
 def grant_subscription_period(
     user_id: str,
     profile_plan: str,
     previous_plan: Optional[str],
     period_days: int = PLAN_PERIOD_DAYS,
 ) -> None:
-    """Extend/start plan_expires_at after a verified, non-duplicate payment.
-    Delegates the read-decide-write to a single atomic SQL function
-    (grant_subscription_period — see supabase-subscription-lifecycle-migration.sql)
-    so two concurrent legitimate payments for the same user (e.g. two
-    separate checkouts moments apart) serialize on the user_profiles row
+    """Extend/start plan_expires_at. Delegates the read-decide-write to a
+    single atomic SQL function (grant_subscription_period — see
+    supabase-subscription-lifecycle-migration.sql) so two concurrent
+    legitimate grants for the same user serialize on the user_profiles row
     via SELECT ... FOR UPDATE instead of racing in a Python-side
-    read-then-write. previous_plan must come from get_current_plan,
-    captured before process_payment_rpc ran — see that function's
-    docstring. Deliberately a separate function/RPC from process_payment
-    (untouched) — this only concerns extending the paid period, not
-    payment idempotency. Only call this once per genuinely new payment —
-    callers must skip it on an "already_processed" result to avoid
-    double-extending the same payment via both verify-payment and the
-    webhook racing each other.
+    read-then-write.
+
+    Payment-driven grants (verify_payment / verify_subscription_payment /
+    _finalize_payment) no longer call this directly — they use
+    process_payment_and_grant_rpc, which calls this same SQL function
+    nested inside the payment-recording transaction so the two can't
+    partially apply (see supabase/migrations/20260905000000_atomic_
+    payment_grant.sql). This standalone wrapper is now only used by
+    admin.py's manual comp-plan endpoint, which has no payment row to
+    keep in sync and legitimately updates user_profiles.plan itself
+    before calling this.
     """
     supabase = get_supabase()
     try:
@@ -253,9 +427,9 @@ def grant_subscription_period(
             "p_grace_days": GRACE_PERIOD_DAYS,
         }).execute()
     except Exception:
-        # process_payment_rpc already committed user_profiles.plan before this
-        # runs (separate PostgREST call, not one transaction) -- if this RPC
-        # fails, best-effort revert plan so the user isn't left permanently
+        # The admin caller already updated user_profiles.plan before this
+        # runs (separate call, not one transaction) -- if this RPC fails,
+        # best-effort revert plan so the user isn't left permanently
         # upgraded with no plan_expires_at ever set. Re-raise so the caller
         # still surfaces/retries the failure. plan_gating.py additionally
         # treats a non-free plan with a null plan_expires_at as expired, as a
@@ -343,9 +517,23 @@ def create_order(
 ):
     if _checkout_rate_limiter.is_rate_limited(current_user.id):
         raise HTTPException(status_code=429, detail="Too many requests -- please try again in a while.")
-    validate_plan_id(req.plan_id)
+    profile_plan = validate_plan_id(req.plan_id)
     billing_cycle = validate_billing_cycle(req.billing_cycle)
     amount_paise = get_expected_amount_paise(req.plan_id, billing_cycle)
+
+    ensure_new_purchase_is_upgrade(current_user.id, profile_plan)
+    # A live auto-renewing subscription must be cancelled before a
+    # one-time/annual order purchase -- otherwise the old subscription's
+    # next charge (subscription.charged) can silently overwrite whatever
+    # plan this order just granted (see grant_subscription_period /
+    # _finalize_payment). Same rule create_subscription already enforces
+    # for a second recurring subscription, applied here too since an order
+    # is just as capable of producing two live paid instruments.
+    if get_active_recurring_subscription_id(current_user.id):
+        raise HTTPException(
+            status_code=400,
+            detail="You already have an active auto-renewing subscription. Cancel it before making a one-time or annual purchase.",
+        )
 
     coupon = None
     if req.coupon_code:
@@ -471,6 +659,14 @@ def verify_payment(
 
     profile_plan = validate_plan_id(plan_id)
 
+    if not payment_already_recorded(req.razorpay_payment_id):
+        reject_if_downgrade(
+            get_effective_current_plan(str(current_user.id)),
+            profile_plan,
+            context="verify-payment",
+            user_id=str(current_user.id),
+        )
+
     coupon_code = notes.get("coupon_code")
     stored_expected_amount = notes.get("expected_amount_paise")
     if coupon_code and stored_expected_amount is not None:
@@ -489,14 +685,17 @@ def verify_payment(
         raise HTTPException(status_code=400, detail="Payment amount does not match plan price")
 
     previous_plan = get_current_plan(str(current_user.id))
+    period_days = ANNUAL_PERIOD_DAYS if billing_cycle == "annual" else PLAN_PERIOD_DAYS
 
-    result = process_payment_rpc(
+    result = process_payment_and_grant_rpc(
         user_id=str(current_user.id),
         order_id=req.razorpay_order_id,
         payment_id=req.razorpay_payment_id,
         plan_id=plan_id,
         amount=amount,
         profile_plan=profile_plan,
+        previous_plan=previous_plan,
+        period_days=period_days,
     )
 
     if result == "already_processed":
@@ -508,9 +707,6 @@ def verify_payment(
 
     if coupon_code:
         redeem_coupon(coupon_code)
-
-    period_days = ANNUAL_PERIOD_DAYS if billing_cycle == "annual" else PLAN_PERIOD_DAYS
-    grant_subscription_period(str(current_user.id), profile_plan, previous_plan, period_days=period_days)
 
     track_event(str(current_user.id), "payment_completed", {
         "plan_id": plan_id,
@@ -540,7 +736,8 @@ def create_subscription(
 ):
     if _checkout_rate_limiter.is_rate_limited(current_user.id):
         raise HTTPException(status_code=429, detail="Too many requests -- please try again in a while.")
-    validate_plan_id(req.plan_id)
+    profile_plan = validate_plan_id(req.plan_id)
+    ensure_new_purchase_is_upgrade(current_user.id, profile_plan)
     razorpay_plan_id = get_razorpay_plan_id(req.plan_id)
 
     # auto_renew_enabled only goes True once verify-subscription-payment
@@ -551,10 +748,7 @@ def create_subscription(
     # clicks before either payment completes -- both cost nothing at
     # Razorpay until paid, and the checkout rate limiter above already
     # bounds that.
-    existing = get_supabase().table("user_profiles").select(
-        "razorpay_subscription_id, auto_renew_enabled"
-    ).eq("user_id", current_user.id).execute()
-    if existing.data and existing.data[0].get("auto_renew_enabled") and existing.data[0].get("razorpay_subscription_id"):
+    if get_active_recurring_subscription_id(current_user.id):
         raise HTTPException(
             status_code=400,
             detail="You already have an active subscription. Cancel it before starting a new one.",
@@ -662,6 +856,14 @@ def verify_subscription_payment(
 
     profile_plan = validate_plan_id(plan_id)
 
+    if not payment_already_recorded(req.razorpay_payment_id):
+        reject_if_downgrade(
+            get_effective_current_plan(str(current_user.id)),
+            profile_plan,
+            context="verify-subscription-payment",
+            user_id=str(current_user.id),
+        )
+
     coupon_code = notes.get("coupon_code")
     is_first_cycle_coupon_charge = subscription_charge_is_coupon_trusted(coupon_code, subscription)
 
@@ -681,13 +883,14 @@ def verify_subscription_payment(
 
     previous_plan = get_current_plan(str(current_user.id))
 
-    result = process_payment_rpc(
+    result = process_payment_and_grant_rpc(
         user_id=str(current_user.id),
         order_id=payment.get("order_id") or req.razorpay_subscription_id,
         payment_id=req.razorpay_payment_id,
         plan_id=plan_id,
         amount=amount,
         profile_plan=profile_plan,
+        previous_plan=previous_plan,
     )
 
     supabase = get_supabase()
@@ -705,8 +908,6 @@ def verify_subscription_payment(
 
     if is_first_cycle_coupon_charge:
         redeem_coupon(coupon_code)
-
-    grant_subscription_period(str(current_user.id), profile_plan, previous_plan)
 
     track_event(str(current_user.id), "payment_completed", {
         "plan_id": plan_id,
@@ -1040,14 +1241,17 @@ def _finalize_payment(
         return Response(status_code=200)
 
     previous_plan = get_current_plan(user_id)
+    period_days = ANNUAL_PERIOD_DAYS if billing_cycle == "annual" else PLAN_PERIOD_DAYS
 
-    result = process_payment_rpc(
+    result = process_payment_and_grant_rpc(
         user_id=user_id,
         order_id=order_id,
         payment_id=payment_id,
         plan_id=plan_id,
         amount=amount,
         profile_plan=profile_plan,
+        previous_plan=previous_plan,
+        period_days=period_days,
     )
 
     if extra_profile_update:
@@ -1059,9 +1263,6 @@ def _finalize_payment(
 
     if coupon_code:
         redeem_coupon(coupon_code)
-
-    period_days = ANNUAL_PERIOD_DAYS if billing_cycle == "annual" else PLAN_PERIOD_DAYS
-    grant_subscription_period(user_id, profile_plan, previous_plan, period_days=period_days)
 
     track_event(user_id, "payment_completed", {
         "plan_id": plan_id,
@@ -1225,6 +1426,24 @@ def _process_webhook_body(body_str: str, signature: str) -> Response:
             logger.warning(
                 "subscription.charged missing plan_id/user_id in subscription notes | subscription_id=%s",
                 subscription_id,
+            )
+            return Response(status_code=200)
+
+        # Stale-subscription guard (billing audit issue 1): a superseded
+        # subscription (e.g. an old Basic plan, cancelled at cycle end,
+        # still capable of firing one last charge after the user already
+        # upgraded to Pro) must never finalize and overwrite the current
+        # plan. See is_subscription_webhook_stale's docstring for why this
+        # isn't a naive id-mismatch check.
+        if is_subscription_webhook_stale(user_id, subscription_id, subscription.get("created_at")):
+            logger.warning(
+                "subscription.charged stale — subscription %s superseded for user %s, refusing to grant/overwrite plan",
+                subscription_id, user_id,
+            )
+            send_alert(
+                "Stale subscription webhook rejected",
+                f"subscription_id={subscription_id} user_id={user_id} plan_id={plan_id} payment_id={payment_id} "
+                "— customer was charged on a superseded subscription; verify manually (possible refund needed)",
             )
             return Response(status_code=200)
 

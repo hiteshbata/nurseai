@@ -380,13 +380,14 @@ def test_grant_subscription_period_reverts_plan_on_rpc_failure(monkeypatch):
 
 def test_previous_plan_is_captured_before_process_payment_call_in_verify_payment():
     # Structural check: get_current_plan(...) must appear before
-    # process_payment_rpc(...) in verify_payment's source, or previous_plan
-    # would be read after user_profiles.plan has already been overwritten.
+    # process_payment_and_grant_rpc(...) in verify_payment's source, or
+    # previous_plan would be read after user_profiles.plan has already
+    # been overwritten.
     import inspect
     import app.routers.payments as payments_mod
 
     src = inspect.getsource(payments_mod.verify_payment)
-    assert src.index("get_current_plan(") < src.index("process_payment_rpc(")
+    assert src.index("get_current_plan(") < src.index("process_payment_and_grant_rpc(")
 
 
 def test_verify_payment_checks_order_notes_user_id():
@@ -399,7 +400,7 @@ def test_verify_payment_checks_order_notes_user_id():
 
     src = inspect.getsource(payments_mod.verify_payment)
     assert "notes_user_id" in src
-    assert src.index("notes_user_id") < src.index("process_payment_rpc(")
+    assert src.index("notes_user_id") < src.index("process_payment_and_grant_rpc(")
 
 
 def test_previous_plan_is_captured_before_process_payment_call_in_webhook():
@@ -410,7 +411,7 @@ def test_previous_plan_is_captured_before_process_payment_call_in_webhook():
     import app.routers.payments as payments_mod
 
     src = inspect.getsource(payments_mod._finalize_payment)
-    assert src.index("get_current_plan(") < src.index("process_payment_rpc(")
+    assert src.index("get_current_plan(") < src.index("process_payment_and_grant_rpc(")
 
 
 # ── structural invariants (points 6/7) ────────────────────────────────
@@ -435,26 +436,52 @@ def _extract_event_branch(webhook_src: str, event_marker: str) -> str:
     return webhook_src[branch_start:branch_end]
 
 
-def test_grant_subscription_period_only_called_after_already_processed_check():
+def test_payment_and_grant_are_a_single_atomic_rpc_call():
+    # Regression guard for the atomic-payment-grant fix (billing audit
+    # issue 2): verify_payment / verify_subscription_payment /
+    # _finalize_payment must each call process_payment_and_grant_rpc
+    # exactly once, never process_payment + grant_subscription_period as
+    # two separate calls -- two separate PostgREST calls are two separate
+    # transactions, which is exactly the non-atomic shape that let a
+    # payment commit while the grant failed right after, with retries then
+    # short-circuiting on "already_processed" forever with no recovery.
+    import inspect
+    import app.routers.payments as payments_mod
+
+    for fn in (payments_mod.verify_payment, payments_mod.verify_subscription_payment, payments_mod._finalize_payment):
+        src = inspect.getsource(fn)
+        assert src.count("process_payment_and_grant_rpc(") == 1, fn.__name__
+        assert "grant_subscription_period(" not in src, fn.__name__
+
+
+def test_coupon_redemption_only_called_after_already_processed_check():
+    # redeem_coupon must run after the already_processed short-circuit, or
+    # a webhook/verify race for the same payment could redeem the same
+    # coupon code twice.
     import inspect
     import app.routers.payments as payments_mod
 
     verify_src = inspect.getsource(payments_mod.verify_payment)
     already_processed_idx = verify_src.index('"already_processed"')
-    grant_call_idx = verify_src.index("grant_subscription_period(")
-    assert grant_call_idx > already_processed_idx, (
-        "grant_subscription_period must be called after the already_processed "
-        "check in verify_payment, or a webhook race can double-extend a single payment"
+    redeem_idx = verify_src.index("redeem_coupon(")
+    assert redeem_idx > already_processed_idx, (
+        "redeem_coupon must be called after the already_processed check in verify_payment"
+    )
+
+    subscription_src = inspect.getsource(payments_mod.verify_subscription_payment)
+    already_processed_idx = subscription_src.index('"already_processed"')
+    redeem_idx = subscription_src.index("redeem_coupon(")
+    assert redeem_idx > already_processed_idx, (
+        "redeem_coupon must be called after the already_processed check in verify_subscription_payment"
     )
 
     # Both the payment.captured and subscription.charged branches share
     # this finalization logic via _finalize_payment, so it's checked once.
     finalize_src = inspect.getsource(payments_mod._finalize_payment)
     already_processed_idx = finalize_src.rindex('"already_processed"')
-    grant_call_idx = finalize_src.index("grant_subscription_period(")
-    assert grant_call_idx > already_processed_idx, (
-        "grant_subscription_period must be called after the already_processed "
-        "check in _finalize_payment"
+    redeem_idx = finalize_src.index("redeem_coupon(")
+    assert redeem_idx > already_processed_idx, (
+        "redeem_coupon must be called after the already_processed check in _finalize_payment"
     )
 
 
@@ -465,7 +492,7 @@ def test_payment_failed_path_never_grants_a_subscription():
     webhook_src = inspect.getsource(payments_mod._process_webhook_body)
     failed_branch = _extract_event_branch(webhook_src, '"payment.failed"')
     assert "grant_subscription_period" not in failed_branch
-    assert "process_payment_rpc" not in failed_branch
+    assert "process_payment_and_grant_rpc" not in failed_branch
 
 
 def test_subscription_lifecycle_events_never_grant_or_charge():
@@ -478,7 +505,7 @@ def test_subscription_lifecycle_events_never_grant_or_charge():
     webhook_src = inspect.getsource(payments_mod._process_webhook_body)
     branch = _extract_event_branch(webhook_src, '"subscription.cancelled"')
     assert "grant_subscription_period" not in branch
-    assert "process_payment_rpc" not in branch
+    assert "process_payment_and_grant_rpc" not in branch
 
 
 # ── get_notes: Razorpay sends [] instead of {} for "no notes" on some ──
