@@ -70,6 +70,7 @@ function OetDashboardImpl(props: OetDashboardProps) {
               sessionsLimit={props.sessionUsage.sessions_limit}
               sessionsRemaining={props.sessionUsage.sessions_remaining}
               plan={props.sessionUsage.plan}
+              isInstitutionMember={props.sessionUsage.is_institution_member}
             />
           )}
 

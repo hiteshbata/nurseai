@@ -50,6 +50,9 @@ interface SessionUsage {
   sessions_limit: number
   sessions_remaining: number
   plan: string
+  is_institution_member?: boolean
+  /** See AppShell.tsx's SessionUsage -- unset for a plain institution student. */
+  institution_admin_role?: 'teacher' | 'institution_admin' | null
 }
 
 export function Navbar() {
@@ -115,7 +118,11 @@ export function Navbar() {
   }, [status, isAnonymous])
 
   const planLabel = usage ? (PLAN_LABELS[usage.plan] ?? usage.plan) : null
-  const showUpgrade = usage ? usage.plan !== 'elite' : false
+  // An institution student's access comes from their institution, not a B2C
+  // plan -- no self-serve upsell here either (see AppShell.tsx's PlanCard for
+  // the same guard on the app-shell side). Institution admins are untouched.
+  const isInstitutionStudent = !!usage?.is_institution_member && !usage.institution_admin_role
+  const showUpgrade = usage ? usage.plan !== 'elite' && !isInstitutionStudent : false
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

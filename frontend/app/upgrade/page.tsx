@@ -3,11 +3,15 @@
 import { useRouter } from 'next/navigation'
 import { useSupabaseSession } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Zap, Sparkles, Shield } from 'lucide-react'
+import { CheckCircle2, XCircle, Zap, Sparkles, Shield, Building2 } from 'lucide-react'
 import { RazorpayCheckout } from '@/components/RazorpayCheckout'
-import { getPlans, type Plan } from '@/lib/api'
+import { getPlans, getMyPlan, type Plan, type PlanSummary } from '@/lib/api'
 import { trackEvent } from '@/lib/analytics'
 import { trackMetaEvent } from '@/lib/meta-pixel'
+import {
+  getCardAction, getCardLabel, isCheckoutAllowed,
+  INSTITUTION_MODULE_ROWS,
+} from './helpers'
 
 const ANNUAL_MULTIPLIER = 10 // 2 months free vs. paying monthly
 
@@ -23,6 +27,8 @@ export default function UpgradePage() {
   const router = useRouter()
   const [paid, setPaid] = useState(false)
   const [plans, setPlans] = useState<Plan[] | null>(null)
+  const [summary, setSummary] = useState<PlanSummary | null>(null)
+  const [summaryReady, setSummaryReady] = useState(false)
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly')
   const [couponCode, setCouponCode] = useState('')
   // Read off the URL directly (not useSearchParams) to avoid Next's Suspense-boundary
@@ -42,14 +48,70 @@ export default function UpgradePage() {
 
   useEffect(() => {
     getPlans().then(setPlans).catch(() => setPlans([]))
+    // Entitlement summary is auth-required, unlike /plans/ -- only fetch once
+    // a session exists, and never block plan-card rendering on it forever if
+    // it fails (falls back to the self-serve-only, Free-not-purchasable view).
+    if (status === 'authenticated') {
+      getMyPlan().then(setSummary).catch(() => setSummary(null)).finally(() => setSummaryReady(true))
+    }
     trackEvent('upgrade_page_viewed')
     trackMetaEvent('ViewContent', { content_name: 'upgrade_page' })
-  }, [])
+  }, [status])
 
-  if (status === 'loading' || !plans) {
+  if (status === 'loading' || !plans || (status === 'authenticated' && !summaryReady)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl text-gray-600">Loading...</div>
+      </div>
+    )
+  }
+
+  // Institution students get access from their institution, not a B2C plan --
+  // show them a plain access summary instead of the purchase grid. Personal-
+  // plan purchasing for institution students is a deliberately separate,
+  // not-yet-built product decision (see Part 4 spec); institution admins are
+  // NOT included here and keep the normal self-serve grid below.
+  if (summary && summary.user_type === 'institution_student') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-16">
+        <div className="max-w-lg w-full">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-[#0F2356]">Your Institution Access</h1>
+            <p className="text-gray-500 mt-2">
+              Your institution provides your OET practice access.
+            </p>
+          </div>
+          <div className="bg-white rounded-2xl border-2 border-[#0F2356]/20 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Building2 className="w-5 h-5 text-[#0F2356]" />
+              <h2 className="text-lg font-bold text-[#0F2356]">
+                {summary.institution.name || 'Your Institution'}
+              </h2>
+            </div>
+            <p className="text-sm text-gray-500 mb-3">Your institution provides access to:</p>
+            <ul className="grid grid-cols-2 gap-3 mb-4">
+              {INSTITUTION_MODULE_ROWS.map(({ key, label }) => {
+                const granted = summary.institution.enabled_modules.includes(key)
+                return (
+                  <li key={key} className="flex items-center gap-2 text-sm">
+                    {granted ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-gray-300 shrink-0" />
+                    )}
+                    <span className={granted ? 'text-gray-700' : 'text-gray-400'}>{label}</span>
+                  </li>
+                )
+              })}
+            </ul>
+            {summary.institution.speaking_sessions_per_month != null && (
+              <p className="text-sm text-gray-500">
+                Speaking quota: {summary.institution.speaking_sessions_per_month} sessions / month
+              </p>
+            )}
+            <p className="text-xs text-gray-400 mt-4">Your access is provided by your institution.</p>
+          </div>
+        </div>
       </div>
     )
   }
@@ -59,9 +121,7 @@ export default function UpgradePage() {
       <div className="max-w-5xl mx-auto px-4 py-16">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-[#0F2356]">Upgrade Your Plan</h1>
-          <p className="text-gray-500 mt-3 text-lg">
-            Choose the plan that fits your OET preparation journey
-          </p>
+          <p className="text-gray-500 mt-3 text-lg">Choose the plan that fits your OET preparation journey</p>
         </div>
 
         {paid && (
@@ -118,6 +178,8 @@ export default function UpgradePage() {
             const isAnnual = billingCycle === 'annual' && plan.price > 0
             const displayPrice = isAnnual ? plan.price * ANNUAL_MULTIPLIER : plan.price
             const displayPeriod = isAnnual ? 'year' : plan.period
+            const entitlement = summary?.plans.find((p) => p.id === plan.id)
+            const action = getCardAction(entitlement)
 
             return (
               <div
@@ -169,12 +231,16 @@ export default function UpgradePage() {
                     ))}
                   </ul>
 
-                  {plan.disabled ? (
+                  {plan.disabled || !isCheckoutAllowed(action) ? (
                     <button
                       disabled
-                      className="w-full rounded-xl py-3 text-sm font-semibold bg-gray-100 text-gray-400 cursor-not-allowed"
+                      className={`w-full rounded-xl py-3 text-sm font-semibold cursor-not-allowed ${
+                        action === 'current'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-gray-100 text-gray-400'
+                      }`}
                     >
-                      {plan.cta}
+                      {getCardLabel(action, plan.cta)}
                     </button>
                   ) : (
                     <>
@@ -183,7 +249,7 @@ export default function UpgradePage() {
                         planId={plan.id}
                         planLabel={`${plan.name} Plan - \u20B9${displayPrice}/${displayPeriod}`}
                         onSuccess={() => setPaid(true)}
-                        buttonLabel={plan.cta}
+                        buttonLabel={getCardLabel(action, plan.cta)}
                         className="bg-[#0F2356] text-white hover:bg-[#0F2356]/90"
                         mode={isAnnual ? 'order' : 'subscription'}
                         billingCycle={isAnnual ? 'annual' : 'monthly'}

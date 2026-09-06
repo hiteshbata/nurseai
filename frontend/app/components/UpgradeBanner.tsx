@@ -8,12 +8,17 @@ interface UpgradeBannerProps {
   sessionsLimit: number
   sessionsRemaining: number
   plan: string
+  isInstitutionMember?: boolean
 }
 
 const PCT_THRESHOLD = 80
 
-export function UpgradeBanner({ sessionsUsed, sessionsLimit, sessionsRemaining, plan }: UpgradeBannerProps) {
-  if (plan !== 'free') return null
+export function UpgradeBanner({ sessionsUsed, sessionsLimit, sessionsRemaining, plan, isInstitutionMember }: UpgradeBannerProps) {
+  // An institution member's B2C plan is usually still "free" (their real
+  // access comes from the institution grant), so `plan === 'free'` alone
+  // would misread them as a brand-new self-serve signup -- institution
+  // entitlement takes precedence over that inference.
+  if (plan !== 'free' || isInstitutionMember) return null
 
   const pct = sessionsLimit > 0 ? (sessionsUsed / sessionsLimit) * 100 : 0
   const isNearLimit = pct >= PCT_THRESHOLD

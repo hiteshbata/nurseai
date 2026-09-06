@@ -17,6 +17,41 @@ export interface Plan {
   sessions_limit: number
 }
 
+// Mirrors backend GET /plans/me -- the server-side source of truth for
+// whether the caller is a self-serve customer, an institution student, or
+// an institution admin, and what each plan tier should render as (current /
+// included / purchasable). See backend/app/routers/plans.py get_my_plan.
+export interface PlanEntitlement {
+  id: string
+  is_current: boolean
+  is_purchasable: boolean
+}
+
+export interface InstitutionSummary {
+  is_member: boolean
+  status: string
+  name: string | null
+  enabled_modules: string[]
+  speaking_sessions_per_month: number | null
+}
+
+export interface EffectiveAccess {
+  speaking: boolean
+  reading: boolean
+  listening: boolean
+  writing: boolean
+  mock: boolean
+  pronunciation: boolean
+}
+
+export interface PlanSummary {
+  user_type: 'self_serve' | 'institution_student' | 'institution_admin'
+  self_serve_plan: string
+  institution: InstitutionSummary
+  effective_access: EffectiveAccess
+  plans: PlanEntitlement[]
+}
+
 // Mirrors backend/app/core/plans.py PLANS. Used as the offline/error fallback
 // everywhere a landing component needs a price or session count before (or
 // instead of) a resolved /plans/ call, so there's one place to update instead

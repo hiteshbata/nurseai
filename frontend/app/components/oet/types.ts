@@ -46,6 +46,7 @@ export type SessionUsageData = {
   sessions_limit: number
   sessions_remaining: number
   plan: string
+  is_institution_member?: boolean
 }
 
 export type SkillRef = {

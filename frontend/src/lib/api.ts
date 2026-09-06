@@ -3,7 +3,7 @@ import * as Sentry from '@sentry/nextjs'
 import { createElement } from 'react'
 import toast from 'react-hot-toast'
 import { supabase, signOut } from '@/lib/supabase'
-import type { Plan } from './plans'
+import type { Plan, PlanSummary } from './plans'
 
 const api: AxiosInstance = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
@@ -167,7 +167,7 @@ api.get = ((url: string, config?: AxiosRequestConfig) => {
 // Re-exported so existing `import { FALLBACK_PLANS, type Plan } from '@/lib/api'`
 // call sites keep working. New server components should import from
 // '@/lib/plans' directly instead -- see the comment there.
-export type { Plan } from './plans'
+export type { Plan, PlanSummary } from './plans'
 export { FALLBACK_PLANS } from './plans'
 
 let plansPromise: Promise<Plan[]> | null = null
@@ -181,6 +181,11 @@ export async function getPlans(): Promise<Plan[]> {
       })
   }
   return plansPromise
+}
+
+export async function getMyPlan(): Promise<PlanSummary> {
+  const res = await api.get('/plans/me')
+  return res.data
 }
 
 export default api

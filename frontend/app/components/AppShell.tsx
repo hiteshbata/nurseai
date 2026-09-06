@@ -20,6 +20,9 @@ import {
   Menu,
   X,
   MoreHorizontal,
+  Building2,
+  Users,
+  Mail,
 } from 'lucide-react'
 import SpeakOETLogo from '@/components/ui/SpeakOETLogo'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -46,6 +49,30 @@ interface SessionUsage {
   sessions_limit: number
   sessions_remaining: number
   plan: string
+  is_institution_member?: boolean
+  institution_modules?: string[]
+  /** Caller's own highest teacher/institution_admin role, or null for a
+   * regular B2C user or institution student. Nav-visibility only -- the
+   * actual authorization boundary is server-side (require_active_institution_role). */
+  institution_admin_role?: 'teacher' | 'institution_admin' | null
+}
+
+// Mirrors the backend's paid-plan module gates (plan_gating.py) -- used only
+// to decide nav visibility for an institution member, since their B2C
+// free-trial fallback is suppressed server-side (see institution_access.py).
+// Regular B2C users never consult this: their nav visibility is unchanged.
+const B2C_MODULE_PLAN_GATES: Record<string, string[]> = {
+  reading: ['basic', 'pro', 'elite'],
+  listening: ['basic', 'pro', 'elite'],
+  writing: ['pro', 'elite'],
+  mock_tests: ['elite'],
+}
+
+export function isModuleVisible(moduleKey: string | undefined, usage: SessionUsage | null): boolean {
+  if (!moduleKey || !usage?.is_institution_member) return true
+  const paidGate = B2C_MODULE_PLAN_GATES[moduleKey]
+  const hasPaidAccess = paidGate ? paidGate.includes(usage.plan) : true
+  return hasPaidAccess || !!usage.institution_modules?.includes(moduleKey)
 }
 
 // AppShell is the shared ancestor for every authenticated app route
@@ -60,9 +87,13 @@ interface SessionUsage {
 interface SessionUsageState {
   usage: SessionUsage | null
   ready: boolean
+  /** True only when the fetch itself failed -- distinct from "ready with no
+   * data" (signed out/anonymous), so consumers don't silently render an
+   * error as if it were Free/no-institution-membership. */
+  error: boolean
 }
 
-const SessionUsageContext = createContext<SessionUsageState>({ usage: null, ready: false })
+const SessionUsageContext = createContext<SessionUsageState>({ usage: null, ready: false, error: false })
 
 export function useSessionUsage(): SessionUsageState {
   return useContext(SessionUsageContext)
@@ -77,6 +108,10 @@ interface NavItem {
   /** Renders a "Pro" chip when the current plan IS in this list (deny-list,
    * for modules where a lower plan is locked out but free gets a trial). */
   lockedPlans?: string[]
+  /** Backend module key (see institution_access.py) -- an institution member
+   * without paid-plan access to this module and without an institution grant
+   * for it has the item hidden entirely rather than chip-locked. */
+  moduleKey?: string
 }
 
 // Grouped so seven destinations scan as three decisions, not seven. The old
@@ -94,17 +129,33 @@ const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
     heading: 'Practice',
     items: [
       { href: '/practice/technique', label: 'Technique Practice', icon: GraduationCap },
-      { href: '/practice/listening', label: 'Listening', icon: Headphones },
-      { href: '/practice/reading', label: 'Reading', icon: BookOpen },
-      { href: '/practice/writing', label: 'Writing', icon: PenLine, gatedPlans: WRITING_PLANS },
+      { href: '/practice/listening', label: 'Listening', icon: Headphones, moduleKey: 'listening' },
+      { href: '/practice/reading', label: 'Reading', icon: BookOpen, moduleKey: 'reading' },
+      { href: '/practice/writing', label: 'Writing', icon: PenLine, gatedPlans: WRITING_PLANS, moduleKey: 'writing' },
       { href: '/practice/speaking', label: 'Speaking', icon: Mic },
     ],
   },
   {
     heading: 'Assess',
-    items: [{ href: '/practice/mock', label: 'Mock Test', icon: ClipboardCheck, lockedPlans: MOCK_TEST_LOCKED_PLANS }],
+    items: [{ href: '/practice/mock', label: 'Mock Test', icon: ClipboardCheck, lockedPlans: MOCK_TEST_LOCKED_PLANS, moduleKey: 'mock_tests' }],
   },
 ]
+
+// Institution-admin section is role-gated (teacher/institution_admin only),
+// so it isn't part of the static NAV_GROUPS list -- built per-render from
+// SessionUsage.institution_admin_role instead (see NavLinks below).
+export function institutionNavGroup(usage: SessionUsage | null): { heading: string | null; items: NavItem[] } | null {
+  const role = usage?.institution_admin_role
+  if (!role) return null
+  const items: NavItem[] = [
+    { href: '/institution', label: 'Overview', icon: Building2 },
+    { href: '/institution/students', label: 'Students', icon: Users },
+  ]
+  if (role === 'institution_admin') {
+    items.push({ href: '/institution/invites', label: 'Invitations', icon: Mail })
+  }
+  return { heading: 'Institution', items }
+}
 
 const ALL_NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items)
 
@@ -117,6 +168,9 @@ const EXTRA_TITLES: Record<string, string> = {
   '/practice/vocab': 'Vocabulary',
   '/sessions': 'Session Feedback',
   '/support': 'Support',
+  '/institution': 'Institution Overview',
+  '/institution/students': 'Students',
+  '/institution/invites': 'Invitations',
 }
 
 function pageTitle(pathname: string | null): string {
@@ -160,15 +214,26 @@ function ProChip() {
 function NavLinks({
   pathname,
   usage,
+  ready,
   onNavigate,
 }: {
   pathname: string | null
   usage: SessionUsage | null
+  ready: boolean
   onNavigate?: () => void
 }) {
+  // institutionNavGroup already fails "closed" (returns null) while usage is
+  // still unresolved, so the Institution section never flashes on. The items
+  // below need the same treatment explicitly: isModuleVisible's contract is
+  // "given a resolved usage snapshot" and defaults to visible for a null
+  // usage, which is correct for "no institution membership" but wrong for
+  // "haven't loaded yet" -- so a moduleKey item renders a skeleton instead of
+  // the real link until `ready`, rather than flashing the B2C-visible default.
+  const institutionGroup = institutionNavGroup(usage)
+  const groups = institutionGroup ? [...NAV_GROUPS, institutionGroup] : NAV_GROUPS
   return (
     <nav aria-label="Main" className="flex flex-col gap-6">
-      {NAV_GROUPS.map((group, gi) => (
+      {groups.map((group, gi) => (
         <div key={group.heading ?? `group-${gi}`} className="flex flex-col gap-1">
           {group.heading && (
             <div className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -176,11 +241,31 @@ function NavLinks({
             </div>
           )}
           {group.items.map((item) => {
+            if (item.moduleKey && !ready) {
+              return (
+                <div
+                  key={item.href}
+                  aria-hidden="true"
+                  className="flex min-h-11 items-center gap-3 rounded-lg px-3"
+                >
+                  <div className="h-[18px] w-[18px] shrink-0 animate-pulse rounded bg-muted" />
+                  <div className="h-3 w-20 animate-pulse rounded bg-muted" />
+                </div>
+              )
+            }
+            if (!isModuleVisible(item.moduleKey, usage)) return null
             const Icon = item.icon
             const active = isActive(pathname, item.href)
+            // An institution grant makes an otherwise plan-locked module
+            // usable -- no "Pro" chip in that case, since there's nothing
+            // for the student to personally upgrade (see Step 8: don't
+            // suggest paying for a module their institution didn't provide).
+            const institutionGrant =
+              !!usage?.is_institution_member && !!item.moduleKey && !!usage.institution_modules?.includes(item.moduleKey)
             const showChip =
-              (item.gatedPlans && usage && !item.gatedPlans.includes(usage.plan)) ||
-              (item.lockedPlans && usage && item.lockedPlans.includes(usage.plan))
+              !institutionGrant &&
+              ((item.gatedPlans && usage && !item.gatedPlans.includes(usage.plan)) ||
+                (item.lockedPlans && usage && item.lockedPlans.includes(usage.plan)))
             return (
               <Link
                 key={item.href}
@@ -209,7 +294,11 @@ function NavLinks({
 function PlanCard({ usage, onNavigate }: { usage: SessionUsage | null; onNavigate?: () => void }) {
   if (!usage) return null
   const planLabel = PLAN_LABELS[usage.plan] ?? usage.plan
-  const showUpgrade = usage.plan !== 'elite'
+  // An institution student already has access through their institution --
+  // no self-serve upsell. Admins are untouched (institution_admin_role unset
+  // for students, so this only ever suppresses the student case).
+  const isInstitutionStudent = !!usage.is_institution_member && !usage.institution_admin_role
+  const showUpgrade = usage.plan !== 'elite' && !isInstitutionStudent
 
   return (
     <div className="rounded-xl border border-border bg-muted p-3">
@@ -237,6 +326,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [usage, setUsage] = useState<SessionUsage | null>(null)
   const [usageReady, setUsageReady] = useState(false)
+  const [usageError, setUsageError] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [avatarOpen, setAvatarOpen] = useState(false)
   const avatarRef = useRef<HTMLDivElement>(null)
@@ -250,6 +340,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (status !== 'authenticated' || isAnonymous) {
       setUsage(null)
+      setUsageError(false)
       // No fetch will happen in this state -- settled immediately rather
       // than leaving consumers stuck on a "not ready yet" skeleton.
       setUsageReady(true)
@@ -257,12 +348,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
     let cancelled = false
     setUsageReady(false)
+    setUsageError(false)
     api
       .get('/sessions/usage')
       .then((res) => {
         if (!cancelled) setUsage(res.data)
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!cancelled) setUsageError(true)
+      })
       .finally(() => {
         if (!cancelled) setUsageReady(true)
       })
@@ -272,8 +366,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [status, isAnonymous])
 
   const usageContextValue = useMemo<SessionUsageState>(
-    () => ({ usage, ready: usageReady }),
-    [usage, usageReady]
+    () => ({ usage, ready: usageReady, error: usageError }),
+    [usage, usageReady, usageError]
   )
 
   useEffect(() => {
@@ -378,7 +472,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Link>
       </div>
       <div className="mt-6 flex-1 overflow-y-auto">
-        <NavLinks pathname={pathname} usage={usage} onNavigate={onNavigate} />
+        <NavLinks pathname={pathname} usage={usage} ready={usageReady} onNavigate={onNavigate} />
       </div>
       <div className="pt-4">
         <PlanCard usage={usage} onNavigate={onNavigate} />
@@ -591,10 +685,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-4 border-t border-border bg-card lg:hidden"
       >
         {[
-          { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
-          { href: '/practice/speaking', label: 'Speaking', icon: Mic },
-          { href: '/practice/mock', label: 'Mock', icon: ClipboardCheck },
-        ].map(({ href, label, icon: Icon }) => {
+          { href: '/dashboard', label: 'Home', icon: LayoutDashboard, moduleKey: undefined },
+          { href: '/practice/speaking', label: 'Speaking', icon: Mic, moduleKey: undefined },
+          { href: '/practice/mock', label: 'Mock', icon: ClipboardCheck, moduleKey: 'mock_tests' },
+        ]
+          .map(({ href, label, icon: Icon, moduleKey }) => {
+          // Same "unresolved -> skeleton" rule as the sidebar's NavLinks: a
+          // moduleKey tab defaults visible while usage hasn't loaded (see
+          // isModuleVisible(null) contract), which would flash a tab an
+          // institution member shouldn't have -- keep the slot but render a
+          // placeholder instead of a live link until ready.
+          if (moduleKey && !usageReady) {
+            return (
+              <div key={href} aria-hidden="true" className="flex min-h-14 flex-col items-center justify-center gap-0.5">
+                <div className="h-5 w-5 animate-pulse rounded bg-muted" />
+              </div>
+            )
+          }
+          if (!isModuleVisible(moduleKey, usage)) return null
           const active = isActive(pathname, href)
           return (
             <Link
