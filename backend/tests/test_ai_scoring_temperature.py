@@ -54,17 +54,49 @@ def _patch_gemini_post(monkeypatch, captured):
     monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
 
 
-def test_call_openai_compatible_defaults_to_zero_temperature(monkeypatch):
+async def _fake_log_ai_usage(*_a, **_kw):
+    return None
+
+
+def test_call_ai_openai_path_defaults_to_zero_temperature(monkeypatch):
+    # _call_openai_compatible/_call_gemini were collapsed into _call_ai
+    # (ai_scoring._call_ai -> ai_registry.dispatch_call -> the real,
+    # unmocked provider function) -- so the provider/model is now decided
+    # by ai_registry.get_model_config(purpose), which we fake here to force
+    # the openai_compatible path instead of patching a function that no
+    # longer exists on ai_scoring.
     captured = []
     _patch_openai_post(monkeypatch, captured)
-    _run(ai._call_openai_compatible("openai", [{"role": "user", "content": "hi"}], "key", "gpt-5.4-mini", 100, False))
+    cfg = ai.ai_registry.ModelConfig(id=1, provider="openai", model_name="gpt-5.4-mini", api_base=None)
+
+    async def fake_get_model_config(purpose):
+        return cfg
+
+    monkeypatch.setattr(ai.ai_registry, "get_model_config", fake_get_model_config)
+    monkeypatch.setattr(ai.settings, "OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(ai.circuit_breaker, "allow_request", lambda prov: True)
+    monkeypatch.setattr(ai.circuit_breaker, "record_success", lambda prov: None)
+    monkeypatch.setattr(ai, "log_ai_usage", _fake_log_ai_usage)
+
+    _run(ai._call_ai([{"role": "user", "content": "hi"}], purpose="scoring"))
     assert captured[0]["temperature"] == 0.0
 
 
-def test_call_gemini_defaults_to_zero_temperature(monkeypatch):
+def test_call_ai_gemini_path_defaults_to_zero_temperature(monkeypatch):
     captured = []
     _patch_gemini_post(monkeypatch, captured)
-    _run(ai._call_gemini([{"role": "user", "content": "hi"}], "key", "gemini-2.5-flash", 100, False))
+    cfg = ai.ai_registry.ModelConfig(id=2, provider="google", model_name="gemini-2.5-flash", api_base=None)
+
+    async def fake_get_model_config(purpose):
+        return cfg
+
+    monkeypatch.setattr(ai.ai_registry, "get_model_config", fake_get_model_config)
+    monkeypatch.setattr(ai.settings, "GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(ai.circuit_breaker, "allow_request", lambda prov: True)
+    monkeypatch.setattr(ai.circuit_breaker, "record_success", lambda prov: None)
+    monkeypatch.setattr(ai, "log_ai_usage", _fake_log_ai_usage)
+
+    _run(ai._call_ai([{"role": "user", "content": "hi"}], purpose="scoring"))
     assert captured[0]["generationConfig"]["temperature"] == 0.0
 
 

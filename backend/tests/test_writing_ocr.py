@@ -2,7 +2,19 @@
 
 Guards the gather refactor: pages must come back in input order (not finish
 order), a failed primary model must fall back to the next, and an all-fail page
-must raise HTTPException naming which photo to re-take."""
+must raise HTTPException naming which photo to re-take.
+
+_read_ocr_page now goes through the purpose-driven ai_scoring._call_ai (see
+commit 4215b64b) instead of calling per-provider functions directly, so the
+model pair for "writing_ocr" comes from ai_registry.get_model_config (an
+Admin > AI Models DB row) rather than being hardcoded here. Without faking
+that lookup, this test either depends on whatever the live/dev DB happens to
+have configured for that purpose, or -- when no API key is present for
+whatever it finds -- fails via a real (or live-502) provider call instead of
+exercising the FakeClient below at all. We fake get_model_config with the
+same primary/fallback pair (OpenRouter-routed anthropic sonnet -> OpenRouter-
+routed google gemini) the real DB currently uses, so the marker-based
+FakeClient logic keeps testing genuine dispatch/fallback behavior."""
 import asyncio
 
 import httpx
@@ -10,6 +22,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.routers import writing
+from app.services import ai_registry, ai_scoring
 
 
 class _FakeResp:
@@ -48,8 +61,23 @@ class _FakeClient:
         return _FakeResp(200, f"text::{marker}::{provider}")
 
 
+_WRITING_OCR_CFG = ai_registry.ModelConfig(
+    id=1, provider="openrouter", model_name="anthropic/claude-sonnet-5", api_base=None,
+    fallback=ai_registry.ModelConfig(id=2, provider="openrouter", model_name="google/gemini-flash-latest", api_base=None),
+)
+
+
+async def _fake_get_model_config(_purpose):
+    return _WRITING_OCR_CFG
+
+
 def _patch(monkeypatch):
     monkeypatch.setattr(httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(ai_registry, "get_model_config", _fake_get_model_config)
+    monkeypatch.setattr(ai_scoring.settings, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(ai_scoring.circuit_breaker, "allow_request", lambda provider: True)
+    monkeypatch.setattr(ai_scoring.circuit_breaker, "record_success", lambda provider: None)
+    monkeypatch.setattr(ai_scoring.circuit_breaker, "record_failure", lambda provider: None)
 
 
 def test_pages_returned_in_input_order(monkeypatch):
