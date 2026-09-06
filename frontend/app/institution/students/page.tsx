@@ -11,6 +11,7 @@ import { UserPlus } from 'lucide-react'
 import { classifyLoadError, formatJoined, scoreLabel, sessionsLabel, mobileSessionsLabel } from './helpers'
 
 interface StudentRow {
+  user_id: string
   name: string | null
   email: string
   status: 'active' | 'invited' | 'revoked'
@@ -37,7 +38,7 @@ const STATUS_CLASS: Record<string, string> = {
 export default function InstitutionStudentsPage() {
   const { session, status } = useSupabaseSession()
   const router = useRouter()
-  const { usage } = useSessionUsage()
+  const { usage, ready: usageReady } = useSessionUsage()
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
   const [retryKey, setRetryKey] = useState(0)
 
@@ -116,7 +117,10 @@ export default function InstitutionStudentsPage() {
   }
 
   const { data } = state
-  const isAdmin = usage?.institution_admin_role === 'institution_admin'
+  // Gate on ready: /institution/students and AppShell's /sessions/usage are
+  // separate fetches with no ordering guarantee -- without this, a real
+  // admin landing on an empty roster could briefly not see Invite Students.
+  const isAdmin = usageReady && usage?.institution_admin_role === 'institution_admin'
 
   return (
     <div className="py-6 sm:py-8">
@@ -159,7 +163,14 @@ export default function InstitutionStudentsPage() {
               <tbody className="divide-y divide-border">
                 {data.map((s, i) => (
                   <tr key={i}>
-                    <td className="px-4 py-3 font-medium text-foreground">{s.name || '—'}</td>
+                    <td className="px-4 py-3 font-medium">
+                      <Link
+                        href={`/institution/students/${s.user_id}`}
+                        className="text-foreground hover:text-emerald-700 hover:underline dark:hover:text-emerald-400"
+                      >
+                        {s.name || '—'}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">{s.email}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatJoined(s.joined_at)}</td>
                     <td className="px-4 py-3 tabular-nums text-foreground">
@@ -180,7 +191,11 @@ export default function InstitutionStudentsPage() {
           {/* Mobile: cards, hidden at md and up */}
           <div className="flex flex-col gap-3 md:hidden">
             {data.map((s, i) => (
-              <div key={i} className="rounded-xl border border-border p-4">
+              <Link
+                key={i}
+                href={`/institution/students/${s.user_id}`}
+                className="block rounded-xl border border-border p-4 hover:border-emerald-700/50"
+              >
                 <p className="font-semibold text-foreground">{s.name || s.email}</p>
                 {s.name && <p className="text-sm text-muted-foreground">{s.email}</p>}
                 <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
@@ -199,7 +214,7 @@ export default function InstitutionStudentsPage() {
                     </span>
                   </dd>
                 </dl>
-              </div>
+              </Link>
             ))}
           </div>
         </>

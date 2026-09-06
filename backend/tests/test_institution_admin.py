@@ -30,11 +30,13 @@ class _QueryBuilder:
     chain over a mutable list of dict rows, shared across every fake table
     used in this file -- membership/institution/invite/profile/users
     tables all need the same eq/in_ filtering shape."""
-    def __init__(self, rows, mode="select", payload=None, filters=None):
+    def __init__(self, rows, mode="select", payload=None, filters=None, order_by=None, limit_n=None):
         self.rows = rows
         self.mode = mode
         self.payload = payload
         self.filters = filters or []
+        self.order_by = order_by
+        self.limit_n = limit_n
 
     def select(self, _cols=None):
         return self
@@ -46,10 +48,18 @@ class _QueryBuilder:
         return _QueryBuilder(self.rows, mode="update", payload=patch, filters=self.filters)
 
     def eq(self, col, val):
-        return _QueryBuilder(self.rows, self.mode, self.payload, self.filters + [("eq", col, val)])
+        return _QueryBuilder(self.rows, self.mode, self.payload, self.filters + [("eq", col, val)],
+                              self.order_by, self.limit_n)
 
     def in_(self, col, vals):
-        return _QueryBuilder(self.rows, self.mode, self.payload, self.filters + [("in", col, vals)])
+        return _QueryBuilder(self.rows, self.mode, self.payload, self.filters + [("in", col, vals)],
+                              self.order_by, self.limit_n)
+
+    def order(self, col, desc=False):
+        return _QueryBuilder(self.rows, self.mode, self.payload, self.filters, (col, desc), self.limit_n)
+
+    def limit(self, n):
+        return _QueryBuilder(self.rows, self.mode, self.payload, self.filters, self.order_by, n)
 
     def _matches(self, r):
         for kind, col, val in self.filters:
@@ -72,7 +82,13 @@ class _QueryBuilder:
                     r.update(self.payload)
                     updated.append(r)
             return _FakeResult(updated)
-        return _FakeResult([r for r in self.rows if self._matches(r)])
+        result = [r for r in self.rows if self._matches(r)]
+        if self.order_by:
+            col, desc = self.order_by
+            result = sorted(result, key=lambda r: r.get(col) or "", reverse=desc)
+        if self.limit_n is not None:
+            result = result[:self.limit_n]
+        return _FakeResult(result)
 
 
 class _FakeSupabase:
@@ -573,7 +589,7 @@ def test_students_roster_lists_only_scoped_institution_students(monkeypatch):
     assert roster[0]["sessions_used_this_month"] == 3
 
 
-def test_students_roster_never_leaks_user_id_or_internal_fields(monkeypatch):
+def test_students_roster_includes_user_id_but_not_other_internal_fields(monkeypatch):
     inst_id = str(uuid.uuid4())
     student = str(uuid.uuid4())
     fake = _students_fake(
@@ -589,7 +605,8 @@ def test_students_roster_never_leaks_user_id_or_internal_fields(monkeypatch):
 
     roster = institution_module.get_institution_students(scope=scope)
 
-    for forbidden in ("user_id", "plan", "subscription_status", "bonus_sessions", "institution_id"):
+    assert roster[0]["user_id"] == student
+    for forbidden in ("plan", "subscription_status", "bonus_sessions", "institution_id"):
         assert forbidden not in roster[0]
 
 
@@ -749,3 +766,253 @@ def test_students_roster_ordered_joined_at_desc(monkeypatch):
 
     roster = institution_module.get_institution_students(scope=scope)
     assert [r["email"] for r in roster] == ["newer@example.com", "older@example.com"]
+
+
+def test_students_roster_returns_last_seen_at(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    student = str(uuid.uuid4())
+    fake = _students_fake(
+        inst_id,
+        members=[_membership(student, inst_id, role="student")],
+        users=[{"id": student, "email": "s@example.com", "name": "S", "last_seen_at": "2026-08-30T00:00:00+00:00"}],
+    )
+    monkeypatch.setattr(institution_module, "get_supabase", lambda: fake)
+    scope = institution_admin.InstitutionScope(institution_id=inst_id, role="teacher")
+
+    roster = institution_module.get_institution_students(scope=scope)
+    assert roster[0]["last_seen_at"] == "2026-08-30T00:00:00+00:00"
+
+
+# ── GET /institution/students/{user_id}: single-student detail ─────────
+
+def _detail_fake(inst_id, members, *, users=None, profiles=None, submissions=None,
+                  speaking_sessions_per_month=20, speaking_enabled=True):
+    return _students_fake(
+        inst_id, members, users=users, profiles=profiles, submissions=submissions,
+        speaking_sessions_per_month=speaking_sessions_per_month, speaking_enabled=speaking_enabled,
+    )
+
+
+def test_student_detail_happy_path(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    student = str(uuid.uuid4())
+    fake = _detail_fake(
+        inst_id,
+        members=[{**_membership(student, inst_id, role="student"), "joined_at": "2026-08-01T00:00:00+00:00"}],
+        users=[{"id": student, "email": "s@example.com", "name": "S", "last_seen_at": "2026-09-01T00:00:00+00:00"}],
+        profiles=[{"user_id": student, "plan": "free", "sessions_used_this_month": 4,
+                    "sessions_reset_date": institution_module.get_month_start_utc(), "bonus_sessions": 0}],
+    )
+    monkeypatch.setattr(institution_module, "get_supabase", lambda: fake)
+    scope = institution_admin.InstitutionScope(institution_id=inst_id, role="teacher")
+
+    detail = institution_module.get_institution_student_detail(student, scope=scope)
+
+    assert detail["user_id"] == student
+    assert detail["email"] == "s@example.com"
+    assert detail["status"] == "active"
+    assert detail["role"] == "student"
+    assert detail["joined_at"] == "2026-08-01T00:00:00+00:00"
+    assert detail["sessions_used_this_month"] == 4
+    assert detail["last_seen_at"] == "2026-09-01T00:00:00+00:00"
+
+
+def test_student_detail_institution_admin_access(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    student = str(uuid.uuid4())
+    fake = _detail_fake(
+        inst_id,
+        members=[_membership(student, inst_id, role="student")],
+        users=[{"id": student, "email": "s@example.com", "name": "S"}],
+    )
+    monkeypatch.setattr(institution_module, "get_supabase", lambda: fake)
+    scope = institution_admin.InstitutionScope(institution_id=inst_id, role="institution_admin")
+
+    detail = institution_module.get_institution_student_detail(student, scope=scope)
+    assert detail["user_id"] == student
+
+
+def test_student_detail_teacher_access_matches_roster_permission(monkeypatch):
+    """require_teacher is the same dependency used by the roster -- a caller
+    with only teacher rank (not institution_admin) must be able to load the
+    detail view, exactly like the roster."""
+    user = _user()
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(
+        institution_members=[_membership(user.id, inst_id, role="teacher")],
+        institutions=[_institution(inst_id)],
+    )
+    scope = institution_admin.require_active_institution_role("teacher")(current_user=user, supabase=fake)
+    assert scope.role == "teacher"
+
+
+def test_student_detail_cross_institution_student_returns_404(monkeypatch):
+    inst_a, inst_b = str(uuid.uuid4()), str(uuid.uuid4())
+    student = str(uuid.uuid4())
+    fake = _detail_fake(
+        inst_a,
+        members=[_membership(student, inst_b, role="student")],  # student belongs to inst_b, not inst_a
+        users=[{"id": student, "email": "other@example.com", "name": "Other"}],
+    )
+    monkeypatch.setattr(institution_module, "get_supabase", lambda: fake)
+    scope = institution_admin.InstitutionScope(institution_id=inst_a, role="teacher")
+
+    with pytest.raises(HTTPException) as excinfo:
+        institution_module.get_institution_student_detail(student, scope=scope)
+    assert excinfo.value.status_code == 404
+
+
+def test_student_detail_revoked_target_membership_still_returned_with_status(monkeypatch):
+    """Matches roster behavior: the roster already lists every membership
+    status (including revoked), so detail must not silently deny access to
+    an existing membership row -- it reports the true status instead."""
+    inst_id = str(uuid.uuid4())
+    student = str(uuid.uuid4())
+    fake = _detail_fake(
+        inst_id,
+        members=[_membership(student, inst_id, role="student", status="revoked")],
+        users=[{"id": student, "email": "s@example.com", "name": "S"}],
+    )
+    monkeypatch.setattr(institution_module, "get_supabase", lambda: fake)
+    scope = institution_admin.InstitutionScope(institution_id=inst_id, role="teacher")
+
+    detail = institution_module.get_institution_student_detail(student, scope=scope)
+    assert detail["status"] == "revoked"
+
+
+def test_student_detail_caller_revoked_membership_denied_at_dependency(monkeypatch):
+    user = _user()
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(
+        institution_members=[_membership(user.id, inst_id, role="teacher", status="revoked")],
+        institutions=[_institution(inst_id)],
+    )
+    with pytest.raises(HTTPException) as excinfo:
+        institution_admin.require_active_institution_role("teacher")(current_user=user, supabase=fake)
+    assert excinfo.value.status_code == 403
+
+
+def test_student_detail_nonexistent_user_returns_404(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _detail_fake(inst_id, members=[])
+    monkeypatch.setattr(institution_module, "get_supabase", lambda: fake)
+    scope = institution_admin.InstitutionScope(institution_id=inst_id, role="teacher")
+
+    with pytest.raises(HTTPException) as excinfo:
+        institution_module.get_institution_student_detail(str(uuid.uuid4()), scope=scope)
+    assert excinfo.value.status_code == 404
+
+
+def test_student_detail_quota_positive_number(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    student = str(uuid.uuid4())
+    fake = _detail_fake(
+        inst_id,
+        members=[_membership(student, inst_id, role="student")],
+        users=[{"id": student, "email": "s@example.com", "name": "S"}],
+        profiles=[{"user_id": student, "plan": "free", "sessions_used_this_month": 12,
+                    "sessions_reset_date": institution_module.get_month_start_utc(), "bonus_sessions": 0}],
+        speaking_sessions_per_month=20,
+    )
+    monkeypatch.setattr(institution_module, "get_supabase", lambda: fake)
+    scope = institution_admin.InstitutionScope(institution_id=inst_id, role="teacher")
+
+    detail = institution_module.get_institution_student_detail(student, scope=scope)
+    assert detail["speaking_sessions_per_month"] == 20
+    assert detail["sessions_remaining"] == 8
+
+
+def test_student_detail_quota_unlimited_gives_null_remaining(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    student = str(uuid.uuid4())
+    fake = _detail_fake(
+        inst_id,
+        members=[_membership(student, inst_id, role="student")],
+        users=[{"id": student, "email": "s@example.com", "name": "S"}],
+        speaking_sessions_per_month=None,
+    )
+    monkeypatch.setattr(institution_module, "get_supabase", lambda: fake)
+    scope = institution_admin.InstitutionScope(institution_id=inst_id, role="teacher")
+
+    detail = institution_module.get_institution_student_detail(student, scope=scope)
+    assert detail["speaking_sessions_per_month"] is None
+    assert detail["sessions_remaining"] is None
+
+
+def test_student_detail_sessions_remaining_never_negative(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    student = str(uuid.uuid4())
+    fake = _detail_fake(
+        inst_id,
+        members=[_membership(student, inst_id, role="student")],
+        users=[{"id": student, "email": "s@example.com", "name": "S"}],
+        profiles=[{"user_id": student, "plan": "free", "sessions_used_this_month": 99,
+                    "sessions_reset_date": institution_module.get_month_start_utc(), "bonus_sessions": 0}],
+        speaking_sessions_per_month=20,
+    )
+    monkeypatch.setattr(institution_module, "get_supabase", lambda: fake)
+    scope = institution_admin.InstitutionScope(institution_id=inst_id, role="teacher")
+
+    detail = institution_module.get_institution_student_detail(student, scope=scope)
+    assert detail["sessions_remaining"] == 0
+
+
+def test_student_detail_last_seen_at_returned(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    student = str(uuid.uuid4())
+    fake = _detail_fake(
+        inst_id,
+        members=[_membership(student, inst_id, role="student")],
+        users=[{"id": student, "email": "s@example.com", "name": "S", "last_seen_at": "2026-09-04T12:00:00+00:00"}],
+    )
+    monkeypatch.setattr(institution_module, "get_supabase", lambda: fake)
+    scope = institution_admin.InstitutionScope(institution_id=inst_id, role="teacher")
+
+    detail = institution_module.get_institution_student_detail(student, scope=scope)
+    assert detail["last_seen_at"] == "2026-09-04T12:00:00+00:00"
+
+
+def test_student_detail_latest_speaking_score_returned(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    student = str(uuid.uuid4())
+    fake = _detail_fake(
+        inst_id,
+        members=[_membership(student, inst_id, role="student")],
+        users=[{"id": student, "email": "s@example.com", "name": "S"}],
+        submissions=[
+            {"user_id": student, "score": 320, "created_at": "2026-08-01T00:00:00+00:00", "module": "speaking"},
+            {"user_id": student, "score": 390, "created_at": "2026-08-20T00:00:00+00:00", "module": "speaking"},
+        ],
+    )
+    monkeypatch.setattr(institution_module, "get_supabase", lambda: fake)
+    scope = institution_admin.InstitutionScope(institution_id=inst_id, role="teacher")
+
+    detail = institution_module.get_institution_student_detail(student, scope=scope)
+    assert detail["latest_speaking_score"] == 390
+
+
+def test_student_detail_recent_submissions_bounded_and_newest_first(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    student = str(uuid.uuid4())
+    submissions = [
+        {"id": i, "user_id": student, "module": "speaking", "score": i,
+         "created_at": f"2026-08-{i:02d}T00:00:00+00:00"}
+        for i in range(1, 13)  # 12 submissions -- must be capped at 10
+    ]
+    fake = _detail_fake(
+        inst_id,
+        members=[_membership(student, inst_id, role="student")],
+        users=[{"id": student, "email": "s@example.com", "name": "S"}],
+        submissions=submissions,
+    )
+    monkeypatch.setattr(institution_module, "get_supabase", lambda: fake)
+    scope = institution_admin.InstitutionScope(institution_id=inst_id, role="teacher")
+
+    detail = institution_module.get_institution_student_detail(student, scope=scope)
+    recent = detail["recent_submissions"]
+    assert len(recent) == 10
+    assert [r["id"] for r in recent] == [12, 11, 10, 9, 8, 7, 6, 5, 4, 3]
+    # The fake query builder's select() doesn't project columns (unlike the
+    # real client, which only returns "id, module, score, created_at") --
+    # assert the needed fields are present rather than an exact key set.
+    assert {"id", "module", "score", "created_at"} <= set(recent[0].keys())
