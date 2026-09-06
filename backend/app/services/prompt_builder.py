@@ -493,19 +493,64 @@ def build_listening_prompt(difficulty: str, specialty: str, topic: str, objectiv
     return _SYSTEM_HEADER, user
 
 
+# Controlled vocabulary for letter_type -- the four types actually evidenced
+# by the reference OET Nursing Writing samples (discharge, transfer, urgent
+# referral, ongoing-care/continuity referral). Kept in sync with
+# draft_generator._WRITING_LETTER_TYPES.
+WRITING_LETTER_TYPES = ("referral", "discharge", "transfer", "ongoing_care")
+
+
 def build_writing_prompt(difficulty: str, specialty: str, topic: str, objectives: Optional[str] = None, instructions: Optional[str] = None) -> Tuple[str, str]:
     schema = """{
   "title": "short scenario title, e.g. 'Discharge Letter - Pneumonia to Community Nurse'",
   "difficulty": "easy|medium|hard",
-  "case_notes": "the full case notes, preserving section labels (Patient details, Past medical history, Social background, Medical progress, Nursing management, Discharge plan) with newlines between sections",
-  "task": "the writing task instruction in full: the recipient and what letter to write, ending with word-count guidance (approximately 180-200 words)",
-  "key_points": ["5 concise key points the letter must cover, used for scoring"]
+  "specialty": "medical specialty this case belongs to",
+  "letter_type": "referral, discharge, transfer, or ongoing_care",
+  "patient": {"name": "patient full name", "dob": "date of birth in dd/mm/yyyy format -- always provide this", "age": "OPTIONAL -- omit or leave blank; the system computes age from dob, do not calculate or invent a value", "gender": "patient gender, if relevant to the case", "address": "patient address, if given, else empty string"},
+  "recipient": {"name": "recipient's full name", "role": "recipient's professional role, e.g. 'Head Nurse', 'Practice Nurse', 'Emergency Department Consultant on Duty'", "organization": "recipient's organization, e.g. a hospital, nursing home, or health centre", "address": "recipient's organization address"},
+  "purpose": "one sentence stating why this letter is being written",
+  "case_notes_structured": [
+    {"section": "a case-note heading such as 'Patient Details', 'Medical History', 'Social Background', 'Presenting Complaint', 'Treatment Record', 'Medical Progress', 'Nursing Management', 'Current Concerns', or 'Plan' -- include only sections relevant to this case", "items": ["abbreviated, clinically dense note line, e.g. 'BP 130/80 (normal)'"]}
+  ],
+  "case_notes": "the SAME information as case_notes_structured, rendered as one text block with section labels and newlines between sections, exactly as OET case notes are printed",
+  "task": "the writing task instruction in full: the recipient's name/role/organization/address and what letter to write, ending with 'The body of the letter should be approximately 180-200 words.'",
+  "key_points": ["5 concise key points the letter must cover, used for scoring"],
+  "distractor_notes": [
+    {"text": "a case-note detail copied verbatim (or near-verbatim) from case_notes_structured/case_notes", "reason": "one sentence on why this specific detail is not needed for the requested letter"}
+  ],
+  "model_answer": "a complete example letter answering this task -- admin-only reference, never shown to learners"
 }"""
     user = (
-        f"Create an original OET Writing task. Randomly choose the letter type -- referral, discharge, transfer, "
-        f"update, community nursing handover, specialist referral, rehabilitation, or outpatient follow-up -- "
-        f"rather than defaulting to a referral/discharge letter every time. Write the case notes as real OET exams "
-        f"do: abbreviated, clinically dense, with realistic timestamps and section labels, not full prose.\n"
+        f"Create an original OET Writing task. Randomly choose letter_type from exactly these four values -- "
+        f"referral, discharge, transfer, ongoing_care -- rather than defaulting to the same one every time. "
+        f"Write case_notes_structured (and the matching rendered case_notes) as real OET exams do: abbreviated, "
+        f"clinically dense note fragments with realistic timestamps, not full prose. The task must instruct the "
+        f"candidate to expand the notes into complete sentences, use letter format, and not use note form.\n\n"
+        f"Always give patient.dob (date of birth, dd/mm/yyyy). Do NOT calculate or invent patient.age yourself -- "
+        f"leave it blank, since the system derives age automatically from dob and the case's dates. State the "
+        f"patient's DOB in the Patient Details section instead of a specific age, and do not mention a specific "
+        f"age anywhere else (case_notes, task, or purpose) that could contradict the computed value.\n\n"
+        f"Include rich clinical information in the case notes, including some genuinely less-relevant historical "
+        f"detail where it would realistically appear in real notes (e.g. an earlier admission's imaging finding "
+        f"that isn't needed for this specific letter). Do not manufacture obviously absurd or irrelevant "
+        f"distractors, and do not label ordinary contextual information (social background, cognitive status, "
+        f"safety concerns) as a distractor unless it is genuinely unneeded for this specific task -- most "
+        f"contextual information should remain unflagged. In distractor_notes, list only case-note details that "
+        f"are truly unnecessary for the specific letter requested: each entry's \"text\" must be copied verbatim "
+        f"or near-verbatim from case_notes_structured/case_notes (never invented), and \"reason\" must explain why "
+        f"that detail is not needed for this letter's purpose. Leave distractor_notes as an empty list if nothing "
+        f"in the notes is genuinely unnecessary.\n\n"
+        f"Never invent a phone number, email address, or other personal contact detail anywhere in the case "
+        f"notes -- omit contact details entirely unless the task specifically requires the recipient's "
+        f"professional/facility address, which belongs only in the 'recipient' object, not in the case notes.\n\n"
+        f"Also write model_answer: a complete, admin-only reference letter answering this exact task, based ONLY "
+        f"on case_notes/case_notes_structured, task, recipient, and key_points -- never invent a fact that isn't "
+        f"in the case notes. Use correct letter format (salutation and closing appropriate to the recipient), "
+        f"address the named recipient, state the purpose near the opening, prioritize covering every key point, "
+        f"and omit the distractor_notes details entirely. Write in complete sentences -- never note form or "
+        f"case-note shorthand. Target approximately 180-200 words for the letter body, in professional clinical "
+        f"register. This is a reference for content reviewers, not a rigid answer key -- there is no need for "
+        f"exact wording or exact sentence order.\n"
         f"{_shared_context(difficulty, specialty, topic, objectives, instructions)}\n\n{_DIVERSITY_HINT}"
         f"\n\nReturn ONLY this JSON:\n{schema}"
     )
@@ -549,6 +594,30 @@ def build_grammar_prompt(difficulty: str, specialty: str, topic: str, objectives
     return _SYSTEM_HEADER, user
 
 
+# Blog has no difficulty/specialty/part concept of its own (unlike every
+# other module) -- the two params are accepted only so build_prompt()'s
+# generic dispatch below can call every builder with the same signature;
+# the frontend sends placeholder values for them and neither reaches the
+# prompt text.
+def build_blog_prompt(difficulty: str, specialty: str, topic: str, objectives: Optional[str] = None, instructions: Optional[str] = None) -> Tuple[str, str]:
+    schema = """{
+  "title": "a compelling, SEO-friendly blog post title",
+  "excerpt": "a one-to-two sentence summary of the post, at most 200 characters -- used as the listing/meta description, not a copy of the opening paragraph",
+  "body": "the full blog post body in Markdown -- use ## headings, short paragraphs, and bullet points where they aid readability"
+}"""
+    user = (
+        f"Write an original blog article for nurses preparing for the OET (Occupational English Test). Write in "
+        f"a practical, encouraging, beginner-friendly tone -- like a knowledgeable mentor, not an academic paper. "
+        f"Aim for a substantial, complete article (roughly 800-1200 words in \"body\") that stands on its own, "
+        f"not a teaser or outline.\n\n"
+        f"Topic: {topic}\n"
+    )
+    if instructions:
+        user += f"Additional instructions: {instructions}\n"
+    user += f"\nReturn ONLY this JSON:\n{schema}"
+    return _SYSTEM_HEADER, user
+
+
 BUILDERS: Dict[str, Callable[..., Tuple[str, str]]] = {
     "speaking": build_speaking_prompt,
     "reading": build_reading_prompt,
@@ -556,6 +625,7 @@ BUILDERS: Dict[str, Callable[..., Tuple[str, str]]] = {
     "writing": build_writing_prompt,
     "vocab": build_vocab_prompt,
     "grammar": build_grammar_prompt,
+    "blog": build_blog_prompt,
 }
 
 

@@ -2,7 +2,7 @@
 Provider adapter interface.
 
 An adapter's only job is to hide one provider's websocket wire protocol
-behind five methods and one event stream. It must contain ZERO business
+behind six methods and one event stream. It must contain ZERO business
 logic -- no auth, no quota checks, no plan gating, no cost persistence, no
 5-minute session timer. All of that lives in the router
 (app.routers.speaking_realtime), which is the only caller of this class.
@@ -77,6 +77,21 @@ class RealtimeProviderAdapter(ABC):
         """Stop the provider's in-flight response, if any. Must be safe to
         call even when no response is in progress, and even for providers
         that don't need an explicit cancel call (no-op in that case)."""
+
+    @abstractmethod
+    async def update_instructions(self, instructions: str) -> None:
+        """Replace the active persona instructions for future responses,
+        without reconnecting, restarting the conversation, or disturbing a
+        response already in flight. Called by the router whenever
+        PatientState changes (see app.services.patient_state and
+        app.routers.speaking_realtime) so the live patient stays consistent
+        with what's already been said.
+
+        Must be safe to call at any point in the session lifecycle,
+        including while a response is streaming. Providers with no
+        documented mechanism for this (see
+        ProviderCapabilities.supports_live_instruction_update) implement it
+        as a no-op -- callers must not assume the update took effect."""
 
     @abstractmethod
     def receive_events(self) -> AsyncIterator[RealtimeEvent | bytes]:

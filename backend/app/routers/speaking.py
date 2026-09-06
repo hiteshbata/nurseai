@@ -986,6 +986,12 @@ async def score_speaking_session(
             "score": feedback.get("overall_band", 0),
             "feedback": json.dumps(feedback),
             "duration_seconds": request.duration_seconds,
+            # Step 14: reuse the already-validated session_usage_id (this IS
+            # request.session_id -- see validate_session/claim_session_for_scoring
+            # above) so the Admin Speaking Evidence Inspector can later reach
+            # this session's persisted session_semantic_state without
+            # re-verifying it. Never a new/invented ID.
+            "session_usage_id": request.session_id,
         }).execute
     )
 

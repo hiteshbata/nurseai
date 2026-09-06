@@ -129,7 +129,27 @@ def _scenario_payload(draft: Dict[str, Any]) -> Dict[str, Any]:
         # `case_notes=scenario.get("setting", "")` in routers/writing.py)
         payload["setting"] = content.get("case_notes", "")
         payload["nurse_card"] = {"role": content.get("task", "")}
-        payload["interlocutor_card"] = {}
+        # W2 structured contract fields (letter_type/recipient/patient/purpose/
+        # case_notes_structured/writing_requirements) have nowhere else to live
+        # without a schema migration -- `interlocutor_card` is always {} for
+        # writing (unused, see above) so it's reused as their home. Legacy
+        # drafts carry none of these keys, so this stays {} for them exactly
+        # as before. Not selected by the learner-facing writing.py queries
+        # (see routers/writing.py), so nothing new is exposed to students.
+        # W4: distractor_notes (internal relevance metadata) rides along the
+        # same interlocutor_card home -- still never selected by learner-facing
+        # writing.py queries, so it stays invisible to students post-publish.
+        # W5: model_answer (admin-only reference letter) rides the same home,
+        # for the same reason -- it must never reach a learner endpoint, and
+        # must never be the thing sent to the learner scorer (score_writing is
+        # only ever given nurse_card/key_points, never interlocutor_card).
+        payload["interlocutor_card"] = {
+            k: content[k] for k in (
+                "letter_type", "recipient", "patient", "purpose",
+                "case_notes_structured", "writing_requirements", "distractor_notes",
+                "model_answer",
+            ) if k in content
+        }
         payload["key_points"] = content.get("key_points", [])
     return payload
 

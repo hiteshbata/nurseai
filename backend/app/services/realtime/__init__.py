@@ -6,11 +6,14 @@ from app.services.realtime.capabilities import (
     capabilities_for,
 )
 from app.services.realtime.events import (
+    InstructionsAcked,
     Interrupted,
     ProviderError,
     RealtimeEvent,
+    ResponseCreated,
     ResponseDone,
     SessionReady,
+    SpeechStopped,
     TranscriptDelta,
     TranscriptFinal,
 )
@@ -28,6 +31,9 @@ __all__ = [
     "TranscriptDelta",
     "TranscriptFinal",
     "ResponseDone",
+    "SpeechStopped",
+    "ResponseCreated",
+    "InstructionsAcked",
     "Interrupted",
     "ProviderError",
     "get_adapter_class",

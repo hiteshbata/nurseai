@@ -8,9 +8,26 @@ export interface SanityImage {
   crop?: { top: number; bottom: number; left: number; right: number }
 }
 
+const requiredSanityEnv = {
+  NEXT_PUBLIC_SANITY_PROJECT_ID: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,
+  NEXT_PUBLIC_SANITY_DATASET: process.env.NEXT_PUBLIC_SANITY_DATASET,
+}
+
+const missingSanityEnv = Object.entries(requiredSanityEnv)
+  .filter(([, value]) => !value)
+  .map(([key]) => key)
+
+if (missingSanityEnv.length > 0) {
+  throw new Error(
+    `Missing required Sanity environment variables:\n${missingSanityEnv
+      .map((key) => `- ${key}`)
+      .join('\n')}\n\nAdd them to frontend/.env.local before running the production build.`
+  )
+}
+
 export const sanityClient = createClient({
-  projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,
-  dataset: process.env.NEXT_PUBLIC_SANITY_DATASET || 'production',
+  projectId: requiredSanityEnv.NEXT_PUBLIC_SANITY_PROJECT_ID,
+  dataset: requiredSanityEnv.NEXT_PUBLIC_SANITY_DATASET,
   apiVersion: '2026-07-01',
   useCdn: true,
 })

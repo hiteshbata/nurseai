@@ -100,6 +100,16 @@ api.interceptors.response.use(
       }
     }
 
+    if (error.response?.status === 403 && (error.response.data as any)?.detail === 'email_not_confirmed' && typeof window !== 'undefined') {
+      // A session exists (the request got past the 401 check) but the
+      // backend has independently confirmed the email isn't verified --
+      // don't sign out, just route to the same code-entry flow signup uses.
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        const email = session?.user?.email
+        window.location.href = '/auth/verify' + (email ? `?email=${encodeURIComponent(email)}` : '')
+      })
+    }
+
     if (upgradeDetail(error) && typeof window !== 'undefined') {
       // Round-trip back to whatever the user was trying to reach (e.g. a specific
       // reading test) instead of dropping them on a generic page post-upgrade.

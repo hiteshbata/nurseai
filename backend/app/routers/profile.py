@@ -13,11 +13,13 @@ router = APIRouter(prefix="/profile", tags=["profile"])
 # Tables that store rows keyed by user_id and aren't already guaranteed to
 # cascade-delete at the DB level -- cleaned up explicitly so account deletion
 # doesn't leave orphaned rows regardless of how FKs are configured in Supabase.
-# session_transcripts must come before session_usage: it has a NOT NULL FK
-# to session_usage.id, so deleting the parent first violates that constraint.
+# session_transcripts and session_semantic_state must come before
+# session_usage: both have a FK to session_usage.id, so deleting the parent
+# first violates that constraint.
 _USER_OWNED_TABLES = [
     "submissions",
     "session_transcripts",
+    "session_semantic_state",
     "session_usage",
     "user_profiles",
     "user_roles",

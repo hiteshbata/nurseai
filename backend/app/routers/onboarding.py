@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.supabase import get_supabase
 from app.routers.auth import get_current_user, UserInfo
 from app.schemas.onboarding import OnboardingCreate, OnboardingResponse
+from app.services.institution_access import get_institution_onboarding_context
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -22,9 +23,20 @@ def get_onboarding_status(
         logger.error("Failed to fetch onboarding status for user_id=%s", current_user.id, exc_info=True)
         raise HTTPException(status_code=503, detail="Could not check onboarding status. Please try again.")
 
-    if data.data:
-        return data.data[0]
-    return {"onboarding_completed": False}
+    profile = data.data[0] if data.data else {"onboarding_completed": False}
+
+    # Institution membership is derived server-side from the caller's own
+    # active institution_members row -- never trust a client-supplied
+    # institution id/name/module list here (see institution_access.py).
+    try:
+        institution = get_institution_onboarding_context(supabase, current_user.id)
+    except Exception:
+        logger.error("Failed to fetch institution context for user_id=%s", current_user.id, exc_info=True)
+        institution = None
+
+    profile["is_institution_member"] = institution is not None
+    profile["institution"] = institution
+    return profile
 
 
 @router.post("/complete", response_model=OnboardingResponse)

@@ -1,0 +1,46 @@
+{
+  "case_id": "case_012",
+  "scenario": {
+    "title": "Detectors disagree about the same turns",
+    "setting": "Rehabilitation ward",
+    "difficulty": "hard",
+    "specialty": "rehabilitation",
+    "nurse_tasks": [
+      "Respond to frustration about slow progress"
+    ],
+    "patient_name": "Diane",
+    "patient_age": 55,
+    "patient_condition": "stroke rehabilitation",
+    "patient_mood": "frustrated",
+    "patient_background": "Slow progress is causing frustration.",
+    "patient_concerns": [],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "patient",
+      "content": "I've been doing these exercises for weeks and I feel no better at all."
+    },
+    {
+      "turn_index": 1,
+      "role": "nurse",
+      "content": "Just deal with it, progress takes time and there's nothing more I can do about that."
+    },
+    {
+      "turn_index": 2,
+      "role": "patient",
+      "content": "That's easy for you to say."
+    },
+    {
+      "turn_index": 3,
+      "role": "nurse",
+      "content": "I understand this is frustrating, and it says nothing about your effort -- recovery timelines vary a lot between patients."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

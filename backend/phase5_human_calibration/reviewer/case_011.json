@@ -1,0 +1,72 @@
+{
+  "case_id": "case_011",
+  "scenario": {
+    "title": "Diabetes medication review",
+    "setting": "Diabetes clinic",
+    "difficulty": "medium",
+    "specialty": "endocrine",
+    "nurse_tasks": [
+      "Review blood sugar readings",
+      "Explain new insulin dose"
+    ],
+    "patient_name": "Fatima",
+    "patient_age": 48,
+    "patient_condition": "type 2 diabetes, dose adjustment",
+    "patient_mood": "neutral",
+    "patient_background": "Routine review of insulin dosing.",
+    "patient_concerns": [],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "Right, so today we need to go through your blood sugar readings and then your new insulin dose."
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "Okay."
+    },
+    {
+      "turn_index": 2,
+      "role": "nurse",
+      "content": "Your readings have been a bit up and down this week."
+    },
+    {
+      "turn_index": 3,
+      "role": "patient",
+      "content": "Yes, I noticed that too."
+    },
+    {
+      "turn_index": 4,
+      "role": "nurse",
+      "content": "So, moving on, your new dose is 12 units in the morning."
+    },
+    {
+      "turn_index": 5,
+      "role": "patient",
+      "content": "Alright, and in the evening?"
+    },
+    {
+      "turn_index": 6,
+      "role": "nurse",
+      "content": "We'll get to that in a second."
+    },
+    {
+      "turn_index": 7,
+      "role": "patient",
+      "content": "Okay."
+    },
+    {
+      "turn_index": 8,
+      "role": "nurse",
+      "content": "Evening dose stays the same, 8 units."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "case_id": "case_019",
+  "scenario": {
+    "title": "Postnatal ward, feeding support",
+    "setting": "Postnatal ward",
+    "difficulty": "medium",
+    "specialty": "maternity",
+    "nurse_tasks": [
+      "Support with breastfeeding"
+    ],
+    "patient_name": "Mia",
+    "patient_age": 27,
+    "patient_condition": "day 1 post-partum, breastfeeding difficulty",
+    "patient_mood": "exhausted",
+    "patient_background": "First baby, struggling to establish feeding, feeling like she's failing.",
+    "patient_concerns": [],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "Hello Mia, I'm nurse Priya, I'll be helping you with feeding today. Is now an alright time to chat?"
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "Yes, though I'm exhausted and worried I'm doing this all wrong."
+    },
+    {
+      "turn_index": 2,
+      "role": "nurse",
+      "content": "That's a lot to carry after such a big change, and feeling that way is completely understandable."
+    },
+    {
+      "turn_index": 3,
+      "role": "patient",
+      "content": "The baby won't latch properly and I don't know what I'm doing."
+    },
+    {
+      "turn_index": 4,
+      "role": "nurse",
+      "content": "Okay."
+    },
+    {
+      "turn_index": 5,
+      "role": "patient",
+      "content": "It's frustrating."
+    },
+    {
+      "turn_index": 6,
+      "role": "nurse",
+      "content": "Let's have a look together and see what might help."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

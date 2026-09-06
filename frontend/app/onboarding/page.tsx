@@ -31,6 +31,12 @@ function toggleClass(selected: boolean) {
   )
 }
 
+interface InstitutionContext {
+  name: string
+  logo_url: string | null
+  modules: string[]
+}
+
 interface OnboardingStatus {
   onboarding_completed?: boolean
   destination_country?: string | null
@@ -44,7 +50,14 @@ interface OnboardingStatus {
   qualification?: string | null
   years_of_experience?: string | null
   nursing_specialty?: string | null
+  is_institution_member?: boolean
+  institution?: InstitutionContext | null
 }
+
+// Institution onboarding is a separate, shorter flow (welcome -> target band
+// -> mic check -> done) gated entirely by the server-derived
+// is_institution_member flag -- never by a query param. See Phase 3 plan.
+type IStep = 1 | 2 | 3 | 4
 
 // Onboarding only ever writes to the backend on final submit (or after the
 // diagnostic), so "resume" means: skip past whichever steps already have
@@ -69,6 +82,12 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false)
   const [userName, setUserName] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
+
+  // Institution onboarding branch -- set once from /onboarding/status and
+  // never re-derived from anything client-controlled (e.g. a URL param).
+  const [isInstitutionMember, setIsInstitutionMember] = useState(false)
+  const [institution, setInstitution] = useState<InstitutionContext | null>(null)
+  const [iStep, setIStep] = useState<IStep>(1)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -104,10 +123,22 @@ export default function OnboardingPage() {
     api.get('/onboarding/status').then((res) => {
       if (cancelled) return
       const data: OnboardingStatus = res.data || {}
+
       if (data.onboarding_completed) {
-        router.replace('/profile#practice-plan')
+        // Institution students land on the dashboard directly; B2C keeps
+        // its existing destination unchanged.
+        router.replace(data.is_institution_member ? '/dashboard' : '/profile#practice-plan')
         return
       }
+
+      if (data.is_institution_member) {
+        setIsInstitutionMember(true)
+        setInstitution(data.institution || null)
+        if (data.target_band) setTargetBand(data.target_band)
+        setCheckingStatus(false)
+        return
+      }
+
       if (data.destination_country) {
         if (KNOWN_COUNTRIES.includes(data.destination_country)) {
           setDestinationCountry(data.destination_country)
@@ -219,7 +250,11 @@ export default function OnboardingPage() {
   // daily-focus callout, same as a fully-skipped diagnostic.
   const handleDiagnosticEnd = () => {
     setDiagnosticMode(false)
-    nextStep()
+    if (isInstitutionMember) {
+      setIStep(4)
+    } else {
+      nextStep()
+    }
   }
 
   const handleDiagnosticCancel = () => {
@@ -228,7 +263,32 @@ export default function OnboardingPage() {
 
   const skipDiagnostic = () => {
     setSkippedDiagnostic(true)
-    nextStep()
+    if (isInstitutionMember) {
+      setIStep(4)
+    } else {
+      nextStep()
+    }
+  }
+
+  const institutionCompleteOnboarding = async () => {
+    setLoading(true)
+    setSubmitError(null)
+    try {
+      await api.post('/onboarding/complete', {
+        target_band: targetBand,
+        onboarding_completed: true,
+      })
+      trackEvent('onboarding_completed', {
+        institution: true,
+        target_band: targetBand,
+      })
+      router.push('/dashboard')
+    } catch (e) {
+      console.error('Failed to complete institution onboarding:', e)
+      setSubmitError("We couldn't save your details. Please check your connection and try again.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   const completeOnboarding = async () => {
@@ -345,6 +405,151 @@ export default function OnboardingPage() {
               One quick question — just to make sure your mic works.
             </p>
             <WarmUpCheck onComplete={handleDiagnosticEnd} onCancel={handleDiagnosticCancel} />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (isInstitutionMember) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 px-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <div className="mb-8">
+              <div className="flex justify-between text-sm text-gray-500 mb-2">
+                <span>Step {iStep} of 4</span>
+                <span>{Math.round((iStep / 4) * 100)}% complete</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-accent h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${(iStep / 4) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            {/* IStep 1 — Welcome */}
+            {iStep === 1 && (
+              <div className="text-center">
+                {institution?.logo_url && (
+                  <img src={institution.logo_url} alt="" className="h-12 mx-auto mb-4 object-contain" />
+                )}
+                <h1 className="text-3xl font-bold mb-2">
+                  You've joined {institution?.name || 'your institution'}
+                </h1>
+                <p className="text-lg text-gray-600 mb-8">
+                  This access comes from {institution?.name || 'your institution'}.
+                </p>
+                <div className="bg-accent/10 border border-accent/20 rounded-xl p-4 mb-8 text-left">
+                  <p className="font-semibold text-emerald-800 flex items-center gap-2">
+                    <Mic className="w-4 h-4" aria-hidden="true" /> OET Speaking Practice
+                  </p>
+                </div>
+                <Button type="button" variant="accent" size="lg" className="w-full text-lg" onClick={() => setIStep(2)}>
+                  Continue →
+                </Button>
+              </div>
+            )}
+
+            {/* IStep 2 — Target band */}
+            {iStep === 2 && (
+              <div>
+                <h2 className="text-2xl font-bold mb-6">Set Your Target</h2>
+                <div>
+                  <label htmlFor="institutionTargetBand" className="block text-sm font-semibold text-gray-700 mb-2">
+                    What band score are you aiming for?
+                  </label>
+                  <Select
+                    id="institutionTargetBand"
+                    value={targetBand}
+                    onChange={(e) => setTargetBand(e.target.value)}
+                  >
+                    <option value="">Select target band...</option>
+                    {['A', 'B', 'C+', 'C', 'D'].map((b) => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="mt-8 flex gap-3">
+                  <Button type="button" variant="outline" size="lg" className="flex-1" onClick={() => setIStep(1)}>
+                    ← Back
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="accent"
+                    size="lg"
+                    className="flex-1"
+                    disabled={!targetBand}
+                    onClick={() => setIStep(3)}
+                  >
+                    Continue →
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* IStep 3 — Voice/microphone check */}
+            {iStep === 3 && (
+              <div>
+                <h2 className="text-2xl font-bold mb-2">Quick Voice Check</h2>
+                <p className="text-gray-600 mb-8">
+                  One quick question, under a minute — just to make sure your mic and voice practice work before you dive in.
+                </p>
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                  <h3 className="font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
+                    <Mic className="w-4 h-4" aria-hidden="true" /> Voice Check
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    We'll ask one quick warm-up question — just speak naturally, no scoring involved.
+                  </p>
+                  <Button type="button" variant="accent" size="lg" className="w-full" onClick={startDiagnostic}>
+                    Start Voice Check
+                  </Button>
+                </div>
+                <div className="mt-8 flex gap-3">
+                  <Button type="button" variant="outline" size="lg" className="flex-1" onClick={() => setIStep(2)}>
+                    ← Back
+                  </Button>
+                  <Button type="button" variant="outline" size="lg" className="flex-1" onClick={skipDiagnostic}>
+                    Skip for now
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* IStep 4 — Completion */}
+            {iStep === 4 && (
+              <div className="text-center">
+                <h2 className="text-2xl font-bold mb-4">You're ready to practice OET Speaking</h2>
+                <div className="bg-gradient-to-br from-emerald-50 to-white rounded-2xl p-6 border border-emerald-100 mb-6 space-y-3 text-left">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Institution</span>
+                    <span className="font-semibold">{institution?.name || 'Not set'}</span>
+                  </div>
+                  <div className="border-t border-emerald-100" />
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Target band</span>
+                    <span className="font-semibold">{targetBand || 'Not set'}</span>
+                  </div>
+                </div>
+                {submitError && (
+                  <div role="alert" className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-left">
+                    <p className="text-sm text-red-700">{submitError}</p>
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  variant="accent"
+                  size="lg"
+                  className="w-full text-lg"
+                  disabled={loading}
+                  onClick={institutionCompleteOnboarding}
+                >
+                  {loading ? 'Saving...' : 'Start Speaking Practice'}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>

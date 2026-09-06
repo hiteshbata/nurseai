@@ -5,6 +5,7 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from gotrue.errors import AuthApiError
+from postgrest.exceptions import APIError as PostgrestAPIError
 from app.core.config import settings
 from app.core.captcha import verify_captcha
 from app.core.rate_limit import SlidingWindowRateLimiter
@@ -79,6 +80,40 @@ def _role_recently_upserted(user_id: str) -> bool:
     return time.time() - _user_role_cache.get(user_id, 0) <= USER_ROLE_CACHE_TTL
 
 
+_email_confirmed_cache: dict[str, float] = {}  # local fallback only; used when REDIS_URL is unset
+EMAIL_CONFIRMED_CACHE_TTL = 900  # 15 minutes
+
+
+def _email_confirmed(user_id: str) -> bool:
+    """True once this user's email is confirmed. Only positive results are
+    cached -- confirmation is monotonic (never un-confirms), so caching a
+    negative result would just delay an unconfirmed user's access after they
+    verify. Unconfirmed users re-check the Admin API on every request, which
+    is fine: that population is small (mid-signup) and self-resolving.
+    """
+    client = get_redis()
+    if client is not None:
+        if client.exists(f"email_confirmed:{user_id}") == 1:
+            return True
+    elif time.time() - _email_confirmed_cache.get(user_id, 0) <= EMAIL_CONFIRMED_CACHE_TTL:
+        return True
+
+    supabase = get_supabase()
+    try:
+        resp = supabase.auth.admin.get_user_by_id(user_id)
+        confirmed = bool(resp.user and resp.user.email_confirmed_at)
+    except Exception as e:
+        logger.warning("email confirmation check failed for %s: %s", user_id, e)
+        return False
+
+    if confirmed:
+        if client is not None:
+            client.set(f"email_confirmed:{user_id}", "1", ex=EMAIL_CONFIRMED_CACHE_TTL)
+        else:
+            _email_confirmed_cache[user_id] = time.time()
+    return confirmed
+
+
 def _mark_role_upserted(user_id: str) -> None:
     client = get_redis()
     if client is not None:
@@ -121,27 +156,47 @@ def get_current_user(
         metadata = payload.get("user_metadata") or {}
         email = payload.get("email")
         name = metadata.get("name") or metadata.get("full_name") or email or ""
+        is_anonymous = bool(payload.get("is_anonymous", False))
+
+        # Anonymous (guest) sessions have no email and aren't part of the
+        # signup-confirmation flow at all -- middleware already confines them
+        # to the mock-test allowlist, so they're exempt here rather than
+        # blocked on a confirmation state that will never apply to them.
+        if email and not is_anonymous and not _email_confirmed(user_id):
+            raise HTTPException(status_code=403, detail="email_not_confirmed")
 
         if not _role_recently_upserted(user_id):
-            # ignore_duplicates=True -> INSERT ... ON CONFLICT DO NOTHING.
-            # Only creates the row for brand-new users; never overwrites an
-            # existing role (e.g. admin) back to the default.
-            supabase.table("user_roles").upsert({
-                "user_id": user_id,
-                "role": "user",
-            }, on_conflict="user_id", ignore_duplicates=True).execute()
+            try:
+                # ignore_duplicates=True -> INSERT ... ON CONFLICT DO NOTHING.
+                # Only creates the row for brand-new users; never overwrites an
+                # existing role (e.g. admin) back to the default.
+                supabase.table("user_roles").upsert({
+                    "user_id": user_id,
+                    "role": "user",
+                }, on_conflict="user_id", ignore_duplicates=True).execute()
 
-            # Keeps the admin panel's users mirror table (see
-            # backend/migrations/2026-07-18_users_mirror.sql) fresh without
-            # a Supabase Auth API call -- opposite of the upsert above, this
-            # one SHOULD overwrite on every hit: email/name can legitimately
-            # change, and last_seen_at is meant to move.
-            supabase.table("users").upsert({
-                "id": user_id,
-                "email": email,
-                "name": name,
-                "last_seen_at": datetime.now(timezone.utc).isoformat(),
-            }, on_conflict="id").execute()
+                # Keeps the admin panel's users mirror table (see
+                # backend/migrations/2026-07-18_users_mirror.sql) fresh without
+                # a Supabase Auth API call -- opposite of the upsert above, this
+                # one SHOULD overwrite on every hit: email/name can legitimately
+                # change, and last_seen_at is meant to move.
+                supabase.table("users").upsert({
+                    "id": user_id,
+                    "email": email,
+                    "name": name,
+                    "last_seen_at": datetime.now(timezone.utc).isoformat(),
+                }, on_conflict="id").execute()
+            except PostgrestAPIError as e:
+                # 23503 = FK violation: user_id isn't present in auth.users.
+                # A JWT is only verified locally (signature/expiry) -- it has
+                # no guarantee the subject still exists in auth.users (token
+                # outlived a deleted account, or the account vanished between
+                # issuance and this request). Treat that as unauthenticated
+                # rather than letting a raw DB error surface as a 500.
+                if getattr(e, "code", None) == "23503":
+                    logger.warning("user_roles/users upsert FK violation for %s: %s", user_id, e)
+                    raise HTTPException(status_code=401, detail="Authentication failed")
+                raise
 
             _mark_role_upserted(user_id)
 
@@ -149,7 +204,7 @@ def get_current_user(
             id=user_id,
             email=email,
             name=name,
-            is_anonymous=bool(payload.get("is_anonymous", False)),
+            is_anonymous=is_anonymous,
         )
     except HTTPException:
         raise

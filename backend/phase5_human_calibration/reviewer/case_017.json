@@ -1,0 +1,54 @@
+{
+  "case_id": "case_017",
+  "scenario": {
+    "title": "Fluent but clinically cold consultation",
+    "setting": "Plastic surgery outpatients",
+    "difficulty": "medium",
+    "specialty": "plastic surgery",
+    "nurse_tasks": [
+      "Review scar healing",
+      "Address cosmetic concerns"
+    ],
+    "patient_name": "Priya",
+    "patient_age": 34,
+    "patient_condition": "post-operative scar review",
+    "patient_mood": "self-conscious",
+    "patient_background": "Concerned about visible scarring before returning to work.",
+    "patient_concerns": [
+      "Will the scar be very noticeable?"
+    ],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "The incision has healed as expected given the surgical approach that was used."
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "I'm really worried the scar will be very noticeable at work."
+    },
+    {
+      "turn_index": 2,
+      "role": "nurse",
+      "content": "Scarring outcomes vary considerably between individuals and are not something I can predict definitively."
+    },
+    {
+      "turn_index": 3,
+      "role": "patient",
+      "content": "I just feel quite self-conscious about it."
+    },
+    {
+      "turn_index": 4,
+      "role": "nurse",
+      "content": "You'll need to return in six weeks for a further assessment of the site."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

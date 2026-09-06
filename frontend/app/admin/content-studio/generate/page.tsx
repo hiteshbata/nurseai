@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 
@@ -12,6 +13,18 @@ const MODULE_LABELS: Record<string, string> = {
   writing: 'Writing',
   vocab: 'Vocabulary',
   grammar: 'Grammar',
+  blog: 'Blog',
+}
+
+// Deterministic slug candidate from the AI title -- matches the backend's
+// _SLUG_RE (^[a-z0-9]+(?:-[a-z0-9]+)*$). BlogEditor lets the admin change it
+// afterward; this is only the initial Save Draft value.
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
 
 const DIFFICULTY_OPTIONS = ['beginner', 'intermediate', 'advanced']
@@ -39,6 +52,7 @@ interface DraftCardState {
 }
 
 export default function AiDraftGeneratorPage() {
+  const router = useRouter()
   const [module, setModule] = useState('speaking')
   const [part, setPart] = useState('')
   const [difficulty, setDifficulty] = useState('intermediate')
@@ -52,6 +66,8 @@ export default function AiDraftGeneratorPage() {
   const [generating, setGenerating] = useState(false)
   const [results, setResults] = useState<DraftResult[]>([])
   const [cardState, setCardState] = useState<DraftCardState[]>([])
+
+  const isBlog = module === 'blog'
 
   useEffect(() => {
     api.get('/admin/ai-models/purposes')
@@ -111,7 +127,7 @@ export default function AiDraftGeneratorPage() {
 
     setCardState((prev) => prev.map((c, i) => (i === index ? { ...c, saving: true } : c)))
     try {
-      const res = await api.post('/admin/content-studio/drafts', {
+      const payload: Record<string, any> = {
         module,
         draft_name: card.draftName.trim(),
         ai_title: result.ai_title,
@@ -120,7 +136,19 @@ export default function AiDraftGeneratorPage() {
         generated_content: result.generated_content,
         validation_warnings: result.validation_warnings || [],
         model_used: result.model_used,
-      })
+      }
+      if (module === 'blog') {
+        payload.slug = slugify(result.ai_title || result.generated_content?.title || card.draftName)
+        payload.excerpt = result.generated_content?.excerpt
+      }
+      const res = await api.post('/admin/content-studio/drafts', payload)
+      if (module === 'blog') {
+        // Blog has no multi-draft preview batch (count is always 1) and no
+        // separate review UI here -- go straight to the BlogEditor, same
+        // destination the generic "Edit & Review" link below points to.
+        router.push(`/admin/content-studio/drafts/${res.data.id}`)
+        return
+      }
       setCardState((prev) => prev.map((c, i) => (i === index ? { ...c, saving: false, saved: true, savedId: res.data.id } : c)))
       toast.success('Draft saved')
     } catch (err: any) {
@@ -157,16 +185,20 @@ export default function AiDraftGeneratorPage() {
                 </select>
               </Field>
             )}
-            <Field label="Difficulty">
-              <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className="w-full px-3 py-2 border rounded-lg" data-testid="field-difficulty">
-                {DIFFICULTY_OPTIONS.map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </Field>
-            <Field label="Medical Specialty">
-              <select value={specialty} onChange={(e) => setSpecialty(e.target.value)} className="w-full px-3 py-2 border rounded-lg" data-testid="field-specialty">
-                {SPECIALTY_OPTIONS.map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </Field>
+            {!isBlog && (
+              <Field label="Difficulty">
+                <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className="w-full px-3 py-2 border rounded-lg" data-testid="field-difficulty">
+                  {DIFFICULTY_OPTIONS.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </Field>
+            )}
+            {!isBlog && (
+              <Field label="Medical Specialty">
+                <select value={specialty} onChange={(e) => setSpecialty(e.target.value)} className="w-full px-3 py-2 border rounded-lg" data-testid="field-specialty">
+                  {SPECIALTY_OPTIONS.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Number of Drafts">
               <input
                 type="number" min={1} max={3} value={count}
@@ -184,9 +216,11 @@ export default function AiDraftGeneratorPage() {
             />
           </Field>
 
-          <Field label="Learning Objectives (optional)">
-            <textarea value={objectives} onChange={(e) => setObjectives(e.target.value)} rows={2} className="w-full px-3 py-2 border rounded-lg" data-testid="field-objectives" />
-          </Field>
+          {!isBlog && (
+            <Field label="Learning Objectives (optional)">
+              <textarea value={objectives} onChange={(e) => setObjectives(e.target.value)} rows={2} className="w-full px-3 py-2 border rounded-lg" data-testid="field-objectives" />
+            </Field>
+          )}
 
           <Field label="Additional Instructions (optional)">
             <textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={2} className="w-full px-3 py-2 border rounded-lg" data-testid="field-instructions" />
@@ -221,6 +255,7 @@ export default function AiDraftGeneratorPage() {
               <DraftPreviewCard
                 key={i}
                 index={i}
+                module={module}
                 result={result}
                 card={cardState[i]}
                 onNameChange={(name) => setCardState((prev) => prev.map((c, idx) => (idx === i ? { ...c, draftName: name } : c)))}
@@ -235,9 +270,10 @@ export default function AiDraftGeneratorPage() {
 }
 
 function DraftPreviewCard({
-  result, card, onNameChange, onSave,
+  module, result, card, onNameChange, onSave,
 }: {
   index: number
+  module: string
   result: DraftResult
   card: DraftCardState
   onNameChange: (name: string) => void
@@ -298,9 +334,33 @@ function DraftPreviewCard({
         </div>
       )}
 
-      <pre className="bg-gray-50 rounded-lg p-4 text-xs overflow-x-auto max-h-96 overflow-y-auto" data-testid="draft-content">
-        {JSON.stringify(result.generated_content, null, 2)}
-      </pre>
+      {module === 'blog' ? (
+        <div>
+          <div className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-4" data-testid="blog-ai-generated-banner">
+            AI Generated Draft &mdash; Review before saving
+          </div>
+          <div className="space-y-3">
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Title</div>
+              <div className="text-sm font-semibold" data-testid="blog-preview-title">{result.generated_content?.title}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Excerpt</div>
+              <div className="text-sm text-gray-700" data-testid="blog-preview-excerpt">{result.generated_content?.excerpt}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Body</div>
+              <pre className="bg-gray-50 rounded-lg p-4 text-xs overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap" data-testid="blog-preview-body">
+                {result.generated_content?.body}
+              </pre>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <pre className="bg-gray-50 rounded-lg p-4 text-xs overflow-x-auto max-h-96 overflow-y-auto" data-testid="draft-content">
+          {JSON.stringify(result.generated_content, null, 2)}
+        </pre>
+      )}
     </div>
   )
 }

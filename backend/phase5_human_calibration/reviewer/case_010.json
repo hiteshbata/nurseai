@@ -1,0 +1,46 @@
+{
+  "case_id": "case_010",
+  "scenario": {
+    "title": "Medication counselling, mid-range fluency",
+    "setting": "Pharmacy clinic",
+    "difficulty": "medium",
+    "specialty": "general medicine",
+    "nurse_tasks": [
+      "Explain new medication"
+    ],
+    "patient_name": "Karim",
+    "patient_age": 51,
+    "patient_condition": "new blood pressure medication",
+    "patient_mood": "attentive",
+    "patient_background": "Starting a new antihypertensive.",
+    "patient_concerns": [],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "So, this new tablet, um, it will help to lower your blood pressure over the next few weeks."
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "Okay, how often do I take it?"
+    },
+    {
+      "turn_index": 2,
+      "role": "nurse",
+      "content": "Once a day, in the -- in the morning, with food if possible."
+    },
+    {
+      "turn_index": 3,
+      "role": "patient",
+      "content": "Got it, thank you."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

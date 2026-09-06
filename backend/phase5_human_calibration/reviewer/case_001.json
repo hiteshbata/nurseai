@@ -1,0 +1,57 @@
+{
+  "case_id": "case_001",
+  "scenario": {
+    "title": "High-anxiety patient, focus on rapport",
+    "setting": "Emergency department",
+    "difficulty": "medium",
+    "specialty": "emergency",
+    "nurse_tasks": [
+      "Build rapport",
+      "Reassure while awaiting test results"
+    ],
+    "patient_name": "Nina",
+    "patient_age": 29,
+    "patient_condition": "chest pain under investigation",
+    "patient_mood": "frightened",
+    "patient_background": "First time in an emergency department, lives alone, fears the worst.",
+    "patient_concerns": [],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "Hi Nina, I'm Dana, one of the nurses looking after you this evening. I know waiting for these results is hard."
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "I'm terrified something is seriously wrong with my heart."
+    },
+    {
+      "turn_index": 2,
+      "role": "nurse",
+      "content": "That fear makes complete sense given what you're going through right now, and it's okay to feel that way."
+    },
+    {
+      "turn_index": 3,
+      "role": "patient",
+      "content": "Nobody else has really acknowledged that."
+    },
+    {
+      "turn_index": 4,
+      "role": "nurse",
+      "content": "I hear you, and I'm not going to judge you for being scared -- most people would feel exactly the same in your position."
+    },
+    {
+      "turn_index": 5,
+      "role": "patient",
+      "content": "Thank you, that actually helps."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

@@ -101,6 +101,9 @@ class FakeQuery:
     def limit(self, *_a, **_k):
         return self
 
+    def order(self, *_a, **_k):
+        return self
+
     def execute(self):
         if self.table_name == "scenarios" and self._op == "select":
             return FakeResult(self.state["scenario_rows"])
@@ -113,6 +116,8 @@ class FakeQuery:
             self.state["session_usage_row"].update(self._payload)
             self.state["session_usage_updates"].append(self._payload)
             return FakeResult([self._payload])
+        if self.table_name == "session_transcripts" and self._op == "select":
+            return FakeResult(self.state["prior_transcript_rows"])
         return FakeResult([])
 
 
@@ -209,6 +214,7 @@ class FakeAdapter:
         self.sent_audio = []
         self.disconnect_count = 0
         self.cancel_count = 0
+        self.instructions_updates = []
         self._stop_event = asyncio.Event()
         self._connect_raises = FakeAdapter.connect_raises
         self._events = list(FakeAdapter.preset_events)
@@ -228,6 +234,9 @@ class FakeAdapter:
 
     async def cancel_response(self):
         self.cancel_count += 1
+
+    async def update_instructions(self, instructions):
+        self.instructions_updates.append(instructions)
 
     async def receive_events(self):
         if self._hang:
@@ -257,12 +266,14 @@ def _run_stream(
     gemini_key="test-gemini-key",
     warning_seconds=5,
     max_seconds=8,
+    prior_transcript_rows=None,
 ):
     state = {
         "scenario_rows": scenario_rows if scenario_rows is not None else [DEFAULT_SCENARIO],
         "metrics_rows": [],
         "session_usage_row": {"realtime_cost_usd": 0, "azure_cost_usd": 0, "scoring_cost_usd": 0, "tts_cost_usd": 0},
         "session_usage_updates": [],
+        "prior_transcript_rows": prior_transcript_rows or [],
     }
     fake_supabase = FakeSupabase(state)
     monkeypatch.setattr(srt, "get_supabase", lambda: fake_supabase)
@@ -308,6 +319,47 @@ def _run_stream(
     monkeypatch.setattr(srt.settings, "GEMINI_API_KEY", gemini_key)
     monkeypatch.setattr(srt.settings, "REALTIME_SESSION_WARNING_SECONDS", warning_seconds)
     monkeypatch.setattr(srt.settings, "REALTIME_SESSION_MAX_SECONDS", max_seconds)
+
+    # Step 7 (semantic evidence layer): these tests exercise the
+    # instructions-push wiring around PatientState changes, not the
+    # semantic classifiers' own correctness (see test_semantic_evidence.py
+    # for that). Without a real speaking_semantic_evidence purpose
+    # configured, hidden_info_hints would call the model, get
+    # PurposeNotConfigured, and conservatively treat every candidate as
+    # NOT revealed -- silently reproducing the pre-Step-7 "always confirm
+    # the keyword match" behavior here keeps these tests focused on what
+    # they actually test. Step 12B: "candidate" is computed via
+    # _hidden_info_candidate directly (not derive_patient_state's
+    # revealed_information, which no longer treats a candidate as revealed
+    # on its own -- see patient_state.py). The two concern/resolution
+    # classifiers are fire-and-forget background tasks (see
+    # _maybe_fire_concern_semantic_checks) so a real no-op default is
+    # enough -- no test here asserts on their effect.
+    async def fake_hidden_info_hints(card, history, prior=None, **kwargs):
+        from app.services.patient_state import SemanticHints, _hidden_info_candidate
+        prior = prior or SemanticHints()
+        patient_text = " ".join(t.get("content", "") for t in history if t.get("role") == "patient")
+        newly_confirmed = {
+            item for item in (card.get("information_to_withhold") or [])
+            if _hidden_info_candidate(item, patient_text)
+        }
+        return SemanticHints(
+            confirmed_hidden_reveals=frozenset(newly_confirmed) | prior.confirmed_hidden_reveals,
+            rejected_hidden_reveals=prior.rejected_hidden_reveals,
+            extra_nurse_events=prior.extra_nurse_events,
+            resolved_concerns=prior.resolved_concerns,
+        )
+
+    monkeypatch.setattr(srt.semantic_evidence, "hidden_info_hints", fake_hidden_info_hints)
+
+    async def fake_classify_nurse_concern_event(*args, **kwargs):
+        return None
+
+    async def fake_classify_patient_resolution(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(srt.semantic_evidence, "classify_nurse_concern_event", fake_classify_nurse_concern_event)
+    monkeypatch.setattr(srt.semantic_evidence, "classify_patient_resolution", fake_classify_patient_resolution)
 
     asyncio.run(asyncio.wait_for(srt.realtime_stream(ws), timeout=5))
     return state
@@ -584,3 +636,175 @@ def test_realtime_prompt_still_renders_the_patient_card():
     assert "Will it hurt?" in prompt
     # Unrendered f-string braces would mean the card silently never reached the model.
     assert "{" not in prompt and "}" not in prompt
+
+
+# ── STEP 2: PatientState -> live instructions sync ────────────────────
+#
+# These cover the actual feedback loop this step exists to build: a
+# candidate turn changes PatientState -> the adapter receives an updated
+# instructions string -> before the session ends. See
+# app.services.patient_state.derive_patient_state for why "medication" in a
+# patient turn flips "medication non-compliance" from hidden to revealed.
+
+SCENARIO_WITH_HIDDEN_INFO = {
+    "id": 42,
+    "is_active": True,
+    "patient_gender": "female",
+    "interlocutor_card": {
+        "patient_name": "Mary",
+        "age": 68,
+        "condition": "chest pain",
+        "mood": "anxious",
+        "background": "",
+        "instructions_for_ai": "Be anxious and guarded.",
+        "emotional_triggers": [],
+        "questions_to_ask": [],
+        "information_to_withhold": ["medication non-compliance"],
+    },
+}
+
+
+def test_patient_turn_revealing_hidden_info_pushes_instructions_update(monkeypatch):
+    events = [
+        TranscriptDelta(role="patient", delta="I haven't been taking my medication regularly."),
+        ResponseDone(),
+    ]
+    ws = FakeWebSocket(
+        handshake={"token": "tok", "scenario_id": 42, "session_id": 7},
+        audio_chunks=[_DISCONNECT],
+    )
+
+    _run_stream(
+        monkeypatch, ws, auth_user=FakeUser(), scenario_rows=[SCENARIO_WITH_HIDDEN_INFO],
+        adapter_events=events,
+    )
+
+    adapter = FakeAdapter.instances[-1]
+    assert len(adapter.instructions_updates) == 1
+    updated = adapter.instructions_updates[0]
+    assert "medication non-compliance" not in updated.split("Still hidden")[1].split("Concerns you have")[0]
+    assert "medication non-compliance" in updated.split("Already revealed")[1]
+
+
+def test_unchanged_patient_state_does_not_push_duplicate_instructions(monkeypatch):
+    # Second ResponseDone flushes an empty patient buffer -- state is
+    # identical to what was just pushed, so no second update should fire
+    # (requirement: one candidate turn, not multiple duplicate updates).
+    events = [
+        TranscriptDelta(role="patient", delta="I haven't been taking my medication regularly."),
+        ResponseDone(),
+        ResponseDone(),
+    ]
+    ws = FakeWebSocket(
+        handshake={"token": "tok", "scenario_id": 42, "session_id": 7},
+        audio_chunks=[_DISCONNECT],
+    )
+
+    _run_stream(
+        monkeypatch, ws, auth_user=FakeUser(), scenario_rows=[SCENARIO_WITH_HIDDEN_INFO],
+        adapter_events=events,
+    )
+
+    adapter = FakeAdapter.instances[-1]
+    assert len(adapter.instructions_updates) == 1
+
+
+def test_no_scenario_state_change_means_no_instructions_update(monkeypatch):
+    # DEFAULT_SCENARIO's card has no information_to_withhold/triggers/
+    # concerns, so nothing the patient or nurse says can change PatientState.
+    events = [TranscriptDelta(role="patient", delta="Hello there."), ResponseDone()]
+    ws = FakeWebSocket(handshake={"token": "tok", "scenario_id": 42, "session_id": 7}, audio_chunks=[_DISCONNECT])
+
+    _run_stream(monkeypatch, ws, auth_user=FakeUser(), adapter_events=events)
+
+    adapter = FakeAdapter.instances[-1]
+    assert adapter.instructions_updates == []
+
+
+def test_warmup_session_never_syncs_patient_state(monkeypatch):
+    events = [TranscriptDelta(role="patient", delta="Nice to meet you."), ResponseDone()]
+    ws = FakeWebSocket(handshake={"token": "tok", "mode": "warmup"}, audio_chunks=[_DISCONNECT])
+
+    _run_stream(monkeypatch, ws, auth_user=FakeUser(), adapter_events=events)
+
+    adapter = FakeAdapter.instances[-1]
+    assert adapter.instructions_updates == []
+
+
+def test_interruption_does_not_break_state_sync(monkeypatch):
+    events = [
+        TranscriptDelta(role="patient", delta="I haven't been taking my medication"),
+        Interrupted(),
+        ResponseDone(),
+    ]
+    ws = FakeWebSocket(handshake={"token": "tok", "scenario_id": 42, "session_id": 7}, audio_chunks=[_DISCONNECT])
+
+    _run_stream(
+        monkeypatch, ws, auth_user=FakeUser(), scenario_rows=[SCENARIO_WITH_HIDDEN_INFO],
+        adapter_events=events,
+    )
+
+    adapter = FakeAdapter.instances[-1]
+    assert adapter.cancel_count == 1
+    # The interrupted patient turn's partial text still flushes into the
+    # transcript on ResponseDone -- state sync must still fire normally.
+    assert len(adapter.instructions_updates) == 1
+
+
+def test_fresh_session_starts_with_empty_patient_state(monkeypatch):
+    # No session_id supplied by the client -- a brand-new session_usage row
+    # is minted, so this can never be a reconnect. The initial system prompt
+    # must use the empty/default PatientState, not query session_transcripts.
+    ws = FakeWebSocket(handshake={"token": "tok", "scenario_id": 42}, audio_chunks=[_DISCONNECT])
+
+    _run_stream(
+        monkeypatch, ws, auth_user=FakeUser(), scenario_rows=[SCENARIO_WITH_HIDDEN_INFO],
+        prior_transcript_rows=[{"transcript": [{"role": "patient", "text": "irrelevant, must not be read"}]}],
+    )
+
+    adapter = FakeAdapter.instances[-1]
+    assert "irrelevant" not in adapter.system_prompt
+    assert "medication non-compliance" in adapter.system_prompt.split("Still hidden")[1].split("Concerns you have")[0]
+
+
+def test_reconnect_restores_patient_state_from_prior_transcript(monkeypatch):
+    # Client supplies a session_id that validates -- this is a reconnect to
+    # an existing session. A prior connection already persisted a
+    # session_transcripts row where the patient revealed the hidden info;
+    # the new connection's initial prompt must reflect that, not start blank.
+    ws = FakeWebSocket(
+        handshake={"token": "tok", "scenario_id": 42, "session_id": 7},
+        audio_chunks=[_DISCONNECT],
+    )
+
+    _run_stream(
+        monkeypatch, ws, auth_user=FakeUser(), validate_ok=True, scenario_rows=[SCENARIO_WITH_HIDDEN_INFO],
+        prior_transcript_rows=[{
+            "transcript": [
+                {"role": "nurse", "text": "Are you taking your medication regularly?"},
+                {"role": "patient", "text": "No, I haven't been taking my medication."},
+            ],
+        }],
+    )
+
+    adapter = FakeAdapter.instances[-1]
+    assert "medication non-compliance" in adapter.system_prompt.split("Already revealed")[1]
+    assert "medication non-compliance" not in adapter.system_prompt.split("Still hidden")[1].split("Concerns you have")[0]
+
+
+def test_reconnect_with_no_prior_transcript_still_starts_fresh(monkeypatch):
+    # validate_session succeeding with session_id supplied but no
+    # session_transcripts rows yet (e.g. the very first connection attempt
+    # raced a client retry) must fall back to the empty PatientState, not
+    # error.
+    ws = FakeWebSocket(
+        handshake={"token": "tok", "scenario_id": 42, "session_id": 7},
+        audio_chunks=[_DISCONNECT],
+    )
+
+    _run_stream(
+        monkeypatch, ws, auth_user=FakeUser(), validate_ok=True, scenario_rows=[SCENARIO_WITH_HIDDEN_INFO],
+    )
+
+    adapter = FakeAdapter.instances[-1]
+    assert "medication non-compliance" in adapter.system_prompt.split("Still hidden")[1].split("Concerns you have")[0]

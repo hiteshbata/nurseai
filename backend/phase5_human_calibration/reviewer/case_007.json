@@ -1,0 +1,51 @@
+{
+  "case_id": "case_007",
+  "scenario": {
+    "title": "Judgmental consultation, missed care",
+    "setting": "General practice",
+    "difficulty": "medium",
+    "specialty": "general practice",
+    "nurse_tasks": [
+      "Discuss medication adherence"
+    ],
+    "patient_name": "Marcus",
+    "patient_age": 41,
+    "patient_condition": "poorly controlled diabetes",
+    "patient_mood": "ashamed",
+    "patient_background": "Has struggled with adherence, feels judged at previous visits.",
+    "patient_concerns": [],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "Your sugar levels are high again. Have you even been taking your medication properly?"
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "I've been trying, it's just been a really hard few months."
+    },
+    {
+      "turn_index": 2,
+      "role": "nurse",
+      "content": "Well if you'd just followed the plan none of this would be happening."
+    },
+    {
+      "turn_index": 3,
+      "role": "patient",
+      "content": "..."
+    },
+    {
+      "turn_index": 4,
+      "role": "nurse",
+      "content": "Let's get your bloods done."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

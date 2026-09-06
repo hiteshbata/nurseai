@@ -95,6 +95,31 @@ def get_institution_overview(scope: InstitutionScope = Depends(require_teacher))
     }
 
 
+def _institution_quota_context(supabase, institution_id: str) -> tuple:
+    """(speaking_sessions_per_month, speaking_enabled) for one institution --
+    the same two lookups (institutions + institution_modules) needed by both
+    the roster and the per-student detail view, so neither re-derives it."""
+    institution = (
+        supabase.table("institutions")
+        .select("speaking_sessions_per_month")
+        .eq("id", institution_id).execute()
+    ).data[0]
+    speaking_enabled = bool((
+        supabase.table("institution_modules")
+        .select("enabled")
+        .eq("institution_id", institution_id).eq("module", "speaking").eq("enabled", True).execute()
+    ).data)
+    return institution.get("speaking_sessions_per_month"), speaking_enabled
+
+
+def _sessions_remaining(quota: Optional[int], speaking_enabled: bool, sessions_used: int) -> Optional[int]:
+    """None when there's no fixed quota to compare against (unlimited or
+    speaking not granted) -- otherwise quota minus used, never negative."""
+    if speaking_enabled and quota is not None:
+        return max(quota - sessions_used, 0)
+    return None
+
+
 @router.get("/students")
 def get_institution_students(scope: InstitutionScope = Depends(require_teacher)):
     """Read-only roster. Fixed query pattern regardless of student count --
@@ -103,9 +128,10 @@ def get_institution_students(scope: InstitutionScope = Depends(require_teacher))
     (institutions + institution_modules) -- never a per-student query. See
     docs/superpowers/specs/2026-08-28-institution-phase4-admin.md Section 10.
 
-    Deliberately omits user_id/plan/subscription/bonus_sessions/
-    institution_id from the response (data-minimization, spec Section 2) --
-    the frontend roster has no use for them."""
+    Includes user_id (needed by the frontend to link each row to
+    /institution/students/{user_id}, Phase 6.2) but still omits
+    plan/subscription/bonus_sessions/institution_id (data-minimization,
+    spec Section 2) -- the frontend roster has no use for those."""
     supabase = get_supabase()
 
     members = (
@@ -121,7 +147,7 @@ def get_institution_students(scope: InstitutionScope = Depends(require_teacher))
     user_ids = [m["user_id"] for m in members]
     users = {
         u["id"]: u for u in (
-            supabase.table("users").select("id, email, name").in_("id", user_ids).execute()
+            supabase.table("users").select("id, email, name, last_seen_at").in_("id", user_ids).execute()
         ).data or []
     }
     profiles = {
@@ -132,18 +158,7 @@ def get_institution_students(scope: InstitutionScope = Depends(require_teacher))
         ).data or []
     }
 
-    institution = (
-        supabase.table("institutions")
-        .select("speaking_sessions_per_month")
-        .eq("id", scope.institution_id).execute()
-    ).data[0]
-    quota = institution.get("speaking_sessions_per_month")
-    speaking_enabled = bool((
-        supabase.table("institution_modules")
-        .select("enabled")
-        .eq("institution_id", scope.institution_id).eq("module", "speaking").eq("enabled", True).execute()
-    ).data)
-
+    quota, speaking_enabled = _institution_quota_context(supabase, scope.institution_id)
     latest_scores = _latest_speaking_scores(supabase, user_ids)
 
     month_start = get_month_start_utc()
@@ -153,20 +168,86 @@ def get_institution_students(scope: InstitutionScope = Depends(require_teacher))
         profile = profiles.get(m["user_id"], {})
         sessions_used = _usage_payload(profile, month_start, plan_limit=0)["sessions_used"]
 
-        sessions_remaining = None
-        if speaking_enabled and quota is not None:
-            sessions_remaining = max(quota - sessions_used, 0)
-
         roster.append({
+            "user_id": m["user_id"],
             "name": user.get("name") or None,
             "email": user.get("email") or "",
             "status": m["status"],
             "joined_at": m.get("joined_at"),
+            "last_seen_at": user.get("last_seen_at"),
             "sessions_used_this_month": sessions_used,
-            "sessions_remaining": sessions_remaining,
+            "sessions_remaining": _sessions_remaining(quota, speaking_enabled, sessions_used),
             "latest_speaking_score": latest_scores.get(m["user_id"]),
         })
     return roster
+
+
+@router.get("/students/{user_id}")
+def get_institution_student_detail(user_id: str, scope: InstitutionScope = Depends(require_teacher)):
+    """Single-student detail view. Institution scope comes only from the
+    caller's own active membership (require_teacher, same as the roster
+    above) -- user_id is never trusted to imply institution access, only to
+    select which row inside the caller's own institution to return.
+
+    Membership lookup is filtered by institution_id + user_id + role=student
+    in one query: a user_id that exists but isn't a student in this
+    institution (wrong institution, wrong role, or doesn't exist at all)
+    gets the identical generic 404 -- this can't be used to probe whether a
+    user_id exists elsewhere. Matches an existing membership regardless of
+    its status (active/invited/revoked), same as the roster, which already
+    lists every status."""
+    supabase = get_supabase()
+
+    memberships = (
+        supabase.table("institution_members")
+        .select("user_id, status, role, joined_at")
+        .eq("institution_id", scope.institution_id)
+        .eq("user_id", user_id)
+        .eq("role", "student").execute()
+    ).data or []
+    if not memberships:
+        raise HTTPException(status_code=404, detail="Student not found")
+    membership = memberships[0]
+
+    user = (
+        supabase.table("users").select("id, email, name, last_seen_at").eq("id", user_id).execute()
+    ).data or [{}]
+    user = user[0]
+
+    profile = (
+        supabase.table("user_profiles")
+        .select("user_id, plan, sessions_used_this_month, sessions_reset_date, bonus_sessions")
+        .eq("user_id", user_id).execute()
+    ).data or [{}]
+    profile = profile[0]
+
+    quota, speaking_enabled = _institution_quota_context(supabase, scope.institution_id)
+    month_start = get_month_start_utc()
+    sessions_used = _usage_payload(profile, month_start, plan_limit=0)["sessions_used"]
+
+    latest_score = _latest_speaking_scores(supabase, [user_id]).get(user_id)
+    recent_submissions = (
+        supabase.table("submissions")
+        .select("id, module, score, created_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(10).execute()
+    ).data or []
+
+    return {
+        "user_id": user_id,
+        "name": user.get("name") or None,
+        "email": user.get("email") or "",
+        "status": membership["status"],
+        "role": membership["role"],
+        "joined_at": membership.get("joined_at"),
+        "last_seen_at": user.get("last_seen_at"),
+        "sessions_used_this_month": sessions_used,
+        "sessions_remaining": _sessions_remaining(quota, speaking_enabled, sessions_used),
+        "speaking_sessions_per_month": quota,
+        "latest_speaking_score": latest_score,
+        "recent_submissions": recent_submissions,
+    }
 
 
 def _latest_speaking_scores(supabase, user_ids: list) -> dict:
@@ -243,6 +324,44 @@ class InviteCreate(BaseModel):
         return v
 
 
+def _create_invite_row(
+    supabase, institution_id: str, max_uses: Optional[int], expires_at: Optional[datetime], created_by: str,
+) -> dict:
+    """DB lifecycle only -- role is always "student", token generation/entropy
+    is the sole source of truth for every invite-creation call site (self-
+    service here, staff-facing in admin_institutions.py). Callers own their
+    own authorization, institution scope source, rate limiting, response
+    shape, and audit logging -- none of that lives here."""
+    token = secrets.token_urlsafe(24)
+    row = {
+        "institution_id": institution_id,
+        "token": token,
+        "role": "student",
+        "max_uses": max_uses,
+        "expires_at": expires_at.isoformat() if expires_at else None,
+        "created_by": created_by,
+    }
+    result = supabase.table("institution_invites").insert(row).execute()
+    return result.data[0]
+
+
+def _revoke_invite_row(supabase, institution_id: str, invite_id: str) -> bool:
+    """True if `invite_id` belongs to `institution_id` and was revoked,
+    False if no such invite exists in that institution -- callers turn False
+    into a generic 404 so a cross-tenant guess can't be distinguished from
+    "doesn't exist" (spec 5.5/8). DB lifecycle only, same division of
+    responsibility as _create_invite_row above."""
+    invites = (
+        supabase.table("institution_invites")
+        .select("id")
+        .eq("id", invite_id).eq("institution_id", institution_id).execute()
+    )
+    if not invites.data:
+        return False
+    supabase.table("institution_invites").update({"status": "revoked"}).eq("id", invite_id).execute()
+    return True
+
+
 @router.post("/invites", status_code=201)
 def create_institution_invite(
     req: InviteCreate,
@@ -253,17 +372,7 @@ def create_institution_invite(
         raise HTTPException(status_code=429, detail="Too many requests. Try again shortly.")
 
     supabase = get_supabase()
-    token = secrets.token_urlsafe(24)
-    row = {
-        "institution_id": scope.institution_id,
-        "token": token,
-        "role": "student",
-        "max_uses": req.max_uses,
-        "expires_at": req.expires_at.isoformat() if req.expires_at else None,
-        "created_by": current_user.id,
-    }
-    result = supabase.table("institution_invites").insert(row).execute()
-    created = result.data[0]
+    created = _create_invite_row(supabase, scope.institution_id, req.max_uses, req.expires_at, current_user.id)
 
     _write_audit_log(
         supabase, current_user, "institution_invite_created", "institution_invite",
@@ -294,15 +403,8 @@ def revoke_institution_invite(
     invite by guessing/enumerating {invite_id}. Generic 404 (not 403) so a
     mismatch can't be distinguished from "doesn't exist" (spec 5.5/8)."""
     supabase = get_supabase()
-    invites = (
-        supabase.table("institution_invites")
-        .select("id")
-        .eq("id", invite_id).eq("institution_id", scope.institution_id).execute()
-    )
-    if not invites.data:
+    if not _revoke_invite_row(supabase, scope.institution_id, invite_id):
         raise HTTPException(status_code=404, detail="Invitation not found")
-
-    supabase.table("institution_invites").update({"status": "revoked"}).eq("id", invite_id).execute()
 
     _write_audit_log(
         supabase, current_user, "institution_invite_revoked", "institution_invite",

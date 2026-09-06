@@ -1,0 +1,77 @@
+{
+  "properties": {
+    "case_id": {
+      "title": "Case Id",
+      "type": "string"
+    },
+    "criterion": {
+      "title": "Criterion",
+      "type": "string"
+    },
+    "provisional_level": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Provisional Level"
+    },
+    "human_level": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Human Level"
+    },
+    "level_difference": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Level Difference"
+    },
+    "human_status": {
+      "title": "Human Status",
+      "type": "string"
+    },
+    "provisional_status": {
+      "title": "Provisional Status",
+      "type": "string"
+    },
+    "agreement_bucket": {
+      "title": "Agreement Bucket",
+      "type": "string"
+    },
+    "evidence_turn_overlap": {
+      "items": {
+        "type": "integer"
+      },
+      "title": "Evidence Turn Overlap",
+      "type": "array"
+    }
+  },
+  "required": [
+    "case_id",
+    "criterion",
+    "provisional_level",
+    "human_level",
+    "level_difference",
+    "human_status",
+    "provisional_status",
+    "agreement_bucket",
+    "evidence_turn_overlap"
+  ],
+  "title": "ComparisonRow",
+  "type": "object"
+}

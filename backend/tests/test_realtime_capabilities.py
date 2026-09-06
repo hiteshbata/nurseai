@@ -50,3 +50,12 @@ def test_capabilities_are_frozen():
     from dataclasses import FrozenInstanceError
     with pytest.raises(FrozenInstanceError):
         OPENAI_REALTIME_CAPABILITIES.input_sample_rate = 8000
+
+
+def test_live_instruction_update_support_differs_by_provider():
+    # OpenAI's session.update reaches the live session; Gemini's
+    # BidiGenerateContent has no equivalent client message (see
+    # gemini_adapter.update_instructions). Router calls update_instructions()
+    # unconditionally either way -- these flags are informational only.
+    assert OPENAI_REALTIME_CAPABILITIES.supports_live_instruction_update is True
+    assert GEMINI_LIVE_CAPABILITIES.supports_live_instruction_update is False

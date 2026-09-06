@@ -1330,7 +1330,21 @@ def admin_prune_transcripts(_=Depends(require_admin_or_cron)):
         raise HTTPException(status_code=502, detail="Transcript prune failed")
     count = len(deleted.data or [])
     logger.info("transcripts/prune deleted %d rows older than %s", count, cutoff)
-    return {"deleted": count}
+
+    # Step 13: session_semantic_state follows the same retention lifecycle as
+    # the transcript it was derived from -- same cron, same cutoff, no
+    # separate job. Keyed on updated_at (not created_at -- the row is
+    # upserted in place, so updated_at is the only timestamp that reflects
+    # how recently it was actually touched).
+    try:
+        semantic_deleted = supabase.table("session_semantic_state").delete().lt("updated_at", cutoff).execute()
+        semantic_count = len(semantic_deleted.data or [])
+        logger.info("transcripts/prune deleted %d session_semantic_state rows older than %s", semantic_count, cutoff)
+    except Exception:
+        logger.exception("session_semantic_state prune failed")
+        semantic_count = 0
+
+    return {"deleted": count, "semantic_state_deleted": semantic_count}
 
 
 AI_USAGE_EVENTS_RETENTION_DAYS = 90

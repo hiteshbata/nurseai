@@ -104,9 +104,8 @@ export default function RegisterPage() {
     if (!validate()) return
     setIsLoading(true)
     try {
-      const emailRedirectTo = returnTo
-        ? window.location.origin + '/auth/callback?returnTo=' + encodeURIComponent(returnTo)
-        : undefined
+      const emailRedirectTo = window.location.origin + '/auth/callback' +
+        (returnTo ? '?returnTo=' + encodeURIComponent(returnTo) : '')
       const data = await signUp(formData.email, formData.password, formData.name, emailRedirectTo)
       trackEvent('signup_completed', { method: 'email' })
       trackMetaEvent('CompleteRegistration', { registration_method: 'email' }, { email: formData.email })
@@ -115,13 +114,13 @@ export default function RegisterPage() {
         setTimeout(() => router.push(returnTo || '/onboarding'), 2000)
       } else {
         // Registering while already signed in as someone else leaves that old
-        // session in place -- sign out so the login page's authenticated-user
-        // redirect doesn't bounce back into the old account's dashboard.
+        // session in place -- sign out so the verify/login page's
+        // authenticated-user redirect doesn't bounce back into the old
+        // account's dashboard.
         await signOut()
-        toast.success('Registration successful! Check your email to confirm your account, then sign in.')
-        setFormData({ name: '', email: '', password: '', confirmPassword: '' })
-        const loginUrl = '/auth/login' + (returnTo ? '?returnTo=' + encodeURIComponent(returnTo) : '')
-        setTimeout(() => router.push(loginUrl), 2000)
+        const verifyUrl = '/auth/verify?email=' + encodeURIComponent(formData.email) +
+          (returnTo ? '&returnTo=' + encodeURIComponent(returnTo) : '')
+        router.push(verifyUrl)
       }
     } catch (error: any) {
       setError(error.message || 'Registration failed')

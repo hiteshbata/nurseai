@@ -1,0 +1,59 @@
+{
+  "case_id": "case_016",
+  "scenario": {
+    "title": "Wound check, dismissive consultation",
+    "setting": "Surgical outpatient clinic",
+    "difficulty": "medium",
+    "specialty": "surgical",
+    "nurse_tasks": [
+      "Check wound",
+      "Reassure about healing progress"
+    ],
+    "patient_name": "Jo",
+    "patient_age": 64,
+    "patient_condition": "post-operative wound healing",
+    "patient_mood": "worried",
+    "patient_background": "Second visit for the same concern, feels unheard.",
+    "patient_concerns": [
+      "Why is my wound still red and sore?"
+    ],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "Right, let's have a look at that cannula site."
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "It's still really red and it hurts, is that normal?"
+    },
+    {
+      "turn_index": 2,
+      "role": "nurse",
+      "content": "It's fine, just deal with it, it happens to everyone."
+    },
+    {
+      "turn_index": 3,
+      "role": "patient",
+      "content": "It's been like this for a week though."
+    },
+    {
+      "turn_index": 4,
+      "role": "nurse",
+      "content": "You'll be discharged tomorrow anyway. Any other issues?"
+    },
+    {
+      "turn_index": 5,
+      "role": "patient",
+      "content": "No, I suppose not."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

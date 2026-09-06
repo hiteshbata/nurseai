@@ -16,6 +16,14 @@ from app.core import circuit_breaker
 from app.core import cost_circuit_breaker
 from app.services import ai_registry
 from app.services.cost_tracking import log_ai_usage
+from app.services.patient_state import (
+    MEDICAL_JARGON,  # noqa: F401 -- re-exported; speaking_realtime.py imports it from here
+    derive_patient_state,
+    detect_jargon,  # noqa: F401 -- re-exported; used below in get_patient_response
+    render_patient_state_prompt,
+)
+from app.services import semantic_evidence
+from app.services import session_semantic_state
 
 logger = logging.getLogger(__name__)
 
@@ -194,12 +202,17 @@ async def _call_ai(
         if json_mode:
             parsed = _try_parse_json(candidate.provider, candidate.model_name, text, dispatched.get("finish_reason"))
             result = parsed if parsed is not None else {"raw_feedback": text}
+            # Usable means "parsed into structured JSON" -- a truncated/malformed
+            # response still has non-empty raw_feedback (the partial text), which
+            # used to satisfy the check below and short-circuit the fallback.
+            usable = parsed is not None
         else:
             result = {"raw_feedback": text}
+            usable = bool(result.get("raw_feedback"))
 
         # An empty/unparseable response is a bad attempt, not a usable one --
         # try the fallback (if any) instead of returning it as if it worked.
-        if result.get("raw_feedback") or (json_mode and result):
+        if usable:
             result["finish_reason"] = dispatched.get("finish_reason")
             return result
         last_error = "empty or unparseable response"
@@ -320,45 +333,9 @@ def _try_parse_json(provider: str, model: str, content: str, finish_reason: Opti
     return None
 
 
-# ── JARGON DETECTION ────────────────────────────────────────────────
-
-MEDICAL_JARGON = [
-    "hypertension", "hypotension", "tachycardia", "bradycardia",
-    "myocardial", "infarction", "arrhythmia", "angina",
-    "dyspnea", "dyspnoea", "oedema", "edema",
-    "haemorrhage", "hemorrhage", "thrombosis", "embolism",
-    "contraindicated", "contraindication", "analgesic", "analgesia",
-    "antipyretic", "anticoagulant", "subcutaneous", "intravenous",
-    "intramuscular", "nil by mouth", "cannula", "nasogastric",
-    "catheter", "cholecystectomy", "appendectomy", "biopsy",
-    "malignant", "metastasis", "haemoglobin", "creatinine",
-    "troponin", "electrolyte", "sepsis", "bacteremia",
-    "cellulitis", "hyperglycemia", "hypoglycemia", "neuropathy",
-    "paraplegia", "bronchitis", "exacerbation", "comorbidity",
-    "prophylaxis", "etiology", "prognosis",
-]
-
-def detect_jargon(nurse_message: str) -> str | None:
-    message_lower = nurse_message.lower()
-    for term in MEDICAL_JARGON:
-        if term in message_lower:
-            term_index = message_lower.find(term)
-            surrounding = message_lower[
-                max(0, term_index - 20):
-                min(len(message_lower), term_index + 100)
-            ]
-            explanation_words = [
-                "means", "meaning", "that is", "in other words",
-                "which is", "or in simple", "basically",
-                "what we call", "also called", "known as", "in plain",
-            ]
-            if any(w in surrounding for w in explanation_words):
-                continue
-            return term
-    return None
-
-
 # ── PATIENT ROLE-PLAY ────────────────────────────────────────────────
+# (MEDICAL_JARGON / detect_jargon now live in app.services.patient_state --
+# re-exported above so this stays a no-op for every other importer.)
 
 async def get_patient_response(
     interlocutor_card: Dict[str, Any],
@@ -383,6 +360,39 @@ async def get_patient_response(
     info_to_withhold = card.get('information_to_withhold', [])
     instructions = card.get('instructions_for_ai', card.get('persona', ''))
 
+    # Step 7 (Finding 1): verify any keyword-flagged hidden-info reveal
+    # before trusting it in the live persona prompt. Synchronous and
+    # selective -- hidden_info_hints only calls the model for items the
+    # deterministic pass just flagged as candidates (rare per session), not
+    # once per turn. Concern exploration/addressing semantics are
+    # deliberately NOT added to this live per-turn path (Step 11) -- that
+    # would spend a call every turn just to vary how the patient replies;
+    # they're computed post-hoc for evidence quality in
+    # speaking_evidence.build_speaking_evidence_with_semantics instead. A
+    # semantic-call failure here just means the item stays hidden -- see
+    # semantic_evidence.hidden_info_hints's conservative-default contract.
+    # Step 13: whatever was persisted for this session_id from an earlier
+    # turn -- empty SemanticHints if nothing was saved yet (first turn) or
+    # the load failed. Passed as `prior` so hidden_info_hints only verifies
+    # candidate turns it hasn't already checked (Step 12B); without this,
+    # the legacy path re-verified every earlier turn's candidates on every
+    # single new turn, since it recomputes PatientState from the client's
+    # full round-tripped history each request.
+    prior_hints = await session_semantic_state.load_semantic_state(session_id)
+    try:
+        semantic_hints = await semantic_evidence.hidden_info_hints(
+            card, conversation_history, prior=prior_hints, user_id=user_id, session_id=session_id,
+        )
+    except Exception as e:
+        logger.warning("[SEMANTIC_HIDDEN_INFO_CHECK_FAILED] %s", str(e)[:200])
+        semantic_hints = None
+
+    if semantic_hints is not None:
+        await session_semantic_state.save_semantic_state(session_id, user_id, semantic_hints, prior=prior_hints)
+
+    patient_state = derive_patient_state(card, conversation_history, semantic_hints=semantic_hints)
+    state_block = render_patient_state_prompt(patient_state)
+
     system_prompt = f"""You are playing a patient in an OET nursing roleplay exam. Follow this card EXACTLY.
 
 PATIENT PROFILE:
@@ -403,6 +413,8 @@ QUESTIONS YOU MUST ASK (spread these across the conversation naturally):
 
 INFORMATION TO WITHHOLD (only reveal if nurse asks directly):
 {chr(10).join(f'- {i}' for i in info_to_withhold) if info_to_withhold else '- Do not volunteer extra information'}
+
+{state_block}
 
 STRICT RULES:
 1. Stay fully in character at all times
@@ -457,6 +469,18 @@ STRICT RULES:
 
 
 # ── SPEAKING SCORING ───────────────────────────────────────────────────
+
+# Step 16B: gemini-3.5-flash (premium) / gemini-flash-latest (free) are
+# reasoning models -- thinking tokens are drawn from the same maxOutputTokens
+# budget as the visible JSON (see writing_scoring's and listening_coach's own
+# AI_MAX_TOKENS comments for the same fix applied elsewhere). Prod evidence
+# (ai_usage_events, 2026-08-20) caught the old 2600-token premium budget
+# truncating mid-response -- only 87-93 output tokens actually reached the
+# client, well under the cap, meaning thinking consumed nearly all of it.
+# Raised with the same proportion writing_scoring's 2000->4000 fix used.
+SPEAKING_SCORING_MAX_TOKENS_PREMIUM = 5000
+SPEAKING_SCORING_MAX_TOKENS_FREE = 4000
+
 
 async def score_speaking(
     nurse_card: Dict[str, Any],
@@ -607,7 +631,7 @@ RULES:
     result = await _call_ai(
         [{"role": "user", "content": scoring_prompt}],
         purpose=purpose,
-        max_tokens=2600 if enhanced_feedback else 2000,
+        max_tokens=SPEAKING_SCORING_MAX_TOKENS_PREMIUM if enhanced_feedback else SPEAKING_SCORING_MAX_TOKENS_FREE,
         json_mode=True,
         user_id=user_id,
         session_id=session_id,
@@ -624,7 +648,7 @@ RULES:
         result = await _call_ai(
             [{"role": "user", "content": scoring_prompt}],
             purpose=purpose,
-            max_tokens=2600 if enhanced_feedback else 2000,
+            max_tokens=SPEAKING_SCORING_MAX_TOKENS_PREMIUM if enhanced_feedback else SPEAKING_SCORING_MAX_TOKENS_FREE,
             json_mode=True,
             user_id=user_id,
             session_id=session_id,
@@ -795,6 +819,7 @@ async def score_writing(
     scenario_title: str = "",
     case_notes: str = "",
     supabase=None,
+    key_points: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Score a writing submission against the official OET Writing rubric.
 
@@ -802,10 +827,15 @@ async def score_writing(
     are literally defined against them ("case notes accurately represented", "no
     irrelevant information included"), so the examiner cannot score them without
     seeing the notes.
+
+    key_points (scenarios.key_points, Content Studio-authored) takes precedence
+    over the legacy nurse_card.tasks checklist when non-empty -- the two are
+    never merged, so a scenario with both never double-counts the same point
+    under two different sources.
     """
     card = nurse_card
-    tasks = card.get("tasks", [])
-    tasks_text = "\n".join(f"- {t}" for t in tasks) if tasks else "(no task checklist provided)"
+    checklist_points = key_points if key_points else card.get("tasks", [])
+    tasks_text = "\n".join(f"- {p}" for p in checklist_points) if checklist_points else "(no key points provided)"
     task_brief = card.get("role", "")
     case_notes_text = case_notes.strip() or "(case notes not available)"
 

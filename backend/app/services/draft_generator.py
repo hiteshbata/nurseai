@@ -4,8 +4,10 @@ unpersisted draft. Never writes to production content tables and never
 publishes -- app/services/draft_store.py is the only thing this sprint is
 allowed to persist to.
 """
+import difflib
 import logging
 import re
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 from app.core.supabase import get_supabase
@@ -26,6 +28,7 @@ _REQUIRED_FIELDS: Dict[str, List[str]] = {
     "writing": ["title", "case_notes", "task"],
     "vocab": ["topic", "items"],
     "grammar": ["topic", "explanation"],
+    "blog": ["title", "body", "excerpt"],
 }
 
 # Fields that must be a non-empty list, on top of the presence check above.
@@ -33,6 +36,21 @@ _REQUIRED_NONEMPTY_LISTS: Dict[str, List[str]] = {
     "reading": ["questions"],
     "listening": ["transcript", "questions"],
     "vocab": ["items"],
+}
+
+# W2 structured Writing contract (kept in sync with prompt_builder.WRITING_LETTER_TYPES).
+# Only the four types evidenced by the reference OET Nursing Writing samples.
+_WRITING_LETTER_TYPES = ("referral", "discharge", "transfer", "ongoing_care")
+
+# Fixed per the OET Nursing Writing sub-test format across all six reference
+# samples -- never varies per case, so it's applied here rather than asked of
+# the AI (one less thing that can come back malformed).
+_WRITING_REQUIREMENTS_DEFAULT: Dict[str, Any] = {
+    "reading_minutes": 5,
+    "writing_minutes": 40,
+    "target_word_count": "180-200",
+    "letter_format": True,
+    "no_note_form": True,
 }
 
 # module -> (production table, extra eq filters) for the best-effort
@@ -54,9 +72,18 @@ _TITLE_FIELD = {
 # Reading (full passage + questions), Listening (full transcript + questions),
 # and Grammar (explanation + practice questions) routinely exceed the default
 # budget and got cut off mid-JSON -- confirmed via finish_reason=MAX_TOKENS on
-# the raw AI response. Speaking/Writing/Vocab's schemas fit comfortably under
-# the default and are left untouched.
-_MAX_TOKENS_OVERRIDE = {"reading": 6000, "listening": 6000, "grammar": 6000}
+# the raw AI response. Speaking/Vocab's schemas fit comfortably under the
+# default and are left untouched.
+#
+# W3.2: Writing (W2 structured contract) moved into this tier too -- the
+# schema now duplicates case notes twice (case_notes_structured AND the
+# rendered case_notes text block) plus key_points/writing_requirements,
+# and generation was observed truncating mid-JSON (finish_reason=MAX_TOKENS)
+# under the old 3000 default. Same 6000 ceiling as its schema-size peers,
+# not a bespoke budget.
+# Blog targets an 800-1200 word Markdown body plus title/excerpt -- same
+# ceiling as its long-form schema peers above, not a bespoke budget.
+_MAX_TOKENS_OVERRIDE = {"reading": 6000, "listening": 6000, "grammar": 6000, "writing": 6000, "blog": 6000}
 _DEFAULT_MAX_TOKENS = 3000
 
 # Part A production incident: finish_reason=MAX_TOKENS, response truncated
@@ -548,6 +575,571 @@ def _validate_listening_part_c(content: Dict[str, Any]) -> List[str]:
     )
 
 
+# W3.1: deterministic internal-consistency checks layered on top of the W2
+# structural contract above. These read only fields the W2 schema already
+# defines (patient/recipient/case_notes_structured/case_notes/task/purpose/
+# key_points) -- no new Content Studio field is introduced. Every check is
+# additive and opt-in the same way _validate_writing's structural checks are:
+# a legacy/partial draft that doesn't carry the fields a given check needs
+# simply produces no finding from that check, it never raises on absence.
+#
+# Deliberately NOT implemented here: "letter_type contradicting task type"
+# and "purpose differing materially from task intent" via free-text keyword
+# inference. A prototype of both reliably fired on ordinary single-field-
+# override test fixtures (e.g. letter_type swapped without also rewriting
+# task/purpose prose) -- the false-positive rate from crude keyword matching
+# on freeform prose was worse than the signal, and the spec asks for
+# conservative flagging of *clear* contradictions only. Revisit if the W2
+# schema ever gains a structured field to tag intent instead of inferring it
+# from prose.
+_MONTHS = {
+    "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+    "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+    "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9, "oct": 10,
+    "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
+}
+_NUMERIC_DATE_RE = re.compile(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b")
+_TEXT_DATE_RE = re.compile(r"\b(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b")
+
+
+def _find_dates(text: str) -> List[date]:
+    """dd/mm/yyyy (or dd-mm-yyyy) and 'dd Month yyyy' -- the two date styles
+    that actually show up in OET-style case notes. Anything unparseable is
+    silently skipped, never raised -- this is a best-effort extractor over
+    free text, not a schema field."""
+    found: List[date] = []
+    for m in _NUMERIC_DATE_RE.finditer(text):
+        try:
+            found.append(date(int(m.group(3)), int(m.group(2)), int(m.group(1))))
+        except ValueError:
+            pass
+    for m in _TEXT_DATE_RE.finditer(text):
+        month = _MONTHS.get(m.group(2).lower())
+        if month:
+            try:
+                found.append(date(int(m.group(3)), month, int(m.group(1))))
+            except ValueError:
+                pass
+    return found
+
+
+def _writing_text_fragments(content: Dict[str, Any]) -> List[str]:
+    """case_notes_structured items + raw case_notes lines + task + purpose,
+    each as its own short fragment -- deliberately fragment-level rather than
+    one joined blob, so a keyword like 'admission' only labels the date(s)
+    actually sitting in the same note line, not every date anywhere."""
+    fragments: List[str] = []
+    structured = content.get("case_notes_structured")
+    if isinstance(structured, list):
+        for section in structured:
+            if isinstance(section, dict):
+                for item in section.get("items") or []:
+                    if isinstance(item, str):
+                        fragments.append(item)
+    case_notes = content.get("case_notes")
+    if isinstance(case_notes, str):
+        fragments.extend(line for line in case_notes.splitlines() if line.strip())
+    for field in ("task", "purpose"):
+        value = content.get(field)
+        if isinstance(value, str) and value.strip():
+            fragments.append(value)
+    return fragments
+
+
+# Order matters: a fragment matching more than one label (e.g. "Follow-up
+# treatment arranged") takes the first label it matches, so a treatment note
+# explicitly marked as follow-up lands in follow_up, not treatment -- exactly
+# the carve-out the spec asks for ("treatment dates not after discharge
+# unless explicitly follow-up").
+_DATE_LABEL_KEYWORDS = (
+    ("dob", ("dob", "date of birth")),
+    ("admission", ("admission", "admitted")),
+    ("follow_up", ("follow-up", "follow up", "review appointment")),
+    ("discharge", ("discharge", "discharged")),
+    ("treatment", ("treatment",)),
+)
+
+
+def _labeled_writing_dates(content: Dict[str, Any]) -> Dict[str, List[date]]:
+    buckets: Dict[str, List[date]] = {label: [] for label, _ in _DATE_LABEL_KEYWORDS}
+    patient = content.get("patient")
+    if isinstance(patient, dict) and patient.get("dob"):
+        buckets["dob"].extend(_find_dates(str(patient["dob"])))
+    for fragment in _writing_text_fragments(content):
+        found = _find_dates(fragment)
+        if not found:
+            continue
+        lower = fragment.lower()
+        for label, keywords in _DATE_LABEL_KEYWORDS:
+            if any(kw in lower for kw in keywords):
+                buckets[label].extend(found)
+                break
+    return {label: list(dict.fromkeys(ds)) for label, ds in buckets.items()}
+
+
+def _resolve_writing_reference_date(content: Dict[str, Any], dates: Dict[str, List[date]]) -> Optional[date]:
+    """Priority: an explicit reference date if the AI ever supplies one (not
+    a schema field today, but harmless to honor if present) > admission date
+    > discharge date > nothing -- never falls back to real-world 'today',
+    per the spec, since a generated case's internal clock is whatever date
+    the case notes themselves establish."""
+    explicit = content.get("assumed_today") or content.get("reference_date")
+    if isinstance(explicit, str) and explicit.strip():
+        found = _find_dates(explicit)
+        if found:
+            return found[0]
+    if dates["admission"]:
+        return dates["admission"][0]
+    if dates["discharge"]:
+        return dates["discharge"][0]
+    return None
+
+
+def _calculate_age(dob: date, reference: date) -> int:
+    age = reference.year - dob.year
+    if (reference.month, reference.day) < (dob.month, dob.day):
+        age -= 1
+    return age
+
+
+# W3.4: the AI repeatedly miscalculated patient.age from a DOB it also
+# generated (e.g. DOB 14/03/1946 as of 18/10/2023 -> 78, should be 77) --
+# a generation-contract problem, not a validation one. Called from
+# generate_draft() only, i.e. only for a freshly generated draft, before
+# _validate() runs -- so a derivable age is authoritative for new
+# generation while an existing/legacy draft (which never passes through
+# here) keeps whatever age it already has, still checked for consistency
+# by _validate_writing_age_dob below.
+def _derive_writing_patient_age(content: Dict[str, Any]) -> None:
+    patient = content.get("patient")
+    if not isinstance(patient, dict):
+        return
+    dob_values = _find_dates(str(patient.get("dob") or ""))
+    if len(dob_values) != 1:
+        return  # no DOB, or an unparseable/ambiguous one -- nothing to derive from
+    reference = _resolve_writing_reference_date(content, _labeled_writing_dates(content))
+    if reference is None:
+        return
+    patient["age"] = str(_calculate_age(dob_values[0], reference))
+
+
+_AGE_FIELD_RE = re.compile(r"\d{1,3}")
+_AGE_TEXT_RE = re.compile(r"\b(\d{1,3})[\s-]*(?:y\.?o\.?|years?[\s-]old)\b", re.IGNORECASE)
+
+
+def _parse_stated_age(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    m = _AGE_FIELD_RE.search(str(value))
+    return int(m.group()) if m else None
+
+
+def _ages_in_text(content: Dict[str, Any]) -> set:
+    ages = set()
+    for fragment in _writing_text_fragments(content):
+        for m in _AGE_TEXT_RE.finditer(fragment):
+            ages.add(int(m.group(1)))
+    return ages
+
+
+def _validate_writing_age_dob(content: Dict[str, Any]) -> List[str]:
+    """DOB/age/reference-date consistency (spec section 1) plus conflicting
+    DOB or age values for the same patient (spec section 3). Conservative by
+    construction: any missing signal (no DOB, no age anywhere, no resolvable
+    reference date) means the check has nothing to contradict, so it's
+    skipped rather than guessed at."""
+    errors: List[str] = []
+    patient = content.get("patient")
+    if not isinstance(patient, dict):
+        return errors
+
+    dates = _labeled_writing_dates(content)
+    dob_values = dates["dob"]
+    if len(dob_values) > 1:
+        errors.append(f"Conflicting DOB values found in patient/case notes: {[d.isoformat() for d in dob_values]}.")
+        return errors
+    dob = dob_values[0] if dob_values else None
+
+    stated_ages = {a for a in (_parse_stated_age(patient.get("age")),) if a is not None}
+    stated_ages |= _ages_in_text(content)
+    if len(stated_ages) > 1:
+        errors.append(f"Conflicting patient age values found: {sorted(stated_ages)}.")
+        return errors
+
+    if dob is None or not stated_ages:
+        return errors
+
+    reference = _resolve_writing_reference_date(content, dates)
+    if reference is None:
+        return errors
+
+    stated_age = next(iter(stated_ages))
+    expected_age = _calculate_age(dob, reference)
+    if stated_age != expected_age:
+        errors.append(
+            f"'patient.age' ({stated_age}) is inconsistent with DOB {dob.isoformat()} as of "
+            f"reference date {reference.isoformat()}; expected age {expected_age}."
+        )
+    return errors
+
+
+def _validate_writing_date_order(content: Dict[str, Any]) -> List[str]:
+    """Spec section 2: admission <= discharge, treatment not after discharge
+    unless explicitly follow-up, follow-up >= discharge. Only compares dates
+    that were actually found and labeled -- an absent date is not an error,
+    it's just nothing to check."""
+    errors: List[str] = []
+    dates = _labeled_writing_dates(content)
+    admission = dates["admission"][0] if dates["admission"] else None
+    discharge = dates["discharge"][0] if dates["discharge"] else None
+    follow_up = dates["follow_up"][0] if dates["follow_up"] else None
+
+    if admission and discharge and admission > discharge:
+        errors.append(f"Admission date {admission.isoformat()} is after discharge date {discharge.isoformat()}.")
+
+    if discharge:
+        for t in dates["treatment"]:
+            if t > discharge:
+                errors.append(
+                    f"Treatment date {t.isoformat()} falls after discharge date {discharge.isoformat()} "
+                    "without being marked as follow-up."
+                )
+
+    if follow_up and discharge and follow_up < discharge:
+        errors.append(f"Follow-up date {follow_up.isoformat()} is before discharge date {discharge.isoformat()}.")
+
+    return errors
+
+
+# Matches "... to Ms Georgine Ponsford" style addressing inside the task
+# instruction. Deliberately requires an honorific (Dr/Mr/Mrs/Ms/Miss/Prof) --
+# without one, "to" precedes far too many non-name phrases in free-form task
+# prose to extract a name safely.
+_TASK_RECIPIENT_NAME_RE = re.compile(r"\bto\s+((?:Dr|Mr|Mrs|Ms|Miss|Prof)\.?\s+[A-Z][\w'-]+(?:\s+[A-Z][\w'-]+)?)")
+
+
+def _validate_writing_task_recipient(content: Dict[str, Any]) -> List[str]:
+    """Spec section 3: task recipient differing from the recipient object.
+    Only fires when the task text names someone with an honorific AND that
+    surname doesn't appear anywhere in recipient.name -- a name found in
+    task but absent from recipient entirely is the clear contradiction the
+    spec asks for; anything looser risks false positives on real names."""
+    errors: List[str] = []
+    recipient = content.get("recipient")
+    task = content.get("task")
+    if not isinstance(recipient, dict) or not isinstance(task, str):
+        return errors
+    recipient_name = str(recipient.get("name") or "").strip()
+    if not recipient_name:
+        return errors
+    match = _TASK_RECIPIENT_NAME_RE.search(task)
+    if not match:
+        return errors
+    task_name = match.group(1)
+    task_surname = task_name.split()[-1].lower()
+    if task_surname not in recipient_name.lower():
+        errors.append(
+            f"Task addresses \"{task_name}\" but 'recipient' names \"{recipient_name}\" -- "
+            "these must refer to the same person."
+        )
+    return errors
+
+
+# Common words that show up in almost any key point regardless of the
+# specific clinical fact it's referencing -- excluded so the grounding check
+# below compares actual clinical content, not scaffolding vocabulary shared
+# by every key point ("mention", "explain", "the letter should note...").
+_KEY_POINT_STOPWORDS = {
+    "about", "after", "before", "cover", "covers", "discuss", "explain", "explains",
+    "flag", "mention", "mentions", "note", "notes", "patient", "should", "their",
+    "there", "which", "while", "would", "letter", "include", "includes", "plan",
+}
+_SIGNIFICANT_WORD_RE = re.compile(r"[a-zA-Z]{5,}")
+
+
+def _significant_words(text: str) -> set:
+    return {w.lower() for w in _SIGNIFICANT_WORD_RE.findall(text)} - _KEY_POINT_STOPWORDS
+
+
+def _validate_writing_key_points_grounded(content: Dict[str, Any]) -> List[str]:
+    """Spec section 3: key_points referring to facts absent from case notes.
+    Conservative word-overlap check, not semantic matching: a key point is
+    only flagged when NONE of its significant (5+ letter, non-stopword)
+    words appear anywhere in case_notes/case_notes_structured -- a single
+    shared word (e.g. the condition name) is enough to consider it grounded."""
+    errors: List[str] = []
+    key_points = content.get("key_points")
+    if not isinstance(key_points, list) or not key_points:
+        return errors
+
+    notes_only = {k: v for k, v in content.items() if k in ("case_notes_structured", "case_notes")}
+    notes_words = _significant_words(" ".join(_writing_text_fragments(notes_only)))
+    if not notes_words:
+        return errors
+
+    for kp in key_points:
+        if not isinstance(kp, str):
+            continue
+        kp_words = _significant_words(kp)
+        if kp_words and not (kp_words & notes_words):
+            errors.append(f"key_points entry \"{kp}\" shares no clinical detail with case_notes -- possible fabricated fact.")
+    return errors
+
+
+# W4: distractor/relevance metadata. Internal content metadata only -- never
+# exposed through learner-facing Writing endpoints (see draft_publisher.py's
+# interlocutor_card home for this and the other W2/W4 structured fields, and
+# routers/writing.py's selects, which never name interlocutor_card).
+def _normalize_note_text(text: str) -> str:
+    return " ".join(text.lower().split())
+
+
+def _writing_note_fragments(content: Dict[str, Any]) -> List[str]:
+    """case_notes_structured items + raw case_notes lines only -- NOT task/
+    purpose/recipient/patient. Both the distractor-grounding check and the
+    PII check below must only ever look at the learner-facing case notes,
+    never at recipient/facility data (which is legitimate task data, not
+    patient/social content)."""
+    notes_only = {k: v for k, v in content.items() if k in ("case_notes_structured", "case_notes")}
+    return _writing_text_fragments(notes_only)
+
+
+def _text_grounded_in_notes(text: str, fragments: List[str]) -> bool:
+    """Verbatim (substring either direction) or near-verbatim (high fuzzy
+    similarity to some actual note fragment) -- deterministic, no semantic
+    matching. A distractor invented out of whole cloth won't closely match
+    any single fragment; a lightly-reworded quote will."""
+    normalized = _normalize_note_text(text)
+    if not normalized:
+        return False
+    for fragment in fragments:
+        frag_norm = _normalize_note_text(fragment)
+        if not frag_norm:
+            continue
+        if normalized in frag_norm or frag_norm in normalized:
+            return True
+        if difflib.SequenceMatcher(None, normalized, frag_norm).ratio() >= 0.7:
+            return True
+    return False
+
+
+def _validate_writing_distractor_notes(content: Dict[str, Any]) -> List[str]:
+    """Optional distractor_notes: [{"text", "reason"}]. Each entry's text must
+    be grounded (verbatim/near-verbatim) in case_notes/case_notes_structured,
+    and reason must be non-empty. Absent entirely -> no errors (legacy/W2-only
+    drafts carry no distractor_notes key)."""
+    errors: List[str] = []
+    distractor_notes = content.get("distractor_notes")
+    if distractor_notes is None:
+        return errors
+    if not isinstance(distractor_notes, list):
+        errors.append("'distractor_notes' must be a list.")
+        return errors
+
+    fragments = _writing_note_fragments(content)
+    for i, item in enumerate(distractor_notes):
+        n = i + 1
+        if not isinstance(item, dict):
+            errors.append(f"distractor_notes[{n}] must be an object.")
+            continue
+        text = str(item.get("text") or "").strip()
+        reason = str(item.get("reason") or "").strip()
+        if not text:
+            errors.append(f"distractor_notes[{n}] must have non-empty 'text'.")
+        if not reason:
+            errors.append(f"distractor_notes[{n}] must have non-empty 'reason'.")
+        if text and not _text_grounded_in_notes(text, fragments):
+            errors.append(
+                f"distractor_notes[{n}] text \"{text[:80]}\" is not grounded in case_notes/"
+                "case_notes_structured -- it must exist verbatim or near-verbatim."
+            )
+    return errors
+
+
+# W4 PII hygiene: reject invented phone/email-like values inside patient/
+# social case-note content. Recipient/facility address and anything else
+# outside case_notes/case_notes_structured is never scanned -- those are
+# legitimate task data, not the "unnecessary personal contact details" the
+# spec targets.
+_PII_EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[A-Za-z]{2,}\b")
+# Requires an 8+ character run of digits/space/dash/parens (not "/", so
+# dd/mm/yyyy dates never match) -- a loose but deterministic phone-number shape.
+_PII_PHONE_RE = re.compile(r"(?<!\d)\(?\+?\d[\d\-\s()]{6,}\d\)?(?!\d)")
+
+
+def _validate_writing_pii(content: Dict[str, Any]) -> List[str]:
+    errors: List[str] = []
+    for fragment in _writing_note_fragments(content):
+        if _PII_EMAIL_RE.search(fragment):
+            errors.append(
+                f"Case notes contain an invented email address in \"{fragment.strip()[:80]}\" -- "
+                "remove unnecessary personal contact details."
+            )
+            continue
+        match = _PII_PHONE_RE.search(fragment)
+        if match and sum(c.isdigit() for c in match.group()) >= 7:
+            errors.append(
+                f"Case notes contain an invented phone number in \"{fragment.strip()[:80]}\" -- "
+                "remove unnecessary personal contact details."
+            )
+    return errors
+
+
+# W5: admin-only model_answer (reference letter for content reviewers).
+# Deterministic and conservative by design (spec explicitly rules out a full
+# semantic grader) -- these are structural/grounding smoke checks, not a
+# quality judgement on the prose itself. Absent entirely -> no errors, same
+# opt-in pattern as distractor_notes above; a legacy draft never carries this
+# key. Never sent to the learner scorer and never selected by learner-facing
+# writing.py queries (see draft_publisher._scenario_payload's interlocutor_card
+# home and routers/writing.py's selects) -- this validator only judges shape.
+_MODEL_ANSWER_MIN_WORDS = 100
+_MODEL_ANSWER_MAX_WORDS = 350
+
+# Presence of any of these inside model_answer means a prompt/schema detail
+# leaked into the reference letter itself -- the letter must read as a letter,
+# not as an echo of the content-authoring machinery around it.
+_MODEL_ANSWER_METADATA_LEAK_MARKERS = (
+    "key_points", "distractor_notes", "case_notes_structured",
+    "system prompt", "system instruction", "conditional prompt",
+)
+
+
+def _validate_writing_model_answer(content: Dict[str, Any]) -> List[str]:
+    errors: List[str] = []
+    model_answer = content.get("model_answer")
+    if model_answer is None:
+        return errors
+    if not isinstance(model_answer, str) or not model_answer.strip():
+        errors.append("'model_answer' must be a non-empty string when present.")
+        return errors
+
+    text = model_answer.strip()
+    lower = text.lower()
+
+    word_count = len(text.split())
+    if not (_MODEL_ANSWER_MIN_WORDS <= word_count <= _MODEL_ANSWER_MAX_WORDS):
+        errors.append(
+            f"'model_answer' word count ({word_count}) is outside the expected "
+            f"{_MODEL_ANSWER_MIN_WORDS}-{_MODEL_ANSWER_MAX_WORDS} word range for a full letter."
+        )
+
+    for marker in _MODEL_ANSWER_METADATA_LEAK_MARKERS:
+        if marker in lower:
+            errors.append(f"'model_answer' must not expose internal metadata (\"{marker}\").")
+
+    recipient = content.get("recipient")
+    if isinstance(recipient, dict):
+        recipient_name = str(recipient.get("name") or "").strip()
+        if recipient_name:
+            surname = recipient_name.split()[-1].lower()
+            if surname not in lower:
+                errors.append(f"'model_answer' does not appear to address the recipient (\"{recipient_name}\").")
+
+    normalized_answer = _normalize_note_text(text)
+    for fragment in _writing_note_fragments(content):
+        frag_norm = _normalize_note_text(fragment)
+        # Only a substantial fragment counts -- a short shared phrase (a date,
+        # a single word) is expected and not "shorthand copied verbatim".
+        if len(frag_norm) > 15 and frag_norm in normalized_answer:
+            errors.append(
+                f"'model_answer' contains case-note shorthand copied verbatim: \"{fragment.strip()[:80]}\"."
+            )
+            break
+
+    note_dates = set()
+    for dates in _labeled_writing_dates(content).values():
+        note_dates.update(dates)
+    if note_dates:
+        for d in _find_dates(text):
+            if d not in note_dates:
+                errors.append(
+                    f"'model_answer' references date {d.isoformat()} not found in the case notes -- "
+                    "possible fabricated fact."
+                )
+
+    return errors
+
+
+def _validate_writing(content: Dict[str, Any]) -> List[str]:
+    """Structural check for the W2 structured Writing contract. Additive and
+    opt-in: legacy drafts (title/case_notes/task/key_points only, already
+    covered by _REQUIRED_FIELDS/_REQUIRED_NONEMPTY_LISTS) carry none of the
+    keys checked here, so every check below only fires when the field it
+    checks is actually present -- a legacy draft returns no errors."""
+    errors: List[str] = []
+
+    if "key_points" in content and not isinstance(content.get("key_points"), list):
+        errors.append("'key_points' must be a list when present.")
+
+    letter_type = content.get("letter_type")
+    if letter_type is not None and letter_type not in _WRITING_LETTER_TYPES:
+        errors.append(f"'letter_type' must be one of {_WRITING_LETTER_TYPES}; got {letter_type!r}.")
+
+    recipient = content.get("recipient")
+    if recipient is not None:
+        if not isinstance(recipient, dict):
+            errors.append("'recipient' must be an object.")
+        else:
+            for field in ("role", "organization", "address"):
+                if not str(recipient.get(field) or "").strip():
+                    errors.append(f"'recipient.{field}' must not be empty.")
+
+    patient = content.get("patient")
+    if patient is not None:
+        if not isinstance(patient, dict):
+            errors.append("'patient' must be an object.")
+        elif not str(patient.get("name") or "").strip():
+            errors.append("'patient.name' must not be empty.")
+
+    case_notes_structured = content.get("case_notes_structured")
+    if case_notes_structured is not None:
+        if not isinstance(case_notes_structured, list) or not case_notes_structured:
+            errors.append("'case_notes_structured' must be a non-empty list.")
+        else:
+            for i, section in enumerate(case_notes_structured):
+                n = i + 1
+                if not isinstance(section, dict):
+                    errors.append(f"case_notes_structured[{n}] must be an object.")
+                    continue
+                if not str(section.get("section") or "").strip():
+                    errors.append(f"case_notes_structured[{n}] must have a non-empty 'section' name.")
+                items = section.get("items")
+                if not isinstance(items, list) or not items:
+                    errors.append(f"case_notes_structured[{n}] must have a non-empty 'items' list.")
+
+    # A structured draft (any of the fields above present) must also carry a
+    # purpose -- legacy drafts have none of those fields, so this never fires
+    # for them.
+    is_structured = any(content.get(k) is not None for k in ("letter_type", "recipient", "patient", "case_notes_structured"))
+    if is_structured and not str(content.get("purpose") or "").strip():
+        errors.append("'purpose' must not be empty on a structured Writing draft.")
+
+    writing_requirements = content.get("writing_requirements")
+    if writing_requirements is not None:
+        if not isinstance(writing_requirements, dict):
+            errors.append("'writing_requirements' must be an object.")
+        else:
+            for field in ("reading_minutes", "writing_minutes"):
+                if not isinstance(writing_requirements.get(field), int):
+                    errors.append(f"'writing_requirements.{field}' must be an integer.")
+            if not str(writing_requirements.get("target_word_count") or "").strip():
+                errors.append("'writing_requirements.target_word_count' must not be empty.")
+            for field in ("letter_format", "no_note_form"):
+                if not isinstance(writing_requirements.get(field), bool):
+                    errors.append(f"'writing_requirements.{field}' must be a boolean.")
+
+    errors.extend(_validate_writing_age_dob(content))
+    errors.extend(_validate_writing_date_order(content))
+    errors.extend(_validate_writing_task_recipient(content))
+    errors.extend(_validate_writing_key_points_grounded(content))
+    errors.extend(_validate_writing_distractor_notes(content))
+    errors.extend(_validate_writing_pii(content))
+    errors.extend(_validate_writing_model_answer(content))
+
+    return errors
+
+
 def _validate(module: str, content: Dict[str, Any]) -> List[str]:
     if module == "listening" and content.get("part") in ("A", "B", "C"):
         # Locked Part A/B/C shape ("extracts": [...]) doesn't have the legacy
@@ -603,6 +1195,13 @@ def _validate(module: str, content: Dict[str, Any]) -> List[str]:
         if part_a_errors:
             raise DraftGenerationError(
                 "Generated Part A content violates the locked contract: " + " ".join(part_a_errors)
+            )
+
+    if module == "writing":
+        writing_errors = _validate_writing(content)
+        if writing_errors:
+            raise DraftGenerationError(
+                "Generated Writing content violates the structured contract: " + " ".join(writing_errors)
             )
 
     return []
@@ -677,6 +1276,10 @@ async def generate_draft(
 
     if module == "reading" and content.get("part") == "A":
         _normalize_part_a_question_content(content)
+
+    if module == "writing":
+        content.setdefault("writing_requirements", dict(_WRITING_REQUIREMENTS_DEFAULT))
+        _derive_writing_patient_age(content)
 
     warnings = _validate(module, content)
 

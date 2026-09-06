@@ -1,0 +1,56 @@
+{
+  "case_id": "case_003",
+  "scenario": {
+    "title": "Leading and compound questions, no structure",
+    "setting": "Pre-op assessment",
+    "difficulty": "medium",
+    "specialty": "surgical",
+    "nurse_tasks": [
+      "Complete pre-operative symptom check"
+    ],
+    "patient_name": "Lena",
+    "patient_age": 52,
+    "patient_condition": "pre-operative assessment",
+    "patient_mood": "neutral",
+    "patient_background": "Routine pre-op checklist visit.",
+    "patient_concerns": [],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "You don't have any pain, nausea, or dizziness, do you?"
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "Well, I do get a bit dizzy sometimes."
+    },
+    {
+      "turn_index": 2,
+      "role": "nurse",
+      "content": "But that's nothing serious, right, just tiredness?"
+    },
+    {
+      "turn_index": 3,
+      "role": "patient",
+      "content": "I suppose so."
+    },
+    {
+      "turn_index": 4,
+      "role": "nurse",
+      "content": "Have you been eating and sleeping fine, and taking your usual tablets?"
+    },
+    {
+      "turn_index": 5,
+      "role": "patient",
+      "content": "Yes, mostly."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

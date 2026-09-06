@@ -1,0 +1,46 @@
+{
+  "case_id": "case_014",
+  "scenario": {
+    "title": "Routine follow-up, near-native pronunciation",
+    "setting": "Outpatient clinic",
+    "difficulty": "medium",
+    "specialty": "general medicine",
+    "nurse_tasks": [
+      "Review progress"
+    ],
+    "patient_name": "Elin",
+    "patient_age": 39,
+    "patient_condition": "routine follow-up",
+    "patient_mood": "calm",
+    "patient_background": "Straightforward review visit.",
+    "patient_concerns": [],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "Hello, how have you been getting on since your last visit?"
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "Pretty well, thank you."
+    },
+    {
+      "turn_index": 2,
+      "role": "nurse",
+      "content": "That's good to hear. Any new symptoms at all?"
+    },
+    {
+      "turn_index": 3,
+      "role": "patient",
+      "content": "No, nothing new."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

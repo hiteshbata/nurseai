@@ -167,6 +167,32 @@ def test_cancel_response_sends_when_in_progress():
     assert json.loads(fake_ws.sent[0]) == {"type": "response.cancel"}
 
 
+def test_update_instructions_sends_partial_session_update():
+    fake_ws = FakeWS()
+    adapter = _adapter()
+    adapter._ws = fake_ws
+
+    _run(adapter.update_instructions("NEW STATE BLOCK"))
+
+    sent = json.loads(fake_ws.sent[0])
+    assert sent == {"type": "session.update", "session": {"type": "realtime", "instructions": "NEW STATE BLOCK"}}
+
+
+def test_update_instructions_is_noop_before_connect():
+    _run(_adapter().update_instructions("x"))  # must not raise
+
+
+def test_update_instructions_swallows_connection_closed(monkeypatch):
+    class RaisingWS(FakeWS):
+        async def send(self, message):
+            raise ws_exc.ConnectionClosed(ws_frames.Close(1006, "abnormal"), None)
+
+    adapter = _adapter()
+    adapter._ws = RaisingWS()
+
+    _run(adapter.update_instructions("x"))  # must not raise
+
+
 def test_disconnect_is_idempotent_and_safe_when_never_connected():
     adapter = _adapter()
     _run(adapter.disconnect())  # never connected -- must not raise

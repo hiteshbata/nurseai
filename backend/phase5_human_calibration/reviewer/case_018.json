@@ -1,0 +1,50 @@
+{
+  "case_id": "case_018",
+  "scenario": {
+    "title": "Two concerns, one answered, one dropped",
+    "setting": "Sports medicine clinic",
+    "difficulty": "medium",
+    "specialty": "sports medicine",
+    "nurse_tasks": [
+      "Discuss return to sport",
+      "Address cosmetic concerns"
+    ],
+    "patient_name": "Kayla",
+    "patient_age": 22,
+    "patient_condition": "post-operative knee surgery",
+    "patient_mood": "eager",
+    "patient_background": "Competitive athlete.",
+    "patient_concerns": [
+      "When can I go back to playing sport?",
+      "Will this leave a permanent scar?"
+    ],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "patient",
+      "content": "When can I go back to playing sport? And will this leave a permanent scar?"
+    },
+    {
+      "turn_index": 1,
+      "role": "nurse",
+      "content": "You can expect to return to light training around 8 weeks, with full competitive play by around 4 months, depending on your physio progress."
+    },
+    {
+      "turn_index": 2,
+      "role": "patient",
+      "content": "That's helpful, thank you."
+    },
+    {
+      "turn_index": 3,
+      "role": "nurse",
+      "content": "Let's book your first physio appointment now."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

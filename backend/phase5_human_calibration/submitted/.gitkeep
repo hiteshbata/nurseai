@@ -1,0 +1,2 @@
+Drop completed reviewer submission files here (e.g. case_007__reviewerA.json).
+Run scripts/phase5_collect_comparisons.py to diff them against provisional references.

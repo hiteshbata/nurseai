@@ -35,6 +35,7 @@ from app.services.reading_skills import classify_reading_skill, SKILL_LABELS
 from app.services.observation_service import validate_and_normalize
 from app.services.coaching_messages import RECOMMENDATION_REASON, ACTIONABLE_IMPROVEMENT, CONFIDENCE_MESSAGE
 from app.services.plan_gating import has_effective_module_access, has_free_module_attempt, get_plan_from_profile
+from app.services.institution_access import is_active_institution_member
 from app.services.mock_reference_guard import block_if_referenced_by_mock_test
 from app.services.assessment_versioning import (
     publish_reading_version, latest_version_id, get_version_row,
@@ -112,12 +113,20 @@ def _require_reading_plan(supabase, current_user: UserInfo, test_id: Optional[in
     active mock is currently on -- see has_mock_section_access in mock.py.
     This is separate from the standalone free attempt above, so spending one
     never eats the other. Callers that don't pass test_id (the passage-level
-    endpoints) never grant this bypass."""
+    endpoints) never grant this bypass.
+
+    An active institution member cannot use the standalone free-trial
+    attempt below -- their access is governed entirely by their
+    institution's module grants (see is_active_institution_member)."""
     profile = supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute()
     plan = get_plan_from_profile(profile.data[0] if profile.data else {})
     if has_effective_module_access(supabase, current_user.id, plan, "reading"):
         return plan
-    if plan == "free" and has_free_module_attempt(supabase, current_user.id, "reading"):
+    if (
+        plan == "free"
+        and not is_active_institution_member(supabase, current_user.id)
+        and has_free_module_attempt(supabase, current_user.id, "reading")
+    ):
         return plan
     if (current_user.is_anonymous or plan == "free") and test_id is not None and has_mock_section_access(supabase, current_user.id, "reading", test_id):
         return plan

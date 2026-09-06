@@ -92,6 +92,11 @@ class _QueryBuilder:
             new_row = dict(self.payload)
             new_row.setdefault("id", str(uuid.uuid4()))
             new_row.setdefault("created_at", "2026-08-29T00:00:00+00:00")
+            if self.table_name == "institution_invites":
+                # Mirrors institution_invites.status's DB-level
+                # DEFAULT 'active' (20260826000000_institution_foundation.sql)
+                # -- _create_invite_row's insert payload never sets it.
+                new_row.setdefault("status", "active")
             if unique_col and any(r.get(unique_col) == new_row.get(unique_col) for r in self.rows):
                 _raise_duplicate_key(self.table_name, unique_col)
             self.rows.append(new_row)
@@ -773,6 +778,194 @@ def test_patch_modules_can_disable_a_previously_enabled_module(monkeypatch):
 
 # ── Regression: existing Phase 1-4 institution behavior and B2C untouched ─
 
+# ── Phase 5.4 Step 1: POST /admin/institutions/{id}/status ──────────────
+
+def test_status_endpoint_suspends_active_institution(monkeypatch):
+    calls = []
+    _record_audit_log(monkeypatch, calls)
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id, status="active")])
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+
+    result = ai_module.update_institution_status(
+        inst_id, ai_module.StatusUpdate(status="suspended"), current_user=_user(),
+    )
+
+    assert result["status"] == "suspended"
+    assert fake.tables["institutions"][0]["status"] == "suspended"
+    events = [c for c in calls if c["action"] == "institution_status_changed"]
+    assert len(events) == 1
+    assert events[0]["detail"] == {"old_status": "active", "new_status": "suspended"}
+
+
+def test_status_endpoint_reactivates_suspended_institution(monkeypatch):
+    calls = []
+    _record_audit_log(monkeypatch, calls)
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id, status="suspended")])
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+
+    result = ai_module.update_institution_status(
+        inst_id, ai_module.StatusUpdate(status="active"), current_user=_user(),
+    )
+
+    assert result["status"] == "active"
+    events = [c for c in calls if c["action"] == "institution_status_changed"]
+    assert len(events) == 1
+    assert events[0]["detail"] == {"old_status": "suspended", "new_status": "active"}
+
+
+@pytest.mark.parametrize("status", ["active", "suspended"])
+def test_status_endpoint_same_status_is_noop(monkeypatch, status):
+    calls = []
+    _record_audit_log(monkeypatch, calls)
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id, status=status)])
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+
+    ai_module.update_institution_status(inst_id, ai_module.StatusUpdate(status=status), current_user=_user())
+
+    assert fake.tables["institutions"][0]["status"] == status
+    assert not [c for c in calls if c["action"] == "institution_status_changed"]
+
+
+def test_apply_status_change_returns_false_and_writes_nothing_on_noop(monkeypatch):
+    calls = []
+    _record_audit_log(monkeypatch, calls)
+    fake = _FakeSupabase()
+    inst_id = str(uuid.uuid4())
+    before = _institution(inst_id, status="active")
+
+    changed = ai_module._apply_status_change(fake, inst_id, "active", before, _user())
+
+    assert changed is False
+    assert calls == []
+
+
+def test_apply_status_change_writes_exactly_one_audit_on_real_transition(monkeypatch):
+    calls = []
+    _record_audit_log(monkeypatch, calls)
+    fake = _FakeSupabase(institutions=[])
+    inst_id = str(uuid.uuid4())
+    fake.tables["institutions"].append(_institution(inst_id, status="active"))
+    before = _institution(inst_id, status="active")
+
+    changed = ai_module._apply_status_change(fake, inst_id, "suspended", before, _user())
+
+    assert changed is True
+    assert len(calls) == 1
+    assert calls[0]["action"] == "institution_status_changed"
+    assert fake.tables["institutions"][0]["status"] == "suspended"
+
+
+def test_status_endpoint_unknown_institution_returns_404(monkeypatch):
+    fake = _FakeSupabase(institutions=[])
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.update_institution_status(
+            str(uuid.uuid4()), ai_module.StatusUpdate(status="suspended"), current_user=_user(),
+        )
+    assert excinfo.value.status_code == 404
+
+
+def test_status_update_rejects_invalid_status_value():
+    with pytest.raises(ValidationError):
+        ai_module.StatusUpdate.model_validate({"status": "archived"})
+
+
+def test_status_endpoint_reuses_require_admin_verbatim():
+    assert ai_module.require_admin is admin_module.require_admin
+
+
+@pytest.mark.parametrize("role", ["analyst", "support", "user"])
+def test_status_endpoint_sub_admin_roles_denied(monkeypatch, role):
+    user = _user()
+    rows = [] if role == "user" else [{"user_id": user.id, "role": role}]
+    fake = _FakeSupabase(user_roles=rows)
+    monkeypatch.setattr(admin_module, "get_supabase", lambda: fake)
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.require_admin(current_user=user)
+    assert excinfo.value.status_code == 403
+
+
+def test_status_endpoint_institution_admin_without_staff_role_denied(monkeypatch):
+    user = _user()
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(
+        user_roles=[], institution_members=[_membership(user.id, inst_id, role="institution_admin")],
+    )
+    monkeypatch.setattr(admin_module, "get_supabase", lambda: fake)
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.require_admin(current_user=user)
+    assert excinfo.value.status_code == 403
+
+
+# ── Phase 5.4 Step 1: PATCH status routed through the same helper ───────
+
+def test_patch_status_change_uses_apply_status_change_helper(monkeypatch):
+    calls = []
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id, status="active")], institution_modules=[])
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(ai_module, "_write_audit_log", lambda *a, **k: None)
+
+    real_apply = ai_module._apply_status_change
+
+    def _spy(*args, **kwargs):
+        calls.append(args[2])  # new_status
+        return real_apply(*args, **kwargs)
+    monkeypatch.setattr(ai_module, "_apply_status_change", _spy)
+
+    ai_module.update_institution(inst_id, ai_module.InstitutionUpdate(status="suspended"), current_user=_user())
+
+    assert calls == ["suspended"]
+    assert fake.tables["institutions"][0]["status"] == "suspended"
+
+
+def test_patch_status_same_status_no_write_no_audit(monkeypatch):
+    calls = []
+    _record_audit_log(monkeypatch, calls)
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id, status="active")], institution_modules=[])
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+
+    ai_module.update_institution(inst_id, ai_module.InstitutionUpdate(status="active"), current_user=_user())
+
+    assert not [c for c in calls if c["action"] == "institution_status_changed"]
+    assert not [c for c in calls if c["action"] == "institution_updated"]
+
+
+def test_patch_status_change_fires_only_status_changed_audit_not_institution_updated(monkeypatch):
+    calls = []
+    _record_audit_log(monkeypatch, calls)
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id, status="active")], institution_modules=[])
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+
+    ai_module.update_institution(inst_id, ai_module.InstitutionUpdate(status="suspended"), current_user=_user())
+
+    actions = [c["action"] for c in calls]
+    assert actions == ["institution_status_changed"]
+
+
+def test_patch_status_alongside_other_fields_fires_both_audits(monkeypatch):
+    calls = []
+    _record_audit_log(monkeypatch, calls)
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id, status="active", name="Old Name")], institution_modules=[])
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+
+    ai_module.update_institution(
+        inst_id, ai_module.InstitutionUpdate(name="New Name", status="suspended"), current_user=_user(),
+    )
+
+    actions = {c["action"] for c in calls}
+    assert actions == {"institution_updated", "institution_status_changed"}
+    row = fake.tables["institutions"][0]
+    assert row["name"] == "New Name"
+    assert row["status"] == "suspended"
+
+
 def test_phase52_adds_no_new_module_level_dependency_functions():
     """Phase 5.2 authorization is exactly require_admin (already covered
     above) -- admin_institutions.py never imports
@@ -1383,3 +1576,315 @@ def test_staff_assign_rate_limit_20_allowed_21st_blocked():
     for _ in range(20):
         assert limiter.is_rate_limited(key) is False
     assert limiter.is_rate_limited(key) is True
+
+
+# ── Phase 5.4 Step 2: POST .../invites, POST .../invites/{id}/revoke ────
+# Both require_admin. Reuses institution.py's _create_invite_row/
+# _revoke_invite_row (DB lifecycle only) instead of a third copy of the
+# insert/update logic -- see module docstring.
+
+import inspect  # noqa: E402
+
+from app.routers import institutions as institutions_module  # noqa: E402
+
+
+def _invite_row(invite_id, institution_id, *, status="active", max_uses=None, use_count=0, expires_at=None, token="raw-secret-token"):
+    return {
+        "id": invite_id, "institution_id": institution_id, "token": token, "role": "student",
+        "status": status, "max_uses": max_uses, "use_count": use_count, "expires_at": expires_at,
+        "created_at": "2026-08-30T00:00:00+00:00", "created_by": str(uuid.uuid4()),
+    }
+
+
+def _create_invite(monkeypatch, fake, institution_id, current_user=None, stub_audit=True, **req_kwargs):
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(ai_module.admin_invite_create_rate_limiter, "is_rate_limited", lambda key: False)
+    if stub_audit:
+        monkeypatch.setattr(ai_module, "_write_audit_log", lambda *a, **k: None)
+    return ai_module.create_institution_invite(
+        institution_id, ai_module.AdminInviteCreate(**req_kwargs), current_user=current_user or _user(),
+    )
+
+
+class _FakeRequest:
+    client = type("C", (), {"host": "127.0.0.1"})()
+    headers = {}
+
+
+# ── create: authorization (require_admin, same object/rejections as
+# create_institution/update_institution above) ──────────────────────────
+
+def test_invite_create_endpoint_uses_require_admin_dependency():
+    sig = inspect.signature(ai_module.create_institution_invite)
+    assert sig.parameters["current_user"].default.dependency is ai_module.require_admin
+
+
+def test_invite_revoke_endpoint_uses_require_admin_dependency():
+    sig = inspect.signature(ai_module.revoke_institution_invite)
+    assert sig.parameters["current_user"].default.dependency is ai_module.require_admin
+
+
+@pytest.mark.parametrize("role", ["analyst", "support", "user"])
+def test_invite_create_denied_for_analyst_support_and_plain_user(monkeypatch, role):
+    """require_admin is the same object the invite routes depend on
+    (asserted above), so analyst/support/user rejection is exactly the
+    require_admin behavior already proven by
+    test_sub_admin_staff_roles_denied_by_require_admin."""
+    user = _user()
+    rows = [] if role == "user" else [{"user_id": user.id, "role": role}]
+    fake = _FakeSupabase(user_roles=rows)
+    monkeypatch.setattr(admin_module, "get_supabase", lambda: fake)
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.require_admin(current_user=user)
+    assert excinfo.value.status_code == 403
+
+
+def test_invite_create_denied_for_institution_admin_without_staff_role(monkeypatch):
+    """institution_members.role='institution_admin' still grants nothing
+    against require_admin's public.user_roles check."""
+    user = _user()
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(
+        user_roles=[],
+        institution_members=[_membership(user.id, inst_id, role="institution_admin")],
+    )
+    monkeypatch.setattr(admin_module, "get_supabase", lambda: fake)
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.require_admin(current_user=user)
+    assert excinfo.value.status_code == 403
+
+
+# ── create: happy path, validation, response shape ──────────────────────
+
+def test_admin_create_invite_returns_201_shape(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id)])
+    result = _create_invite(monkeypatch, fake, inst_id, max_uses=5)
+
+    assert result["role"] == "student"
+    assert result["max_uses"] == 5
+    assert result["id"]
+    assert result["token"]
+    assert fake.tables["institution_invites"][0]["role"] == "student"
+
+
+def test_admin_create_invite_blank_max_uses_is_unlimited(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id)])
+    result = _create_invite(monkeypatch, fake, inst_id)
+    assert result["max_uses"] is None
+
+
+def test_admin_create_invite_rejects_non_positive_max_uses():
+    with pytest.raises(ValidationError):
+        ai_module.AdminInviteCreate(max_uses=0)
+
+
+def test_admin_create_invite_rejects_past_expiration():
+    from datetime import datetime, timedelta, timezone
+    with pytest.raises(ValidationError):
+        ai_module.AdminInviteCreate(expires_at=datetime.now(timezone.utc) - timedelta(days=1))
+
+
+def test_admin_create_invite_unknown_institution_returns_404(monkeypatch):
+    fake = _FakeSupabase(institutions=[])
+    with pytest.raises(HTTPException) as excinfo:
+        _create_invite(monkeypatch, fake, str(uuid.uuid4()))
+    assert excinfo.value.status_code == 404
+
+
+def test_admin_create_invite_suspended_institution_returns_400(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id, status="suspended")])
+    with pytest.raises(HTTPException) as excinfo:
+        _create_invite(monkeypatch, fake, inst_id)
+    assert excinfo.value.status_code == 400
+
+
+def test_admin_create_invite_server_builds_join_url_from_settings(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id)])
+    result = _create_invite(monkeypatch, fake, inst_id)
+    assert result["join_url"] == f"{ai_module.settings.FRONTEND_URL}/join/{result['token']}"
+
+
+def test_admin_create_invite_has_no_role_field_client_cannot_override_student():
+    assert "role" not in ai_module.AdminInviteCreate.model_fields
+    assert "institution_id" not in ai_module.AdminInviteCreate.model_fields
+
+
+def test_admin_create_invite_reuses_institution_module_create_invite_row():
+    assert ai_module._create_invite_row is institution_module._create_invite_row
+
+
+def test_admin_create_invite_fires_institution_invite_created_audit(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id)])
+    calls = []
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(ai_module.admin_invite_create_rate_limiter, "is_rate_limited", lambda key: False)
+    _record_audit_log(monkeypatch, calls)
+
+    result = ai_module.create_institution_invite(
+        inst_id, ai_module.AdminInviteCreate(max_uses=1), current_user=_user(),
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["action"] == "institution_invite_created"
+    assert calls[0]["target_id"] == result["id"]
+    assert calls[0]["target_label"] == inst_id
+    assert calls[0]["detail"] is None  # never token/join_url
+
+
+def test_admin_create_invite_rate_limited_returns_429(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id)])
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(ai_module.admin_invite_create_rate_limiter, "is_rate_limited", lambda key: True)
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.create_institution_invite(inst_id, ai_module.AdminInviteCreate(), current_user=_user())
+    assert excinfo.value.status_code == 429
+    assert fake.tables.get("institution_invites", []) == []
+
+
+def test_invite_create_rate_limit_20_allowed_21st_blocked():
+    key = str(uuid.uuid4())
+    limiter = ai_module.admin_invite_create_rate_limiter
+    for _ in range(20):
+        assert limiter.is_rate_limited(key) is False
+    assert limiter.is_rate_limited(key) is True
+
+
+# ── list: token never leaked, correct shape (create -> list round trip) ──
+
+def test_admin_created_invite_token_absent_from_list(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id)])
+    created = _create_invite(monkeypatch, fake, inst_id, max_uses=3)
+    assert created["token"]  # present exactly once, in the creation response
+
+    listed = ai_module.list_institution_invites(inst_id, current_user=_user())
+    assert len(listed) == 1
+    assert "token" not in listed[0]
+    assert listed[0]["id"] == created["id"]
+    assert listed[0]["max_uses"] == 3
+    assert listed[0]["remaining_uses"] == 3
+    assert listed[0]["use_count"] == 0
+
+
+def test_admin_created_invite_unlimited_remaining_uses_is_none(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id)])
+    _create_invite(monkeypatch, fake, inst_id)  # max_uses=None
+
+    listed = ai_module.list_institution_invites(inst_id, current_user=_user())
+    assert listed[0]["max_uses"] is None
+    assert listed[0]["remaining_uses"] is None
+
+
+# ── revoke: success, cross-tenant 404, unknown 404, idempotency, audit ──
+
+def test_admin_revoke_invite_success(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    invite_id = str(uuid.uuid4())
+    fake = _FakeSupabase(
+        institutions=[_institution(inst_id)],
+        institution_invites=[_invite_row(invite_id, inst_id)],
+    )
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(ai_module, "_write_audit_log", lambda *a, **k: None)
+
+    result = ai_module.revoke_institution_invite(inst_id, invite_id, current_user=_user())
+
+    assert result == {"status": "revoked"}
+    assert fake.tables["institution_invites"][0]["status"] == "revoked"
+    assert "token" not in result
+
+
+def test_admin_revoke_invite_wrong_institution_returns_generic_404(monkeypatch):
+    """An admin acting through Institution A's path must not be able to
+    revoke Institution B's invite by guessing/enumerating {invite_id}."""
+    inst_a, inst_b = str(uuid.uuid4()), str(uuid.uuid4())
+    invite_id = str(uuid.uuid4())
+    fake = _FakeSupabase(
+        institutions=[_institution(inst_a), _institution(inst_b)],
+        institution_invites=[_invite_row(invite_id, inst_b)],
+    )
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.revoke_institution_invite(inst_a, invite_id, current_user=_user())
+    assert excinfo.value.status_code == 404
+    # the invite in B is untouched
+    assert fake.tables["institution_invites"][0]["status"] == "active"
+
+
+def test_admin_revoke_invite_unknown_id_returns_same_generic_404(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(institutions=[_institution(inst_id)], institution_invites=[])
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+
+    with pytest.raises(HTTPException) as excinfo:
+        ai_module.revoke_institution_invite(inst_id, str(uuid.uuid4()), current_user=_user())
+    assert excinfo.value.status_code == 404
+
+
+def test_admin_revoke_invite_idempotent_on_second_call(monkeypatch):
+    """Same contract as institution.py's self-service revoke: revoking an
+    already-revoked invite still succeeds (200 {"status": "revoked"}), it
+    does not surface as a conflict."""
+    inst_id = str(uuid.uuid4())
+    invite_id = str(uuid.uuid4())
+    fake = _FakeSupabase(
+        institutions=[_institution(inst_id)],
+        institution_invites=[_invite_row(invite_id, inst_id, status="revoked")],
+    )
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(ai_module, "_write_audit_log", lambda *a, **k: None)
+
+    result = ai_module.revoke_institution_invite(inst_id, invite_id, current_user=_user())
+    assert result == {"status": "revoked"}
+
+
+def test_admin_revoke_invite_fires_institution_invite_revoked_audit(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    invite_id = str(uuid.uuid4())
+    fake = _FakeSupabase(
+        institutions=[_institution(inst_id)],
+        institution_invites=[_invite_row(invite_id, inst_id)],
+    )
+    calls = []
+    monkeypatch.setattr(ai_module, "get_supabase", lambda: fake)
+    _record_audit_log(monkeypatch, calls)
+
+    ai_module.revoke_institution_invite(inst_id, invite_id, current_user=_user())
+
+    assert len(calls) == 1
+    assert calls[0]["action"] == "institution_invite_revoked"
+    assert calls[0]["target_id"] == invite_id
+    assert calls[0]["target_label"] == inst_id
+
+
+def test_admin_revoke_invite_reuses_institution_module_revoke_invite_row():
+    assert ai_module._revoke_invite_row is institution_module._revoke_invite_row
+
+
+# ── existing public join flow: an admin-created invite is a plain
+# institution_invites row, so the unmodified public preview endpoint
+# (institutions.py, untouched by this phase) must accept it exactly like a
+# self-service-created one. ────────────────────────────────────────────
+
+def test_admin_created_invite_is_readable_through_existing_public_preview(monkeypatch):
+    inst_id = str(uuid.uuid4())
+    fake = _FakeSupabase(
+        institutions=[_institution(inst_id)],
+        institution_modules=[{"institution_id": inst_id, "module": "speaking", "enabled": True}],
+    )
+    created = _create_invite(monkeypatch, fake, inst_id, max_uses=2)
+
+    monkeypatch.setattr(institutions_module, "get_supabase", lambda: fake)
+    monkeypatch.setattr(institutions_module.preview_rate_limiter, "is_rate_limited", lambda key: False)
+
+    preview = institutions_module.get_invite_preview(token=created["token"], request=_FakeRequest())
+    assert preview["institution_name"] == "ABC Nursing Institute"
+    assert preview["modules"] == ["speaking"]

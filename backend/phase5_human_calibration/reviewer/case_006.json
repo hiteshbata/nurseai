@@ -1,0 +1,69 @@
+{
+  "case_id": "case_006",
+  "scenario": {
+    "title": "Simple English, strong clinical rapport",
+    "setting": "Medical ward",
+    "difficulty": "easy",
+    "specialty": "general medicine",
+    "nurse_tasks": [
+      "Reassure patient",
+      "Explain treatment plan simply"
+    ],
+    "patient_name": "Ahmed",
+    "patient_age": 45,
+    "patient_condition": "recovering from infection",
+    "patient_mood": "scared",
+    "patient_background": "Limited English proficiency, first hospital stay.",
+    "patient_concerns": [
+      "Will I need another operation?"
+    ],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "Hello Ahmed, I am nurse Kim. How you feeling today?"
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "I am scared. Will I need operation again?"
+    },
+    {
+      "turn_index": 2,
+      "role": "nurse",
+      "content": "I understand you are scared, this is very normal feeling. Let me explain for you."
+    },
+    {
+      "turn_index": 3,
+      "role": "patient",
+      "content": "Okay, please."
+    },
+    {
+      "turn_index": 4,
+      "role": "nurse",
+      "content": "The infection is getting better with the medicine. Doctor think you will not need operation, but we watch you close."
+    },
+    {
+      "turn_index": 5,
+      "role": "patient",
+      "content": "That is good to hear, thank you."
+    },
+    {
+      "turn_index": 6,
+      "role": "nurse",
+      "content": "You have understand what I explain? You can ask me anything, no problem."
+    },
+    {
+      "turn_index": 7,
+      "role": "patient",
+      "content": "Yes I understand, thank you nurse."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

@@ -25,11 +25,14 @@ import websockets.exceptions as ws_exc
 from app.services.realtime.base import ProviderConnectError, RealtimeProviderAdapter
 from app.services.realtime.capabilities import OPENAI_REALTIME_CAPABILITIES
 from app.services.realtime.events import (
+    InstructionsAcked,
     Interrupted,
     ProviderError,
     RealtimeEvent,
+    ResponseCreated,
     ResponseDone,
     SessionReady,
+    SpeechStopped,
     TranscriptDelta,
     TranscriptFinal,
 )
@@ -117,6 +120,23 @@ class OpenAIRealtimeAdapter(RealtimeProviderAdapter):
         except ws_exc.ConnectionClosed:
             pass
 
+    async def update_instructions(self, instructions: str) -> None:
+        """Sends another session.update carrying only `instructions`. GA
+        session.update is a partial merge -- fields omitted here (audio
+        format, voice, turn_detection, transcription) are left exactly as
+        connect() set them, and this applies to responses created after
+        this message is processed, never retroactively rewriting one
+        already streaming. No reconnect, no response.cancel."""
+        if self._ws is None:
+            return
+        try:
+            await self._ws.send(json.dumps({
+                "type": "session.update",
+                "session": {"type": "realtime", "instructions": instructions},
+            }))
+        except ws_exc.ConnectionClosed:
+            pass
+
     async def receive_events(self) -> AsyncIterator[RealtimeEvent | bytes]:
         if self._ws is None:
             return
@@ -141,6 +161,7 @@ class OpenAIRealtimeAdapter(RealtimeProviderAdapter):
 
                 elif event_type == "response.created":
                     self._response_in_progress = True
+                    yield ResponseCreated()
 
                 elif event_type == "response.done":
                     self._response_in_progress = False
@@ -148,6 +169,12 @@ class OpenAIRealtimeAdapter(RealtimeProviderAdapter):
 
                 elif event_type == "input_audio_buffer.speech_started":
                     yield Interrupted()
+
+                elif event_type == "input_audio_buffer.speech_stopped":
+                    yield SpeechStopped()
+
+                elif event_type == "session.updated":
+                    yield InstructionsAcked()
 
                 elif event_type == "error":
                     error_detail = event.get("error", {})

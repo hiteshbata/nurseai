@@ -118,6 +118,10 @@ export default function LoginPage() {
         }).catch(() => null)
       }
     } catch (error: any) {
+      if (error.code === 'email_not_confirmed') {
+        router.push('/auth/verify?email=' + encodeURIComponent(email))
+        return
+      }
       const message = humanizeAuthError(error.message)
       setError(message)
       toast.error(message)

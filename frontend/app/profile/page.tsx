@@ -69,7 +69,7 @@ export default function ProfilePage() {
   // already carries. cancelAutoRenew below still needs an instant local
   // flip after the POST succeeds, so that one field can be overridden
   // on top of the shared value without mutating AppShell's copy.
-  const { usage: sharedUsage } = useSessionUsage()
+  const { usage: sharedUsage, ready: usageReady, error: usageError } = useSessionUsage()
   const [autoRenewOverride, setAutoRenewOverride] = useState<boolean | null>(null)
   const sessionUsage: SessionUsage | null = sharedUsage
     ? {
@@ -263,8 +263,13 @@ export default function ProfilePage() {
 
   const email = session?.user?.email ?? '—'
   const isEmailUser = session?.user?.app_metadata?.provider === 'email'
-  const plan = sessionUsage?.plan ?? 'free'
-  const planLabel = PLAN_LABELS[plan] ?? plan
+  // Billing renders only once usage has actually resolved -- `?? 'free'` used
+  // to show "Free Plan" for every plan (including paid/institution) during
+  // the AppShell fetch window, and would keep showing it forever on a failed
+  // fetch since ready still flips true on error. Distinguish all three: still
+  // loading, resolved (usage may legitimately be free), and errored.
+  const plan = sessionUsage?.plan
+  const planLabel = plan ? (PLAN_LABELS[plan] ?? plan) : null
   const memberSince = profile?.created_at
     ? new Date(profile.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
     : '—'
@@ -358,57 +363,68 @@ export default function ProfilePage() {
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
           <h2 className="text-lg font-bold text-[#0F2356] mb-4">Billing</h2>
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Shield className="w-5 h-5 text-gray-400" />
-              <div>
-                <p className="text-sm text-gray-500">Plan</p>
-                <p className="text-sm font-semibold text-gray-800">
-                  {planLabel}
-                  {sessionUsage && (
-                    <span className="text-muted-foreground font-normal">
-                      {' '}— {sessionUsage.sessions_used} / {sessionUsage.sessions_limit} sessions used
-                    </span>
-                  )}
-                </p>
-              </div>
+          {!usageReady ? (
+            <div className="space-y-2" aria-hidden="true">
+              <div className="h-4 w-40 animate-pulse rounded bg-gray-100" />
+              <div className="h-4 w-56 animate-pulse rounded bg-gray-100" />
             </div>
-            {plan !== 'free' && (
-              <>
-                <div className="flex items-center gap-3">
-                  <Calendar className="w-5 h-5 text-gray-400" />
-                  <div>
-                    <p className="text-sm text-gray-500">
-                      {sessionUsage?.auto_renew_enabled ? 'Next charge' : 'Active until'}
-                    </p>
-                    <p className="text-sm font-semibold text-gray-800">
-                      {formatDisplayDate(sessionUsage?.plan_expires_at ?? null)}
-                      {!sessionUsage?.auto_renew_enabled && sessionUsage?.plan_expires_at && (
-                        <span className="text-muted-foreground font-normal"> — then drops to Free</span>
-                      )}
-                    </p>
-                  </div>
+          ) : usageError ? (
+            <p className="text-sm text-gray-500">
+              Couldn&apos;t load your plan details right now. Refresh the page to try again.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Shield className="w-5 h-5 text-gray-400" />
+                <div>
+                  <p className="text-sm text-gray-500">Plan</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {planLabel ?? 'Unknown'}
+                    {sessionUsage && (
+                      <span className="text-muted-foreground font-normal">
+                        {' '}— {sessionUsage.sessions_used} / {sessionUsage.sessions_limit} sessions used
+                      </span>
+                    )}
+                  </p>
                 </div>
-                <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-                  <div>
-                    <p className="text-sm text-gray-500">Auto-renew</p>
-                    <p className="text-sm font-semibold text-gray-800">
-                      {sessionUsage?.auto_renew_enabled ? 'On — renews automatically each month' : 'Off'}
-                    </p>
+              </div>
+              {plan && plan !== 'free' && (
+                <>
+                  <div className="flex items-center gap-3">
+                    <Calendar className="w-5 h-5 text-gray-400" />
+                    <div>
+                      <p className="text-sm text-gray-500">
+                        {sessionUsage?.auto_renew_enabled ? 'Next charge' : 'Active until'}
+                      </p>
+                      <p className="text-sm font-semibold text-gray-800">
+                        {formatDisplayDate(sessionUsage?.plan_expires_at ?? null)}
+                        {!sessionUsage?.auto_renew_enabled && sessionUsage?.plan_expires_at && (
+                          <span className="text-muted-foreground font-normal"> — then drops to Free</span>
+                        )}
+                      </p>
+                    </div>
                   </div>
-                  {sessionUsage?.auto_renew_enabled && (
-                    <button
-                      onClick={cancelAutoRenew}
-                      disabled={cancellingAutoRenew}
-                      className="text-sm font-semibold text-red-600 hover:text-red-700 transition-colors disabled:opacity-50"
-                    >
-                      {cancellingAutoRenew ? 'Turning off…' : 'Turn off'}
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                    <div>
+                      <p className="text-sm text-gray-500">Auto-renew</p>
+                      <p className="text-sm font-semibold text-gray-800">
+                        {sessionUsage?.auto_renew_enabled ? 'On — renews automatically each month' : 'Off'}
+                      </p>
+                    </div>
+                    {sessionUsage?.auto_renew_enabled && (
+                      <button
+                        onClick={cancelAutoRenew}
+                        disabled={cancellingAutoRenew}
+                        className="text-sm font-semibold text-red-600 hover:text-red-700 transition-colors disabled:opacity-50"
+                      >
+                        {cancellingAutoRenew ? 'Turning off…' : 'Turn off'}
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {receipts.length > 0 && (
             <div className="mt-5 pt-5 border-t border-gray-50">

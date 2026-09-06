@@ -40,6 +40,16 @@ class ProviderCapabilities:
     # either way -- this field is informational/for metrics only.
     explicit_cancel_required: bool
 
+    # Whether ProviderAdapter.update_instructions() actually reaches the
+    # live provider session (OpenAI: yes, via a follow-up session.update --
+    # applies to future responses without touching one already in flight).
+    # False means the provider's wire protocol has no documented mechanism
+    # for replacing instructions after setup (Gemini's BidiGenerateContent
+    # today) -- update_instructions() is still always safe to call, it's
+    # just a documented no-op. Informational/for metrics only; the router
+    # calls update_instructions() on every provider regardless.
+    supports_live_instruction_update: bool
+
     # Audio the router must tell the frontend to capture at, and must
     # expect to receive back for playback. Sent to the client inside the
     # router's own `session.ready` message -- never hardcoded frontend-side.
@@ -61,6 +71,7 @@ OPENAI_REALTIME_CAPABILITIES = ProviderCapabilities(
     supports_voice_selection=True,
     supports_fine_voice_control=False,
     explicit_cancel_required=True,
+    supports_live_instruction_update=True,
     input_sample_rate=24000,
     output_sample_rate=24000,
     input_audio_encoding="pcm16",
@@ -78,6 +89,12 @@ GEMINI_LIVE_CAPABILITIES = ProviderCapabilities(
     supports_voice_selection=True,
     supports_fine_voice_control=False,
     explicit_cancel_required=False,
+    # BidiGenerateContent's client envelope is exactly {"setup"|"clientContent"
+    # |"realtimeInput"|"toolResponse"} (see gemini_adapter.py module docstring)
+    # -- no documented message replaces systemInstruction after setup. Not
+    # listed in `unverified` because this isn't a best-guess: it's the
+    # absence of a documented mechanism, re-check if Google adds one.
+    supports_live_instruction_update=False,
     input_sample_rate=16000,
     output_sample_rate=24000,
     input_audio_encoding="pcm16",

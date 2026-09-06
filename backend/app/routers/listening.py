@@ -51,6 +51,7 @@ from app.services.listening_audio import (
 from app.services.ai_scoring import _call_ai
 from app.services.mock_reference_guard import block_if_referenced_by_mock_test
 from app.services.plan_gating import has_effective_module_access, has_free_module_attempt, get_plan_from_profile
+from app.services.institution_access import is_active_institution_member
 from app.services.assessment_versioning import (
     publish_listening_version, latest_version_id, get_version_row,
     listening_snapshot_student_payload, listening_snapshot_questions_by_id, listening_snapshot_transcripts,
@@ -112,12 +113,20 @@ def _require_listening_plan(supabase, current_user: UserInfo, test_id: Optional[
     is also let through when `test_id` is the exact Listening test their own
     active mock is currently on -- see has_mock_section_access in mock.py.
     Separate from the standalone free attempt above, so spending one never
-    eats the other."""
+    eats the other.
+
+    An active institution member cannot use the standalone free-trial
+    attempt below -- their access is governed entirely by their
+    institution's module grants (see is_active_institution_member)."""
     profile = supabase.table("user_profiles").select("plan, plan_expires_at").eq("user_id", current_user.id).execute()
     plan = get_plan_from_profile(profile.data[0] if profile.data else {})
     if has_effective_module_access(supabase, current_user.id, plan, "listening"):
         return plan
-    if plan == "free" and has_free_module_attempt(supabase, current_user.id, "listening"):
+    if (
+        plan == "free"
+        and not is_active_institution_member(supabase, current_user.id)
+        and has_free_module_attempt(supabase, current_user.id, "listening")
+    ):
         return plan
     if (current_user.is_anonymous or plan == "free") and test_id is not None and has_mock_section_access(supabase, current_user.id, "listening", test_id):
         return plan

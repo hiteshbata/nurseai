@@ -477,14 +477,220 @@ function SpeakingEditor({ content, set, disabled }: { content: any; set: SetFn; 
   )
 }
 
+// W2 structured Writing contract. All new fields are optional on the
+// content object -- a legacy draft (title/case_notes/task/key_points only)
+// renders exactly as it did before this phase; every nested editor below
+// falls back to {}/[]/''  when its field is absent.
+const WRITING_LETTER_TYPES = ['', 'referral', 'discharge', 'transfer', 'ongoing_care']
+
+interface CaseNoteSection { section?: string; items?: string[] }
+
 function WritingEditor({ content, set, disabled }: { content: any; set: SetFn; disabled: boolean }) {
+  const patient = content.patient || {}
+  const recipient = content.recipient || {}
+  const requirements = content.writing_requirements || {}
+  const setPatient = (patch: any) => set('patient', { ...patient, ...patch })
+  const setRecipient = (patch: any) => set('recipient', { ...recipient, ...patch })
+  const setRequirements = (patch: any) => set('writing_requirements', { ...requirements, ...patch })
+
   return (
     <div className="space-y-4">
-      <TextInput label="Title" value={content.title || ''} onChange={(v) => set('title', v)} disabled={disabled} />
-      <SelectInput label="Difficulty" value={content.difficulty || 'medium'} options={['easy', 'medium', 'hard']} onChange={(v) => set('difficulty', v)} disabled={disabled} />
-      <TextArea label="Case Notes" value={content.case_notes || ''} onChange={(v) => set('case_notes', v)} disabled={disabled} rows={10} mono />
-      <TextArea label="Task" value={content.task || ''} onChange={(v) => set('task', v)} disabled={disabled} rows={3} />
-      <StringListEditor label="Key Points (used for scoring)" items={content.key_points || []} onChange={(v) => set('key_points', v)} disabled={disabled} />
+      <SectionLabel>Basic</SectionLabel>
+      <TextInput label="Title" value={content.title || ''} onChange={(v) => set('title', v)} disabled={disabled} testId="writing-title" />
+      <div className="grid grid-cols-3 gap-4">
+        <SelectInput label="Difficulty" value={content.difficulty || 'medium'} options={['easy', 'medium', 'hard']} onChange={(v) => set('difficulty', v)} disabled={disabled} />
+        <TextInput label="Specialty" value={content.specialty || ''} onChange={(v) => set('specialty', v)} disabled={disabled} testId="writing-specialty" />
+        <SelectInput label="Letter Type" value={content.letter_type || ''} options={WRITING_LETTER_TYPES} onChange={(v) => set('letter_type', v)} disabled={disabled} testId="writing-letter-type" />
+      </div>
+
+      <SectionLabel>Patient</SectionLabel>
+      <div className="grid grid-cols-2 gap-4">
+        <TextInput label="Name" value={patient.name || ''} onChange={(v) => setPatient({ name: v })} disabled={disabled} testId="writing-patient-name" />
+        <TextInput label="DOB" value={patient.dob || ''} onChange={(v) => setPatient({ dob: v })} disabled={disabled} testId="writing-patient-dob" />
+        <TextInput label="Age" value={patient.age || ''} onChange={(v) => setPatient({ age: v })} disabled={disabled} testId="writing-patient-age" />
+        <TextInput label="Gender" value={patient.gender || ''} onChange={(v) => setPatient({ gender: v })} disabled={disabled} testId="writing-patient-gender" />
+      </div>
+      <TextInput label="Address" value={patient.address || ''} onChange={(v) => setPatient({ address: v })} disabled={disabled} testId="writing-patient-address" />
+
+      <SectionLabel>Recipient</SectionLabel>
+      <div className="grid grid-cols-2 gap-4">
+        <TextInput label="Name" value={recipient.name || ''} onChange={(v) => setRecipient({ name: v })} disabled={disabled} testId="writing-recipient-name" />
+        <TextInput label="Role" value={recipient.role || ''} onChange={(v) => setRecipient({ role: v })} disabled={disabled} testId="writing-recipient-role" />
+        <TextInput label="Organization" value={recipient.organization || ''} onChange={(v) => setRecipient({ organization: v })} disabled={disabled} testId="writing-recipient-organization" />
+        <TextInput label="Address" value={recipient.address || ''} onChange={(v) => setRecipient({ address: v })} disabled={disabled} testId="writing-recipient-address" />
+      </div>
+
+      <SectionLabel>Purpose</SectionLabel>
+      <TextArea label="Purpose" value={content.purpose || ''} onChange={(v) => set('purpose', v)} disabled={disabled} rows={2} testId="writing-purpose" />
+
+      <SectionLabel>Case Notes</SectionLabel>
+      <CaseNotesStructuredEditor
+        sections={content.case_notes_structured || []}
+        onChange={(v) => set('case_notes_structured', v)}
+        disabled={disabled}
+      />
+      <TextArea label="Case Notes (rendered text seen by the candidate)" value={content.case_notes || ''} onChange={(v) => set('case_notes', v)} disabled={disabled} rows={10} mono testId="writing-case-notes" />
+
+      <SectionLabel>Task</SectionLabel>
+      <TextArea label="Task" value={content.task || ''} onChange={(v) => set('task', v)} disabled={disabled} rows={3} testId="writing-task" />
+
+      <SectionLabel>Key Points</SectionLabel>
+      <StringListEditor label="Key Points (used for scoring)" items={content.key_points || []} onChange={(v) => set('key_points', v)} disabled={disabled} testId="writing-key-points" />
+
+      <SectionLabel>Distractor / Relevance Notes</SectionLabel>
+      <DistractorNotesEditor
+        items={content.distractor_notes || []}
+        onChange={(v) => set('distractor_notes', v)}
+        disabled={disabled}
+      />
+
+      <SectionLabel>Reference Answer</SectionLabel>
+      <p className="text-xs text-gray-500 -mt-2" data-testid="writing-model-answer-label">
+        Internal reference answer -- not shown to learners
+      </p>
+      <TextArea
+        label="Model Answer (admin reference only)"
+        value={content.model_answer || ''}
+        onChange={(v) => set('model_answer', v)}
+        disabled={disabled}
+        rows={10}
+        testId="writing-model-answer"
+      />
+
+      <SectionLabel>Writing Requirements</SectionLabel>
+      <div className="grid grid-cols-2 gap-4">
+        <NumberInput label="Reading Minutes" value={requirements.reading_minutes ?? 5} onChange={(v) => setRequirements({ reading_minutes: v })} disabled={disabled} testId="writing-requirements-reading-minutes" />
+        <NumberInput label="Writing Minutes" value={requirements.writing_minutes ?? 40} onChange={(v) => setRequirements({ writing_minutes: v })} disabled={disabled} testId="writing-requirements-writing-minutes" />
+        <TextInput label="Target Word Count" value={requirements.target_word_count || '180-200'} onChange={(v) => setRequirements({ target_word_count: v })} disabled={disabled} testId="writing-requirements-target-word-count" />
+      </div>
+      <div className="flex gap-6">
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={requirements.letter_format ?? true} disabled={disabled} onChange={(e) => setRequirements({ letter_format: e.target.checked })} data-testid="writing-requirements-letter-format" />
+          Letter format
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={requirements.no_note_form ?? true} disabled={disabled} onChange={(e) => setRequirements({ no_note_form: e.target.checked })} data-testid="writing-requirements-no-note-form" />
+          No note form
+        </label>
+      </div>
+    </div>
+  )
+}
+
+function CaseNotesStructuredEditor({ sections, onChange, disabled }: {
+  sections: CaseNoteSection[]; onChange: (sections: CaseNoteSection[]) => void; disabled: boolean
+}) {
+  const updateSection = (i: number, patch: Partial<CaseNoteSection>) => {
+    const next = sections.slice()
+    next[i] = { ...next[i], ...patch }
+    onChange(next)
+  }
+  return (
+    <div className="space-y-4" data-testid="writing-case-notes-structured">
+      {sections.map((sec, i) => {
+        const items = sec.items || []
+        return (
+          <div key={i} className="border rounded-lg p-3 space-y-2" data-testid={`writing-case-notes-section-${i}`}>
+            <div className="flex gap-2 items-center">
+              <input
+                value={sec.section || ''} disabled={disabled} placeholder="Section name"
+                onChange={(e) => updateSection(i, { section: e.target.value })}
+                className="flex-1 px-2 py-1.5 border rounded text-sm font-semibold"
+                data-testid={`writing-case-notes-section-${i}-name`}
+              />
+              {!disabled && (
+                <button onClick={() => onChange(sections.filter((_, idx) => idx !== i))} className="text-red-500 text-sm px-2" data-testid={`writing-case-notes-section-${i}-remove`}>
+                  Remove section
+                </button>
+              )}
+            </div>
+            <div className="space-y-1 pl-2">
+              {items.map((item, j) => (
+                <div key={j} className="flex gap-2">
+                  <input
+                    value={item} disabled={disabled}
+                    onChange={(e) => { const next = items.slice(); next[j] = e.target.value; updateSection(i, { items: next }) }}
+                    className="flex-1 px-2 py-1.5 border rounded text-sm"
+                    data-testid={`writing-case-notes-section-${i}-item-${j}`}
+                  />
+                  {!disabled && (
+                    <button onClick={() => updateSection(i, { items: items.filter((_, idx) => idx !== j) })} className="text-red-500 text-sm px-2" data-testid={`writing-case-notes-section-${i}-item-${j}-remove`}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+              {!disabled && (
+                <button onClick={() => updateSection(i, { items: [...items, ''] })} className="text-sm text-blue-600 hover:underline" data-testid={`writing-case-notes-section-${i}-add-item`}>
+                  + Add item
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })}
+      {!disabled && (
+        <button onClick={() => onChange([...sections, { section: '', items: [''] }])} className="text-sm text-blue-600 hover:underline" data-testid="writing-case-notes-add-section">
+          + Add section
+        </button>
+      )}
+    </div>
+  )
+}
+
+// W4: internal-only relevance metadata -- never rendered on any learner-facing
+// view. Each entry names a case-note detail (verbatim/near-verbatim, enforced
+// server-side by draft_generator._validate_writing_distractor_notes) and why
+// it's not needed for this letter.
+interface DistractorNote { text?: string; reason?: string }
+
+function DistractorNotesEditor({ items, onChange, disabled }: {
+  items: DistractorNote[]; onChange: (items: DistractorNote[]) => void; disabled: boolean
+}) {
+  const updateItem = (i: number, patch: Partial<DistractorNote>) => {
+    const next = items.slice()
+    next[i] = { ...next[i], ...patch }
+    onChange(next)
+  }
+  return (
+    <div className="space-y-3" data-testid="writing-distractor-notes">
+      <p className="text-xs text-gray-500">
+        Internal content metadata -- flags case-note details that are not needed for this letter. Never shown to learners.
+      </p>
+      {items.map((item, i) => (
+        <div key={i} className="border rounded-lg p-3 space-y-2" data-testid={`writing-distractor-notes-${i}`}>
+          <div className="flex gap-2 items-start">
+            <div className="flex-1 space-y-2">
+              <TextArea
+                label="Text (verbatim or near-verbatim from case notes)"
+                value={item.text || ''} onChange={(v) => updateItem(i, { text: v })} disabled={disabled} rows={2}
+                testId={`writing-distractor-notes-${i}-text`}
+              />
+              <TextArea
+                label="Reason (why it's not needed for this letter)"
+                value={item.reason || ''} onChange={(v) => updateItem(i, { reason: v })} disabled={disabled} rows={2}
+                testId={`writing-distractor-notes-${i}-reason`}
+              />
+            </div>
+            {!disabled && (
+              <button
+                onClick={() => onChange(items.filter((_, idx) => idx !== i))}
+                className="text-red-500 text-sm px-2" data-testid={`writing-distractor-notes-${i}-remove`}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+      {!disabled && (
+        <button
+          onClick={() => onChange([...items, { text: '', reason: '' }])}
+          className="text-sm text-blue-600 hover:underline" data-testid="writing-distractor-notes-add"
+        >
+          + Add distractor note
+        </button>
+      )}
     </div>
   )
 }
@@ -1098,8 +1304,8 @@ function QuestionsEditor({ label, questions, onChange, disabled, withExplanation
   )
 }
 
-function StringListEditor({ label, items, onChange, disabled }: {
-  label: string; items: string[]; onChange: (items: string[]) => void; disabled: boolean
+function StringListEditor({ label, items, onChange, disabled, testId }: {
+  label: string; items: string[]; onChange: (items: string[]) => void; disabled: boolean; testId?: string
 }) {
   return (
     <div>
@@ -1111,12 +1317,13 @@ function StringListEditor({ label, items, onChange, disabled }: {
               value={v} disabled={disabled}
               onChange={(e) => { const next = items.slice(); next[i] = e.target.value; onChange(next) }}
               className="flex-1 px-2 py-1.5 border rounded text-sm"
+              data-testid={testId ? `${testId}-${i}` : undefined}
             />
             {!disabled && <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} className="text-red-500 text-sm px-2">✕</button>}
           </div>
         ))}
         {!disabled && (
-          <button onClick={() => onChange([...items, ''])} className="text-sm text-blue-600 hover:underline">+ Add</button>
+          <button onClick={() => onChange([...items, ''])} className="text-sm text-blue-600 hover:underline" data-testid={testId ? `${testId}-add` : undefined}>+ Add</button>
         )}
       </div>
     </div>

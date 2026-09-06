@@ -1,0 +1,66 @@
+{
+  "case_id": "case_009",
+  "scenario": {
+    "title": "Phone triage, mixed questioning technique",
+    "setting": "Telephone triage",
+    "difficulty": "hard",
+    "specialty": "general practice",
+    "nurse_tasks": [
+      "Triage reported symptoms"
+    ],
+    "patient_name": "Walter",
+    "patient_age": 67,
+    "patient_condition": "reported mild chest tightness",
+    "patient_mood": "neutral",
+    "patient_background": "Called in about occasional chest tightness after exertion.",
+    "patient_concerns": [],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "You haven't had any chest pain or shortness of breath, have you?"
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "No, not really."
+    },
+    {
+      "turn_index": 2,
+      "role": "nurse",
+      "content": "And you're managing okay at home, taking all your tablets, eating fine?"
+    },
+    {
+      "turn_index": 3,
+      "role": "patient",
+      "content": "I think so."
+    },
+    {
+      "turn_index": 4,
+      "role": "nurse",
+      "content": "Can you tell me more about what 'not really' chest pain means?"
+    },
+    {
+      "turn_index": 5,
+      "role": "patient",
+      "content": "Sometimes a slight tightness after stairs."
+    },
+    {
+      "turn_index": 6,
+      "role": "nurse",
+      "content": "That's just normal, right?"
+    },
+    {
+      "turn_index": 7,
+      "role": "patient",
+      "content": "Maybe."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

@@ -28,6 +28,9 @@ def test_realtime_event_union_has_no_dead_types():
         "TranscriptDelta",
         "TranscriptFinal",
         "ResponseDone",
+        "SpeechStopped",
+        "ResponseCreated",
+        "InstructionsAcked",
         "Interrupted",
         "ProviderError",
     }

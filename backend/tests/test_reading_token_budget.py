@@ -52,6 +52,14 @@ def test_non_overridden_module_falls_back_to_default():
     assert _resolve_max_tokens("speaking", None) == 3000
 
 
+def test_writing_gets_6000():
+    """W3.2: the W2 structured contract (case_notes duplicated as
+    case_notes_structured + rendered case_notes, plus key_points/
+    writing_requirements) outgrew the old 3000 default and was observed
+    truncating mid-JSON. Same 6000 tier as its schema-size peers."""
+    assert _resolve_max_tokens("writing", None) == 6000
+
+
 # ── regression: bumping Part A must not move B/C ────────────────────
 
 def test_part_a_override_is_isolated_from_part_b_and_c():
@@ -146,6 +154,22 @@ def test_generate_draft_part_b_calls_call_ai_with_6000(monkeypatch):
     _run(draft_generator.generate_draft(
         module="reading", difficulty="intermediate", specialty="cardiology",
         topic="heart failure", part="B",
+    ))
+
+    assert captured["max_tokens"] == 6000
+
+
+def _valid_writing_content():
+    return {"title": "Discharge letter", "case_notes": "notes", "task": "Write a letter."}
+
+
+def test_generate_draft_writing_calls_call_ai_with_6000(monkeypatch):
+    captured = {}
+    _patch_ai(monkeypatch, _valid_writing_content(), captured)
+
+    _run(draft_generator.generate_draft(
+        module="writing", difficulty="intermediate", specialty="General Nursing",
+        topic="discharge planning",
     ))
 
     assert captured["max_tokens"] == 6000

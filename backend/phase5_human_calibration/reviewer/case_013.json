@@ -1,0 +1,34 @@
+{
+  "case_id": "case_013",
+  "scenario": {
+    "title": "Bare two-turn exchange",
+    "setting": "Corridor, informal",
+    "difficulty": "easy",
+    "specialty": "general",
+    "nurse_tasks": [],
+    "patient_name": "Unnamed",
+    "patient_age": 0,
+    "patient_condition": "unspecified",
+    "patient_mood": "neutral",
+    "patient_background": "",
+    "patient_concerns": [],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "Hi."
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "Hi."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

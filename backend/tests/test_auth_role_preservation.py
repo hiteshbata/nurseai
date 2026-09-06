@@ -23,6 +23,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import jwt
+from fastapi import HTTPException
+from postgrest.exceptions import APIError as PostgrestAPIError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -82,10 +84,30 @@ class FakeTable:
         return FakeResult(list(self._rows.values()))
 
 
+class FakeAuthUser:
+    def __init__(self, email_confirmed_at="2026-01-01T00:00:00Z"):
+        self.email_confirmed_at = email_confirmed_at
+
+
+class FakeAuthAdmin:
+    """Always reports the user as confirmed -- these tests exercise role
+    preservation, not the email-confirmation gate (see
+    test_email_confirmation_gate.py for that)."""
+
+    def get_user_by_id(self, _user_id):
+        return MagicMock(user=FakeAuthUser())
+
+
+class FakeAuth:
+    def __init__(self):
+        self.admin = FakeAuthAdmin()
+
+
 class FakeSupabase:
     def __init__(self, rows_by_id):
         self._rows = rows_by_id
         self._mirror_rows: dict = {}  # public.users -- see get_current_user's second upsert
+        self.auth = FakeAuth()
 
     def table(self, name):
         if name == "user_roles":
@@ -117,6 +139,7 @@ def run_get_current_user(fake_supabase, user_id):
 class AdminSelfDemotionTests(unittest.TestCase):
     def setUp(self):
         auth_module._user_role_cache.clear()
+        auth_module._email_confirmed_cache.clear()
 
     def test_new_user_gets_default_role(self):
         rows = {}
@@ -162,6 +185,40 @@ class AdminSelfDemotionTests(unittest.TestCase):
         cached_at = auth_module._user_role_cache["user-2"]
         run_get_current_user(fake, "user-2")
         self.assertEqual(auth_module._user_role_cache["user-2"], cached_at)
+
+    def test_missing_auth_user_fk_violation_becomes_401(self):
+        """PR B regression: user_roles.user_id FKs to auth.users(id) (verified
+        against the live schema -- see PR discussion). A JWT is only verified
+        locally (signature/expiry), so it carries no guarantee the subject
+        still exists in auth.users -- e.g. the account was deleted after the
+        token was issued. Before this fix, the resulting 23503 FK violation
+        propagated as an unhandled 500; it must now surface as a clean 401."""
+        class FakeFKViolationTable:
+            def upsert(self, _row, on_conflict=None, ignore_duplicates=False):
+                raise PostgrestAPIError({
+                    "code": "23503",
+                    "message": (
+                        'insert or update on table "user_roles" violates '
+                        'foreign key constraint "user_roles_user_id_fkey"'
+                    ),
+                    "details": 'Key (user_id)=(ghost-user) is not present in table "users".',
+                    "hint": None,
+                })
+
+        class FakeSupabaseFKViolation:
+            def __init__(self):
+                self.auth = FakeAuth()
+
+            def table(self, name):
+                if name == "user_roles":
+                    return FakeFKViolationTable()
+                raise AssertionError(f"unexpected table: {name!r}")
+
+        fake = FakeSupabaseFKViolation()
+        with self.assertRaises(HTTPException) as ctx:
+            run_get_current_user(fake, "ghost-user")
+        self.assertEqual(ctx.exception.status_code, 401)
+        self.assertEqual(ctx.exception.detail, "Authentication failed")
 
     def test_users_mirror_synced_alongside_role(self):
         """The users-mirror table sync (2026-07-18_users_mirror.sql) rides

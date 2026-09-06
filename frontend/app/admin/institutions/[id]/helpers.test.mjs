@@ -30,6 +30,7 @@ vm.runInThisContext(Module.wrap(outputText))(
 
 const {
   MODULE_VALUES, validateRequired, validateContactEmail, validateQuota, classifySaveError,
+  classifyStaffAssignError,
 } = mod.exports
 
 // ── MODULE_VALUES: mirrors the backend CHECK constraint ─────────────────
@@ -116,4 +117,76 @@ test('422 maps to a validation message', () => {
 test('500 and unknown/undefined statuses map to a generic retry message', () => {
   assert.equal(classifySaveError(500), 'Something went wrong. Please try again.')
   assert.equal(classifySaveError(undefined), 'Something went wrong. Please try again.')
+})
+
+// ── classifyStaffAssignError ────────────────────────────────────────────
+
+test('403 maps to a staff-assign permission message', () => {
+  assert.equal(classifyStaffAssignError(403), "You don't have permission to assign staff.")
+})
+
+test('404 maps to a not-found message', () => {
+  assert.equal(classifyStaffAssignError(404), 'Institution not found.')
+})
+
+test('409 with each known structured error key maps to its specific message', () => {
+  assert.equal(
+    classifyStaffAssignError(409, { error: 'revoked_membership' }),
+    'This email’s access was previously revoked. Contact support to restore it.',
+  )
+  assert.equal(
+    classifyStaffAssignError(409, { error: 'pending_membership' }),
+    'This email already has a pending invitation here.',
+  )
+  assert.equal(
+    classifyStaffAssignError(409, { error: 'already_teacher' }),
+    'This email is already a teacher at this institution.',
+  )
+  assert.equal(
+    classifyStaffAssignError(409, { error: 'already_student' }),
+    'This email is already a student at this institution.',
+  )
+  assert.equal(
+    classifyStaffAssignError(409, { error: 'already_staff_elsewhere' }),
+    'This person is already staff at another institution.',
+  )
+  assert.equal(
+    classifyStaffAssignError(409, { error: 'concurrent_account_creation' }),
+    'That account just started signing up elsewhere. Try again in a moment.',
+  )
+})
+
+test('409 with an unrecognized structured key falls back to a generic conflict message', () => {
+  assert.equal(
+    classifyStaffAssignError(409, { error: 'some_future_key' }),
+    'That email conflicts with an existing assignment.',
+  )
+})
+
+test('409 with a string detail is NOT shown verbatim -- falls back to the generic conflict message', () => {
+  // Unlike classifySaveError, the 409 branch here only reads detail.error
+  // (the structured shape from assign_institution_staff). A plain string
+  // detail on a 409 doesn't match that shape, so it falls through to the
+  // generic message rather than being surfaced raw.
+  assert.equal(
+    classifyStaffAssignError(409, 'duplicate key value violates unique constraint'),
+    'That email conflicts with an existing assignment.',
+  )
+})
+
+test('409 with no detail falls back to a generic conflict message', () => {
+  assert.equal(classifyStaffAssignError(409), 'That email conflicts with an existing assignment.')
+})
+
+test('422 maps to an email-check message', () => {
+  assert.equal(classifyStaffAssignError(422), 'Check the email address and try again.')
+})
+
+test('a non-403/404/409/422 status with a string detail surfaces it verbatim', () => {
+  assert.equal(classifyStaffAssignError(500, 'boom'), 'boom')
+})
+
+test('500 and unknown/undefined statuses with no string detail map to a generic retry message', () => {
+  assert.equal(classifyStaffAssignError(500), 'Something went wrong. Please try again.')
+  assert.equal(classifyStaffAssignError(undefined), 'Something went wrong. Please try again.')
 })

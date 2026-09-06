@@ -53,11 +53,14 @@ from app.routers.auth import UserInfo
 from app.routers.sessions import check_and_increment_session, validate_session
 from app.core.error_utils import redact_api_keys
 from app.services.realtime import (
+    InstructionsAcked,
     Interrupted,
     ProviderConnectError,
     ProviderError,
+    ResponseCreated,
     ResponseDone,
     SessionReady,
+    SpeechStopped,
     TranscriptDelta,
     TranscriptFinal,
     capabilities_for,
@@ -77,6 +80,12 @@ from app.services.plan_gating import get_plan_from_profile, get_realtime_purpose
 from app.services import ai_registry
 from app.core.feature_flags import close_if_disabled
 from app.services.alerts import send_alert
+from app.services.patient_state import (
+    PatientState, SemanticHints, derive_patient_state, detect_nurse_events, render_patient_state_prompt,
+)
+from app.services import semantic_evidence
+from app.services.semantic_evidence import _recent_context
+from app.services import session_semantic_state
 
 logger = logging.getLogger(__name__)
 
@@ -140,8 +149,16 @@ async def _provider_credentials(provider: str, plan: str) -> tuple[str, str]:
     raise ValueError(f"Unknown VOICE_PROVIDER: {provider!r}")
 
 
-def _build_realtime_system_prompt(interlocutor_card: dict) -> str:
+def _build_realtime_system_prompt(interlocutor_card: dict, state: PatientState | None = None) -> str:
     """Patient persona for the realtime voice path.
+
+    `state` defaults to the empty/initial PatientState (fresh session, no
+    history). Pass the current PatientState to re-render this same prompt
+    for a live instructions update (see _sync_patient_state_if_changed) or
+    to seed a reconnected session's initial prompt with history restored
+    from session_transcripts (see _load_prior_history) -- both reuse this
+    one function so the persona text and jargon/voice rules never drift
+    between initial connect and mid-session updates.
 
     The JARGON RULE below is the realtime equivalent of the legacy pipeline's
     detect_jargon() short-circuit (services/ai_scoring.py), and shares its term
@@ -170,6 +187,14 @@ def _build_realtime_system_prompt(interlocutor_card: dict) -> str:
     info_to_withhold = card.get("information_to_withhold", [])
     instructions = card.get("instructions_for_ai", card.get("persona", ""))
 
+    # No `state` passed means a genuinely fresh session -- everything still
+    # hidden, no concerns raised, no triggers fired yet. See _SessionMetrics
+    # below for how this is recomputed as the conversation progresses, and
+    # _load_prior_history for how a reconnected session seeds `state` from
+    # what was already said in a prior connection instead of using this
+    # empty default.
+    state_block = render_patient_state_prompt(state or derive_patient_state(card, []))
+
     return f"""You are playing a patient in an OET nursing roleplay exam, speaking live with a nursing student over voice. Follow this card EXACTLY.
 
 PATIENT PROFILE:
@@ -190,6 +215,8 @@ QUESTIONS YOU MUST ASK (spread these across the conversation naturally):
 
 INFORMATION TO WITHHOLD (only reveal if the nurse asks directly):
 {chr(10).join(f'- {i}' for i in info_to_withhold) if info_to_withhold else '- Do not volunteer extra information'}
+
+{state_block}
 
 JARGON RULE (CRITICAL):
 - You are not a medical person and do not know medical words. If the nurse uses a medical term and does NOT immediately explain it in plain words, stop and ask what it means before responding to anything else — that is the single most useful thing you do for this nurse.
@@ -237,10 +264,20 @@ class _SessionMetrics:
     __slots__ = (
         "provider", "model", "session_id", "user_id", "scenario_id", "started_at", "input_bytes", "output_bytes",
         "interrupted_count", "error_count", "ended_reason", "provider_ready_at",
-        "transcript_turns", "_patient_buffer", "usage_totals",
+        "transcript_turns", "_patient_buffer", "usage_totals", "patient_state", "_prior_history",
+        "last_transcript_final_at", "last_speech_stopped_at", "pending_state_update", "state_timing_samples",
+        "stale_transcript_at_next_speech_count",
+        # Step 7 (semantic evidence layer) -- see _sync_patient_state_if_changed
+        # and _maybe_fire_concern_semantic_checks.
+        "semantic_hints", "_semantic_classified_nurse_turns", "_semantic_checked_resolution_concerns",
+        "_semantic_background_tasks",
     )
 
-    def __init__(self, provider: str, model: str, session_id: int | None, user_id: str, scenario_id: int | None):
+    def __init__(
+        self, provider: str, model: str, session_id: int | None, user_id: str, scenario_id: int | None,
+        prior_history: list[dict] | None = None, initial_state: "PatientState | None" = None,
+        initial_semantic_hints: "SemanticHints | None" = None,
+    ):
         self.provider = provider
         self.model = model
         self.session_id = session_id
@@ -256,6 +293,63 @@ class _SessionMetrics:
         self.transcript_turns: list[dict] = []
         self._patient_buffer = ""
         self.usage_totals = new_usage_totals()
+        # PatientState | None. Seeded with whatever state the initial system
+        # prompt actually used (empty for a fresh session, restored from
+        # session_transcripts for a reconnect -- see _load_prior_history) so
+        # the first recompute_patient_state() only reports "changed" on a
+        # real change, not on the first call always differing from None.
+        self.patient_state = initial_state
+        # Turns from a prior connection on the same session_id (reconnect),
+        # in {"role", "content"} shape. Combined with this connection's own
+        # transcript_turns on every recompute so a dropped-and-reconnected
+        # WebSocket doesn't make the patient "forget" what it already said.
+        self._prior_history = prior_history or []
+
+        # Step 3 (patient-state timing validation) instrumentation --
+        # in-memory only, rolled into a small summary on
+        # realtime_session_metrics.patient_state_timing at teardown (see
+        # _persist_realtime_metrics). Never sent to the frontend.
+        self.last_transcript_final_at: float | None = None
+        self.last_speech_stopped_at: float | None = None
+        # The most recently *sent* PatientState instructions update that
+        # hasn't yet been matched to a response.created -- see
+        # record_response_created(). Shape: {"trigger", "sent_at",
+        # "transcript_final_to_update_ms"}.
+        self.pending_state_update: dict | None = None
+        self.state_timing_samples: list[dict] = []
+        # Counts candidate turns that started (SpeechStopped) while whisper
+        # transcription for the PREVIOUS turn hadn't finalized yet -- the
+        # root precondition for the documented race (a PatientState update
+        # can only be computed/sent once TranscriptFinal arrives, so a
+        # transcript that's still pending when the next turn already ended
+        # means that update had no chance of beating this turn's response).
+        self.stale_transcript_at_next_speech_count = 0
+
+        # Step 7: accumulates confirmed/rejected hidden-info reveals and
+        # semantic concern events for the life of this connection.
+        # confirmed/rejected reveals are seeded once per NEW candidate (see
+        # semantic_evidence.hidden_info_hints). For a reconnect, the caller
+        # already ran hidden_info_hints over prior_history to build the
+        # initial system prompt (see realtime_stream) -- reusing that result
+        # here means the first live recompute doesn't have to re-verify the
+        # same prior candidates from scratch, and (more importantly) means
+        # an item genuinely revealed in a prior connection doesn't briefly
+        # look hidden again in this connection's OWN state before the first
+        # new turn arrives.
+        self.semantic_hints = initial_semantic_hints or SemanticHints()
+        self._semantic_classified_nurse_turns: set[int] = set()
+        self._semantic_checked_resolution_concerns: set[str] = set()
+        # Strong refs for fire-and-forget tasks -- asyncio only holds a weak
+        # reference to a bare create_task() result, which can get GC'd
+        # mid-flight (see asyncio docs). Discarded via each task's own
+        # done-callback (_track_semantic_task) once it finishes.
+        self._semantic_background_tasks: set[asyncio.Task] = set()
+
+    def combined_history(self) -> list[dict]:
+        """Same {"role","content"} shape recompute_patient_state builds --
+        hoisted out so the Step 7 semantic hooks can share it instead of
+        re-deriving their own copy."""
+        return self._prior_history + [{"role": t["role"], "content": t["text"]} for t in self.transcript_turns]
 
     def append_patient_delta(self, delta: str) -> None:
         self._patient_buffer += delta
@@ -264,6 +358,91 @@ class _SessionMetrics:
         if self._patient_buffer:
             self.transcript_turns.append({"role": "patient", "text": self._patient_buffer})
             self._patient_buffer = ""
+
+    def recompute_patient_state(self, interlocutor_card: dict) -> bool:
+        """Keeps self.patient_state in sync with transcript_turns (plus any
+        restored _prior_history) as the conversation progresses -- in-memory
+        only, discarded with this object at disconnect. Returns True iff the
+        recomputed state actually differs from what's already stored, so
+        callers (see _sync_patient_state_if_changed) can skip pushing a
+        no-op instructions update to the live provider on every single
+        transcript/response event."""
+        history = self.combined_history()
+        new_state = derive_patient_state(interlocutor_card, history, semantic_hints=self.semantic_hints)
+        # Compared by rendered prompt text, not raw field equality: fields
+        # like turns_completed change on every single turn but aren't part
+        # of render_patient_state_prompt's output, so a naive dataclass/model
+        # comparison would push a byte-identical instructions update on
+        # every turn -- exactly the duplicate-update this method exists to
+        # prevent (see recompute_patient_state's docstring / requirement #5).
+        changed = self.patient_state is None or render_patient_state_prompt(new_state) != render_patient_state_prompt(self.patient_state)
+        self.patient_state = new_state
+        return changed
+
+    def record_response_created(self) -> dict | None:
+        """Called on every ResponseCreated event. If a PatientState
+        instructions update is pending, decides whether THIS response is the
+        one it should be judged against, and if so records the timing
+        sample and clears the pending marker.
+
+        OpenAI's VAD can auto-trigger a response to the candidate's CURRENT
+        turn before whisper transcription (and therefore our state
+        recompute) even finishes -- that response was always going to be
+        based on live audio, not instructions, so it's not a meaningful
+        miss and must not be counted. It's distinguished from the FOLLOWING
+        turn's response (the one that actually matters -- see the GOAL in
+        the Step 3 patient-state-timing validation task) by whether the
+        candidate has spoken again (a new SpeechStopped) since the update
+        was sent: if not, this ResponseCreated is that same still-in-flight
+        turn and we keep waiting; only a ResponseCreated that follows a
+        fresh SpeechStopped is a genuine next-turn sample."""
+        pending = self.pending_state_update
+        if pending is None:
+            return None
+        if self.last_speech_stopped_at is None or self.last_speech_stopped_at <= pending["sent_at"]:
+            return None
+        now = time.monotonic()
+        sample = {
+            "trigger": pending["trigger"],
+            "transcript_final_to_update_sent_ms": pending["transcript_final_to_update_ms"],
+            "update_sent_to_response_created_ms": round((now - pending["sent_at"]) * 1000),
+        }
+        self.state_timing_samples.append(sample)
+        self.pending_state_update = None
+        return sample
+
+
+def _summarize_state_timing(samples: list[dict], stale_transcript_count: int) -> dict | None:
+    """Rolls up this connection's state_timing_samples (see
+    _SessionMetrics.record_response_created) into the small aggregate
+    persisted on realtime_session_metrics.patient_state_timing. None when
+    no PatientState update ever fired AND no stale-transcript turn was seen
+    this connection (e.g. warmup, or a session with no revealing turns) --
+    avoids padding every row of a JSONB column with an empty object.
+
+    update_sent_to_response_created_ms is dominated by however long the
+    candidate took to speak their next turn (response.created for turn N+1
+    only fires once THEY stop talking) -- it is not a measure of network/
+    provider processing time for the update itself. It answers "was the
+    update sent before the next response started" (always yes here, since
+    that's how a sample gets recorded at all -- see
+    record_response_created), not "how close was the race". A tight race is
+    instead flagged by stale_transcript_at_next_speech_count > 0: that
+    counts turns where the CANDIDATE already started speaking again before
+    the previous turn's transcript had even finalized, meaning no update
+    could possibly have been sent in time for that turn's response."""
+    if not samples and not stale_transcript_count:
+        return None
+    summary = {
+        "sample_count": len(samples),
+        "stale_transcript_at_next_speech_count": stale_transcript_count,
+    }
+    if samples:
+        deltas = [s["update_sent_to_response_created_ms"] for s in samples]
+        summary["avg_update_sent_to_response_created_ms"] = round(sum(deltas) / len(deltas))
+        summary["worst_update_sent_to_response_created_ms"] = max(deltas)
+        summary["samples"] = samples
+    return summary
 
 
 def _insert_realtime_metrics_row_sync(row: dict) -> None:
@@ -314,6 +493,9 @@ async def _persist_realtime_metrics(metrics: _SessionMetrics, capabilities) -> N
                 "input_sample_rate": capabilities.input_sample_rate,
                 "output_sample_rate": capabilities.output_sample_rate,
             },
+            "patient_state_timing": _summarize_state_timing(
+                metrics.state_timing_samples, metrics.stale_transcript_at_next_speech_count,
+            ),
         })
     except Exception as e:
         # Cost/metrics logging must never take down a live session or mask
@@ -364,6 +546,234 @@ async def _persist_transcript(metrics: _SessionMetrics) -> None:
         })
     except Exception as e:
         logger.warning("[TRANSCRIPT_PERSIST_FAILED] %s", str(e)[:300])
+
+
+def _load_prior_transcript_rows_sync(session_usage_id: int) -> list[dict]:
+    result = (
+        get_supabase().table("session_transcripts")
+        .select("transcript")
+        .eq("session_usage_id", session_usage_id)
+        .order("created_at")
+        .execute()
+    )
+    return result.data or []
+
+
+async def _load_prior_history(session_usage_id: int) -> list[dict]:
+    """Reconstructs {"role", "content"} turns from every session_transcripts
+    row already persisted for this session_usage_id (oldest first) -- the
+    only durable record of a prior connection's conversation, since a
+    realtime session otherwise only holds transcript_turns in memory for
+    the life of its one WebSocket. Used solely to reseed PatientState after
+    a reconnect (see the `is_reconnect` branch in realtime_stream); the new
+    connection's own _SessionMetrics.transcript_turns stays empty so
+    _persist_transcript doesn't write duplicate rows for turns already
+    saved. Never raises -- a lookup failure just means the reconnected
+    session starts from a fresh PatientState instead of taking down the
+    session."""
+    try:
+        rows = await run_sync(_load_prior_transcript_rows_sync, session_usage_id)
+    except Exception as e:
+        logger.warning("[REALTIME_PRIOR_TRANSCRIPT_LOAD_FAILED] %s", str(e)[:200])
+        return []
+    history: list[dict] = []
+    for row in rows:
+        for turn in row.get("transcript") or []:
+            history.append({"role": turn.get("role", ""), "content": turn.get("text", "")})
+    return history
+
+
+async def _push_instructions_safe(adapter, instructions: str) -> None:
+    try:
+        await adapter.update_instructions(instructions)
+    except Exception as e:
+        # Never take down a live session over a best-effort state sync --
+        # the patient just keeps using whatever instructions it already has.
+        logger.warning("[REALTIME_INSTRUCTIONS_UPDATE_FAILED] %s", str(e)[:200])
+
+
+def _track_semantic_task(metrics: "_SessionMetrics", coro) -> None:
+    task = asyncio.create_task(coro)
+    metrics._semantic_background_tasks.add(task)
+    task.add_done_callback(metrics._semantic_background_tasks.discard)
+
+
+def _replace_semantic_hints(hints: SemanticHints, **overrides) -> SemanticHints:
+    """dataclasses.replace() would do this in one line, but SemanticHints
+    fields are all keyword-only with defaults so replace() works fine here
+    too -- kept explicit since this used to hand-list only 4 of the 7 fields
+    and silently reset the other 3 (verification_status, candidate_turn_status,
+    confirmed_reveal_turn) to empty on every call. That was a live bug: a
+    background concern-check merge (see _run_nurse_concern_semantic_check /
+    _run_patient_resolution_semantic_check) would wipe out the hidden-info
+    verification audit trail hidden_info_hints had just built. Every field
+    must be listed here."""
+    return SemanticHints(
+        confirmed_hidden_reveals=overrides.get("confirmed_hidden_reveals", hints.confirmed_hidden_reveals),
+        rejected_hidden_reveals=overrides.get("rejected_hidden_reveals", hints.rejected_hidden_reveals),
+        extra_nurse_events=overrides.get("extra_nurse_events", hints.extra_nurse_events),
+        resolved_concerns=overrides.get("resolved_concerns", hints.resolved_concerns),
+        verification_status=overrides.get("verification_status", hints.verification_status),
+        candidate_turn_status=overrides.get("candidate_turn_status", hints.candidate_turn_status),
+        confirmed_reveal_turn=overrides.get("confirmed_reveal_turn", hints.confirmed_reveal_turn),
+    )
+
+
+async def _run_nurse_concern_semantic_check(
+    metrics: "_SessionMetrics", concerns: list[str], context: str, utterance: str, turn_idx: int,
+) -> None:
+    """Fire-and-forget (Step 3 Pattern A) -- only reaches this call when the
+    deterministic phrase lists found no concern_exploration on this nurse
+    turn and a concern is still outstanding (see
+    _maybe_fire_concern_semantic_checks). Result is merged into
+    metrics.semantic_hints for the NEXT recompute; this turn's own response
+    was never blocked on it."""
+    try:
+        result = await semantic_evidence.classify_nurse_concern_event(utterance, concerns, context)
+    except Exception as e:
+        logger.warning("[REALTIME_SEMANTIC_CONCERN_CHECK_FAILED] session_id=%s %s", metrics.session_id, str(e)[:200])
+        return
+    if not result or result["event"] == "none":
+        return
+    updated_events = dict(metrics.semantic_hints.extra_nurse_events)
+    updated_events[turn_idx] = updated_events.get(turn_idx, []) + [{
+        "event": result["event"], "evidence": utterance[:200], "target_concern": result["target_concern"],
+    }]
+    metrics.semantic_hints = _replace_semantic_hints(metrics.semantic_hints, extra_nurse_events=updated_events)
+    logger.info(
+        "[REALTIME_SEMANTIC_EVENT] session_id=%s event=%s target=%s",
+        metrics.session_id, result["event"], result["target_concern"],
+    )
+
+
+async def _run_patient_resolution_semantic_check(
+    metrics: "_SessionMetrics", concern: str, nurse_turn: str, patient_turn: str,
+) -> None:
+    """Fire-and-forget companion to the nurse-side check above -- see
+    _maybe_fire_concern_semantic_checks for when this fires."""
+    try:
+        result = await semantic_evidence.classify_patient_resolution(concern, nurse_turn, patient_turn)
+    except Exception as e:
+        logger.warning("[REALTIME_SEMANTIC_RESOLUTION_CHECK_FAILED] session_id=%s %s", metrics.session_id, str(e)[:200])
+        return
+    if result is not True:
+        return
+    updated = metrics.semantic_hints.resolved_concerns | {concern}
+    metrics.semantic_hints = _replace_semantic_hints(metrics.semantic_hints, resolved_concerns=updated)
+    logger.info("[REALTIME_SEMANTIC_RESOLUTION] session_id=%s concern=%s", metrics.session_id, concern)
+
+
+def _maybe_fire_concern_semantic_checks(metrics: "_SessionMetrics", interlocutor_card: dict, history: list[dict]) -> None:
+    """Selective trigger (Step 3 Pattern B) for the two background checks
+    above, applied to only the LATEST turn:
+      - nurse turn, no deterministic concern_exploration this turn, and a
+        concern is still outstanding -> maybe it's a paraphrase (Finding 2).
+      - patient turn, and some concern is sitting at "addressed" (not yet
+        resolved) -> maybe this reply is the resolution signal.
+    Each (turn index / concern) is only ever checked once per connection --
+    a cheap, deliberate cap on repeat spend, not a correctness requirement."""
+    if not history:
+        return
+    idx = len(history) - 1
+    turn = history[idx]
+    role = turn.get("role")
+    content = turn.get("content", "")
+    concerns = interlocutor_card.get("questions_to_ask") or interlocutor_card.get("concerns") or []
+    if not concerns:
+        return
+    # State as of just BEFORE this turn -- what was already outstanding
+    # when the nurse/patient said this.
+    state_before = derive_patient_state(interlocutor_card, history[:idx], semantic_hints=metrics.semantic_hints)
+
+    if role == "nurse" and idx not in metrics._semantic_classified_nurse_turns:
+        has_exploration = any(e["event"] == "concern_exploration" for e in detect_nurse_events(content))
+        if not has_exploration and state_before.current_concern:
+            metrics._semantic_classified_nurse_turns.add(idx)
+            context = _recent_context(history, idx)
+            _track_semantic_task(metrics, _run_nurse_concern_semantic_check(metrics, concerns, context, content, idx))
+
+    elif role == "patient":
+        addressed = [
+            c for c, s in state_before.concern_status.items()
+            if s == "addressed" and c not in metrics._semantic_checked_resolution_concerns
+        ]
+        if addressed:
+            concern = addressed[0]
+            metrics._semantic_checked_resolution_concerns.add(concern)
+            nurse_turn = history[idx - 1]["content"] if idx > 0 and history[idx - 1].get("role") == "nurse" else ""
+            _track_semantic_task(metrics, _run_patient_resolution_semantic_check(metrics, concern, nurse_turn, content))
+
+
+async def _sync_patient_state_if_changed(
+    adapter, interlocutor_card: dict | None, metrics: "_SessionMetrics", provider: str, trigger: str,
+) -> None:
+    """Called after every event that could change what the patient has
+    revealed/raised/felt (TranscriptFinal, ResponseDone) -- recomputes
+    PatientState and, only if it actually changed, pushes the updated
+    persona instructions to the live provider so the *next* patient
+    response is generated consistent with it. Skipped entirely for warmup
+    sessions (interlocutor_card is None there -- no patient, no state).
+
+    `trigger` ("transcript_final" | "response_done") is timing
+    instrumentation only -- see record_response_created() for how the sent
+    update is later matched against the response it needed to beat."""
+    if interlocutor_card is None:
+        return
+
+    # Step 7 (Finding 1): verify any keyword-flagged hidden-info reveal
+    # BEFORE recomputing state, so a confirmed/rejected candidate is
+    # reflected in *this* recompute rather than a turn late. Synchronous
+    # and selective -- only calls the model for a genuinely NEW candidate
+    # (see semantic_evidence.hidden_info_hints); on every other turn this
+    # is a free no-op. This is the one deliberate exception to "never block
+    # a realtime turn on an LLM call" (Step 3/12) -- justified because an
+    # unconfirmed reveal must never be trusted live (Step 7), and the event
+    # is rare enough not to matter for the session's overall pacing.
+    history = metrics.combined_history()
+    prior_hints = metrics.semantic_hints
+    try:
+        metrics.semantic_hints = await semantic_evidence.hidden_info_hints(
+            interlocutor_card, history, prior=metrics.semantic_hints,
+            user_id=metrics.user_id, session_id=metrics.session_id,
+        )
+    except Exception as e:
+        logger.warning("[REALTIME_SEMANTIC_HIDDEN_INFO_FAILED] session_id=%s %s", metrics.session_id, str(e)[:200])
+
+    # Step 13: fire-and-forget persistence of whatever hidden_info_hints just
+    # computed -- never awaited here, must not add latency to a live turn.
+    # save_semantic_state no-ops when nothing actually changed (prior_hints
+    # comparison) or session_id is None (warmup). The final teardown flush
+    # (see realtime_stream's finally block) awaits one last save so a task
+    # still in flight when the connection closes isn't lost.
+    _track_semantic_task(metrics, session_semantic_state.save_semantic_state(
+        metrics.session_id, metrics.user_id, metrics.semantic_hints, prior=prior_hints,
+    ))
+
+    # Step 7 (Finding 2): concern exploration/addressing/resolution run in
+    # the background (Pattern A) -- never awaited here, never block this
+    # turn's response. Whatever they find lands in metrics.semantic_hints
+    # and only takes effect on the *next* recompute call.
+    _maybe_fire_concern_semantic_checks(metrics, interlocutor_card, history)
+
+    if not metrics.recompute_patient_state(interlocutor_card):
+        return
+    state = metrics.patient_state
+    sent_at = time.monotonic()
+    await _push_instructions_safe(adapter, _build_realtime_system_prompt(interlocutor_card, state=state))
+    metrics.pending_state_update = {
+        "trigger": trigger,
+        "sent_at": sent_at,
+        "transcript_final_to_update_ms": (
+            round((sent_at - metrics.last_transcript_final_at) * 1000)
+            if metrics.last_transcript_final_at is not None else None
+        ),
+    }
+    logger.info(
+        "[REALTIME_PATIENT_STATE_UPDATED] session_id=%s provider=%s trigger=%s revealed_count=%d trigger_count=%d "
+        "unresolved_concerns=%d emotion=%s",
+        metrics.session_id, provider, trigger, len(state.revealed_information), len(state.fired_emotional_triggers),
+        len(state.concerns_unresolved), state.baseline_emotion,
+    )
 
 
 async def _send_json_safe(websocket: WebSocket, payload: dict) -> bool:
@@ -467,11 +877,16 @@ async def realtime_stream(websocket: WebSocket):
         session_id = None
         system_prompt = _build_warmup_system_prompt()
         voice = VOICE_MAPPERS[provider](None)
+        interlocutor_card = None  # no scenario -- patient state doesn't apply to warmup
+        prior_history: list[dict] = []
+        initial_state = None
+        initial_semantic_hints = None
     else:
         # Reuse the session minted by the text-chat flow if the client has one;
         # otherwise charge a new one now. Mirrors POST /speaking/chat exactly so
         # a realtime conversation can't dodge the monthly session quota.
-        session_id = init_message.get("session_id") if isinstance(init_message, dict) else None
+        supplied_session_id = init_message.get("session_id") if isinstance(init_message, dict) else None
+        session_id = supplied_session_id
         if session_id is not None and not await run_sync(validate_session, user.id, session_id):
             session_id = None
         if session_id is None:
@@ -484,6 +899,13 @@ async def realtime_stream(websocket: WebSocket):
                 await websocket.close(code=4429, reason="session_limit_reached")
                 return
 
+        # A validated, client-supplied session_id means this WebSocket is
+        # reconnecting to a session that already had at least one prior
+        # realtime connection (e.g. a dropped socket) -- see
+        # _load_prior_history for how its PatientState is restored so the
+        # patient doesn't "forget" what it already revealed.
+        is_reconnect = supplied_session_id is not None and session_id == supplied_session_id
+
         scenario_data = await run_sync(
             supabase.table("scenarios").select("*").eq("id", scenario_id).eq("is_active", True).execute
         )
@@ -494,7 +916,37 @@ async def realtime_stream(websocket: WebSocket):
 
         scenario = scenario_data.data[0]
         interlocutor_card = scenario.get("interlocutor_card", {})
-        system_prompt = _build_realtime_system_prompt(interlocutor_card)
+        prior_history = await _load_prior_history(session_id) if is_reconnect else []
+        # Step 13: whatever was persisted for this session_usage_id from an
+        # earlier connection (or an earlier legacy turn on the same
+        # session_id) -- empty SemanticHints if nothing was ever saved, a
+        # save failed, or the stored state_version is unrecognized (see
+        # session_semantic_state.load_semantic_state). Fed into
+        # hidden_info_hints as `prior` below so a turn already verified in a
+        # PRIOR connection isn't re-verified (Step 12B only re-checks turns
+        # missing from candidate_turn_status) -- this is what makes a
+        # reconnect free once state is fully persisted, not just a fresh
+        # from-scratch recompute over prior_history.
+        persisted_hints = await session_semantic_state.load_semantic_state(session_id) if is_reconnect else SemanticHints()
+        # Step 12B: a reconnect's restored prior_history can contain a
+        # genuine hidden-info disclosure from the earlier connection --
+        # derive_patient_state only trusts semantic-confirmed reveals now
+        # (Rule 1), so that confirmation has to actually run here, BEFORE
+        # the initial prompt is built, or the patient would look like it
+        # "forgot" what it already revealed until the next live turn.
+        # Skipped entirely for a fresh (non-reconnect) session -- empty
+        # history has no candidates to verify.
+        initial_semantic_hints = (
+            await semantic_evidence.hidden_info_hints(interlocutor_card, prior_history, prior=persisted_hints)
+            if prior_history else SemanticHints()
+        )
+        # Always derived, even for an empty prior_history -- so _SessionMetrics
+        # starts from the exact same baseline the initial prompt below uses.
+        # Leaving this None for a "nothing to restore" reconnect would make
+        # the first recompute_patient_state() call look like a change (None
+        # vs. a real state) even when nothing actually happened yet.
+        initial_state = derive_patient_state(interlocutor_card, prior_history, semantic_hints=initial_semantic_hints)
+        system_prompt = _build_realtime_system_prompt(interlocutor_card, state=initial_state)
         voice = VOICE_MAPPERS[provider](scenario.get("patient_gender"))
 
     # Sent BEFORE the provider connection is attempted -- and carries the
@@ -513,7 +965,11 @@ async def realtime_stream(websocket: WebSocket):
         return
 
     adapter = adapter_class(system_prompt=system_prompt, voice=voice, api_key=api_key, model=model)
-    metrics = _SessionMetrics(provider=provider, model=model, session_id=session_id, user_id=user.id, scenario_id=scenario_id)
+    metrics = _SessionMetrics(
+        provider=provider, model=model, session_id=session_id, user_id=user.id, scenario_id=scenario_id,
+        prior_history=prior_history, initial_state=initial_state,
+        initial_semantic_hints=initial_semantic_hints,
+    )
 
     try:
         await adapter.connect()
@@ -593,6 +1049,18 @@ async def realtime_stream(websocket: WebSocket):
 
                 elif isinstance(item, TranscriptFinal):
                     metrics.transcript_turns.append({"role": item.role, "text": item.transcript})
+                    metrics.last_transcript_final_at = time.monotonic()
+                    # Recompute + push BEFORE forwarding to the client: the
+                    # nurse's turn just finalized, so this is the earliest
+                    # point the updated state can reach the provider ahead
+                    # of whatever response it generates next (see STATE
+                    # UPDATE TIMING in the Step 2 design -- with OpenAI's
+                    # server-side VAD auto-triggering a response the instant
+                    # the audio buffer commits, input transcription can
+                    # still race that trigger; this is the best-effort
+                    # earliest point the existing event stream offers,
+                    # documented, not invented).
+                    await _sync_patient_state_if_changed(adapter, interlocutor_card, metrics, provider, "transcript_final")
                     if not await _send_json_safe(websocket, {
                         "type": "transcript.final", "role": item.role, "transcript": item.transcript,
                     }):
@@ -600,10 +1068,45 @@ async def realtime_stream(websocket: WebSocket):
 
                 elif isinstance(item, ResponseDone):
                     metrics.flush_patient_turn()
+                    # The patient's own just-finished turn can itself flip
+                    # revealed/raised/triggered state (derive_patient_state
+                    # reads patient_text too) -- sync so the *next* response
+                    # doesn't repeat or contradict what it just said.
+                    await _sync_patient_state_if_changed(adapter, interlocutor_card, metrics, provider, "response_done")
                     if item.usage:
                         accumulate_openai_usage(metrics.usage_totals, item.usage)
                     if not await _send_json_safe(websocket, {"type": "response.done"}):
                         return
+
+                elif isinstance(item, SpeechStopped):
+                    now = time.monotonic()
+                    if metrics.last_speech_stopped_at is not None and (
+                        metrics.last_transcript_final_at is None
+                        or metrics.last_transcript_final_at < metrics.last_speech_stopped_at
+                    ):
+                        metrics.stale_transcript_at_next_speech_count += 1
+                        logger.warning(
+                            "[REALTIME_STALE_TRANSCRIPT] session_id=%s provider=%s "
+                            "candidate started a new turn before the previous turn's transcript finalized",
+                            metrics.session_id, provider,
+                        )
+                    metrics.last_speech_stopped_at = now
+
+                elif isinstance(item, ResponseCreated):
+                    sample = metrics.record_response_created()
+                    if sample is not None:
+                        logger.info(
+                            "[REALTIME_STATE_TIMING] session_id=%s provider=%s trigger=%s "
+                            "transcript_final_to_update_sent_ms=%s update_sent_to_response_created_ms=%s",
+                            metrics.session_id, provider, sample["trigger"],
+                            sample["transcript_final_to_update_sent_ms"], sample["update_sent_to_response_created_ms"],
+                        )
+
+                elif isinstance(item, InstructionsAcked):
+                    # Fires for every session.update, including connect()'s
+                    # initial one -- logged only for reconstructing the raw
+                    # event timeline (Step 2 event #6), no state tracked.
+                    logger.debug("[REALTIME_INSTRUCTIONS_ACKED] session_id=%s provider=%s", metrics.session_id, provider)
 
                 elif isinstance(item, Interrupted):
                     metrics.interrupted_count += 1
@@ -664,8 +1167,18 @@ async def realtime_stream(websocket: WebSocket):
         await asyncio.gather(forward_client_audio(), forward_provider_events(), enforce_session_timer())
     finally:
         await adapter.disconnect()
+        if metrics.patient_state is not None:
+            logger.debug("[REALTIME_PATIENT_STATE] session_id=%s final_state=%s", session_id, metrics.patient_state.model_dump())
         await _persist_realtime_metrics(metrics, capabilities)
         await _persist_transcript(metrics)
+        # Step 13: awaited final flush -- a background save fired from the
+        # last _sync_patient_state_if_changed call may still be in flight
+        # when the connection tears down; this guarantees the last-known
+        # semantic state actually lands even if that task hadn't finished.
+        # No prior= comparison here (unlike the fire-and-forget saves above)
+        # -- always write the final state, since there's no next turn left
+        # to catch a missed write.
+        await session_semantic_state.save_semantic_state(metrics.session_id, metrics.user_id, metrics.semantic_hints)
         try:
             await websocket.close()
         except Exception:

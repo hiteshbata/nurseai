@@ -1,0 +1,67 @@
+{
+  "case_id": "case_020",
+  "scenario": {
+    "title": "Unexpected extended stay, mixed technique and outcome",
+    "setting": "Surgical ward",
+    "difficulty": "hard",
+    "specialty": "surgical",
+    "nurse_tasks": [
+      "Deliver news of extended stay",
+      "Explain wound care plan"
+    ],
+    "patient_name": "Mr. Osei",
+    "patient_age": 60,
+    "patient_condition": "post-operative, unexpected extended admission",
+    "patient_mood": "disappointed",
+    "patient_background": "Was expecting discharge tomorrow; now told he needs a longer stay for wound care.",
+    "patient_concerns": [],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "Hi Mr. Osei, I know today's news about needing a longer hospital stay must be hard to hear."
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "Yeah... I really thought I'd be going home tomorrow."
+    },
+    {
+      "turn_index": 2,
+      "role": "nurse",
+      "content": "I completely understand how disappointing that is, and I'm sorry you're feeling this way."
+    },
+    {
+      "turn_index": 3,
+      "role": "patient",
+      "content": "..."
+    },
+    {
+      "turn_index": 4,
+      "role": "nurse",
+      "content": "Before I explain the wound care plan, what do you already know about how deep wounds like yours usually heal?"
+    },
+    {
+      "turn_index": 5,
+      "role": "patient",
+      "content": "Not much really, I was told it just takes time."
+    },
+    {
+      "turn_index": 6,
+      "role": "nurse",
+      "content": "That's roughly right. So this wound needs daily dressing changes for two weeks, then a nurse review, and if it's healing well by then you'll likely need one more week after that before it's fully closed."
+    },
+    {
+      "turn_index": 7,
+      "role": "patient",
+      "content": "Okay... so wait, does that mean three weeks total, or three weeks just for the dressings?"
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

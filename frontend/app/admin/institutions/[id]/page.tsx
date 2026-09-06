@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
@@ -13,6 +13,7 @@ import {
 } from '@/app/institution/invites/helpers'
 import {
   MODULE_VALUES, validateRequired, validateContactEmail, validateQuota, classifySaveError,
+  classifyStaffAssignError,
 } from './helpers'
 
 interface InstitutionDetail {
@@ -112,6 +113,16 @@ export default function AdminInstitutionDetailPage() {
   const [usageLoading, setUsageLoading] = useState(false)
   const [admins, setAdmins] = useState<AdminRow[] | null>(null)
   const [adminsLoading, setAdminsLoading] = useState(false)
+  const [showStaffForm, setShowStaffForm] = useState(false)
+  const [staffEmailInput, setStaffEmailInput] = useState('')
+  const [staffRoleInput, setStaffRoleInput] = useState<'institution_admin' | 'teacher'>('institution_admin')
+  const [staffEmailError, setStaffEmailError] = useState<string | undefined>()
+  const [assigningStaff, setAssigningStaff] = useState(false)
+  // Synchronous guard: `assigningStaff` state is batched, so two clicks in
+  // the same tick both see it as false before either re-render lands. A ref
+  // updates immediately, so the second synchronous click is blocked -- same
+  // pattern as onboarding.tsx's startedRef / mock/page.tsx's enteredRef.
+  const assigningStaffRef = useRef(false)
   const [invites, setInvites] = useState<InviteRow[] | null>(null)
   const [invitesLoading, setInvitesLoading] = useState(false)
   const [invitesRefreshKey, setInvitesRefreshKey] = useState(0)
@@ -302,6 +313,45 @@ export default function AdminInstitutionDetailPage() {
     }
   }
 
+  function openStaffForm() {
+    setShowStaffForm(true)
+  }
+
+  function resetStaffForm() {
+    setShowStaffForm(false)
+    setStaffEmailInput('')
+    setStaffRoleInput('institution_admin')
+    setStaffEmailError(undefined)
+  }
+
+  async function handleAssignStaff(e: React.FormEvent) {
+    e.preventDefault()
+    if (assigningStaffRef.current) return
+    const emailResult = validateContactEmail(staffEmailInput)
+    setStaffEmailError(emailResult.error)
+    if (!emailResult.valid) return
+
+    assigningStaffRef.current = true
+    setAssigningStaff(true)
+    try {
+      await api.post(`/admin/institutions/${institutionId}/staff`, {
+        email: staffEmailInput.trim(),
+        role: staffRoleInput,
+      })
+      toast.success('Staff assigned')
+      resetStaffForm()
+      setAdminsLoading(true)
+      api.get(`/admin/institutions/${institutionId}/admins`)
+        .then((res) => setAdmins(res.data || []))
+        .finally(() => setAdminsLoading(false))
+    } catch (error: any) {
+      toast.error(classifyStaffAssignError(error.response?.status, error.response?.data?.detail))
+    } finally {
+      assigningStaffRef.current = false
+      setAssigningStaff(false)
+    }
+  }
+
   async function handleRevokeInvite(invite: InviteRow) {
     if (!confirm('Revoke this invitation?\n\nStudents who have already joined will not be affected.')) return
     try {
@@ -450,7 +500,70 @@ export default function AdminInstitutionDetailPage() {
         )}
 
         {tab === 'Admins' && (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div>
+            {canMutate && !showStaffForm && (
+              <div className="mb-4">
+                <button
+                  onClick={openStaffForm}
+                  className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Assign Staff
+                </button>
+              </div>
+            )}
+
+            {showStaffForm && (
+              <form onSubmit={handleAssignStaff} noValidate className="mb-6 rounded-lg border border-gray-200 bg-white p-5">
+                <h2 className="text-base font-bold text-gray-800">Assign Staff</h2>
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="staff-email" className="text-sm font-semibold text-gray-700">Email</label>
+                    <Input
+                      id="staff-email"
+                      type="email"
+                      value={staffEmailInput}
+                      onChange={(e) => {
+                        setStaffEmailInput(e.target.value)
+                        if (staffEmailError) setStaffEmailError(undefined)
+                      }}
+                      className="mt-1.5"
+                    />
+                    {staffEmailError && <p className="mt-1.5 text-sm text-red-600">{staffEmailError}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="staff-role" className="text-sm font-semibold text-gray-700">Role</label>
+                    <select
+                      id="staff-role"
+                      value={staffRoleInput}
+                      onChange={(e) => setStaffRoleInput(e.target.value as 'institution_admin' | 'teacher')}
+                      className="mt-1.5 h-10 w-full rounded-md border border-gray-300 px-3 text-sm"
+                    >
+                      <option value="institution_admin">Admin</option>
+                      <option value="teacher">Teacher</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-5 flex gap-3">
+                  <button
+                    type="submit"
+                    disabled={assigningStaff}
+                    className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {assigningStaff ? 'Assigning...' : 'Assign Staff'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetStaffForm}
+                    className="min-h-11 rounded-md border border-gray-300 px-4 text-sm font-semibold text-gray-800 hover:bg-gray-100"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="bg-white rounded-lg shadow overflow-hidden">
             {adminsLoading ? (
               <div className="p-8 text-center text-gray-500">Loading...</div>
             ) : !admins || admins.length === 0 ? (
@@ -481,6 +594,7 @@ export default function AdminInstitutionDetailPage() {
                 </table>
               </div>
             )}
+            </div>
           </div>
         )}
 

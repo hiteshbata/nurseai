@@ -1,0 +1,225 @@
+{
+  "benchmark_size": 20,
+  "shuffle_seed": 20260829,
+  "cases": [
+    {
+      "opaque_case_id": "case_001",
+      "real_case_id": "case_05_excellent_relationship_building",
+      "archetype": "excellent_relationship_building",
+      "tags": [],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_002",
+      "real_case_id": "case_10_concern_reopened",
+      "archetype": "concern_reopened",
+      "tags": [],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_003",
+      "real_case_id": "case_07_poor_structure_and_questioning",
+      "archetype": "poor_structure_and_questioning",
+      "tags": [],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_004",
+      "real_case_id": "case_08_information_giving_all_gaps",
+      "archetype": "information_giving_all_gaps",
+      "tags": [],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_005",
+      "real_case_id": "case_09_concern_resolved_clean",
+      "archetype": "concern_resolved",
+      "tags": [],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_006",
+      "real_case_id": "case_04_weak_language_strong_clinical",
+      "archetype": "weak_language_strong_clinical",
+      "tags": [],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_007",
+      "real_case_id": "case_06_poor_relationship_building",
+      "archetype": "poor_relationship_building",
+      "tags": [],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_008",
+      "real_case_id": "case_19_long_consultation",
+      "archetype": "long_consultation_dense_evidence",
+      "tags": [
+        "long_consultation",
+        "evidence_volume",
+        "concern_reopened",
+        "multi_source_evidence"
+      ],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_009",
+      "real_case_id": "case_16_borderline_clinical_1_vs_0",
+      "archetype": "borderline_clinical_1_vs_0",
+      "tags": [
+        "borderline",
+        "adjacent_level",
+        "calibration_critical",
+        "clinical_1_vs_0"
+      ],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_010",
+      "real_case_id": "case_18_borderline_linguistic_4_vs_3",
+      "archetype": "borderline_linguistic_4_vs_3",
+      "tags": [
+        "borderline",
+        "adjacent_level",
+        "calibration_critical",
+        "linguistic_4_vs_3"
+      ],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_011",
+      "real_case_id": "case_15_borderline_clinical_2_vs_1",
+      "archetype": "borderline_clinical_2_vs_1",
+      "tags": [
+        "borderline",
+        "adjacent_level",
+        "calibration_critical",
+        "clinical_2_vs_1"
+      ],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_012",
+      "real_case_id": "case_12_conflicting_evidence",
+      "archetype": "conflicting_evidence",
+      "tags": [],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_013",
+      "real_case_id": "case_13_minimal_consultation",
+      "archetype": "minimal_very_short_consultation",
+      "tags": [],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_014",
+      "real_case_id": "case_17_borderline_linguistic_5_vs_4",
+      "archetype": "borderline_linguistic_5_vs_4",
+      "tags": [
+        "borderline",
+        "adjacent_level",
+        "calibration_critical",
+        "linguistic_5_vs_4"
+      ],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_015",
+      "real_case_id": "case_01_strong_overall",
+      "archetype": "strong_overall",
+      "tags": [],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_016",
+      "real_case_id": "case_02_weak_overall",
+      "archetype": "weak_overall",
+      "tags": [],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_017",
+      "real_case_id": "case_03_strong_language_weak_clinical",
+      "archetype": "strong_language_weak_clinical",
+      "tags": [],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_018",
+      "real_case_id": "case_11_multiple_concerns_one_ignored",
+      "archetype": "multiple_concerns_one_ignored",
+      "tags": [],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_019",
+      "real_case_id": "case_14_borderline_clinical_3_vs_2",
+      "archetype": "borderline_clinical_3_vs_2",
+      "tags": [
+        "borderline",
+        "adjacent_level",
+        "calibration_critical",
+        "clinical_3_vs_2"
+      ],
+      "reference_status": "provisional"
+    },
+    {
+      "opaque_case_id": "case_020",
+      "real_case_id": "case_20_conflicting_mixed_evidence",
+      "archetype": "conflicting_mixed_evidence",
+      "tags": [
+        "conflict",
+        "mixed_evidence",
+        "calibration_critical",
+        "patient_outcome_vs_technique"
+      ],
+      "reference_status": "provisional"
+    }
+  ],
+  "real_to_opaque": {
+    "case_05_excellent_relationship_building": "case_001",
+    "case_10_concern_reopened": "case_002",
+    "case_07_poor_structure_and_questioning": "case_003",
+    "case_08_information_giving_all_gaps": "case_004",
+    "case_09_concern_resolved_clean": "case_005",
+    "case_04_weak_language_strong_clinical": "case_006",
+    "case_06_poor_relationship_building": "case_007",
+    "case_19_long_consultation": "case_008",
+    "case_16_borderline_clinical_1_vs_0": "case_009",
+    "case_18_borderline_linguistic_4_vs_3": "case_010",
+    "case_15_borderline_clinical_2_vs_1": "case_011",
+    "case_12_conflicting_evidence": "case_012",
+    "case_13_minimal_consultation": "case_013",
+    "case_17_borderline_linguistic_5_vs_4": "case_014",
+    "case_01_strong_overall": "case_015",
+    "case_02_weak_overall": "case_016",
+    "case_03_strong_language_weak_clinical": "case_017",
+    "case_11_multiple_concerns_one_ignored": "case_018",
+    "case_14_borderline_clinical_3_vs_2": "case_019",
+    "case_20_conflicting_mixed_evidence": "case_020"
+  },
+  "opaque_to_real": {
+    "case_001": "case_05_excellent_relationship_building",
+    "case_002": "case_10_concern_reopened",
+    "case_003": "case_07_poor_structure_and_questioning",
+    "case_004": "case_08_information_giving_all_gaps",
+    "case_005": "case_09_concern_resolved_clean",
+    "case_006": "case_04_weak_language_strong_clinical",
+    "case_007": "case_06_poor_relationship_building",
+    "case_008": "case_19_long_consultation",
+    "case_009": "case_16_borderline_clinical_1_vs_0",
+    "case_010": "case_18_borderline_linguistic_4_vs_3",
+    "case_011": "case_15_borderline_clinical_2_vs_1",
+    "case_012": "case_12_conflicting_evidence",
+    "case_013": "case_13_minimal_consultation",
+    "case_014": "case_17_borderline_linguistic_5_vs_4",
+    "case_015": "case_01_strong_overall",
+    "case_016": "case_02_weak_overall",
+    "case_017": "case_03_strong_language_weak_clinical",
+    "case_018": "case_11_multiple_concerns_one_ignored",
+    "case_019": "case_14_borderline_clinical_3_vs_2",
+    "case_020": "case_20_conflicting_mixed_evidence"
+  }
+}

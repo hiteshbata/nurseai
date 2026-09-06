@@ -76,6 +76,31 @@ class ResponseDone:
 
 
 @dataclass(frozen=True, slots=True)
+class SpeechStopped:
+    """VAD edge: the candidate stopped talking. Provider-side, this is
+    roughly when the input audio buffer commits and (for OpenAI) can
+    auto-trigger response generation -- timing instrumentation only, never
+    forwarded to the frontend as its own message."""
+
+
+@dataclass(frozen=True, slots=True)
+class ResponseCreated:
+    """The provider began generating the next response (OpenAI's
+    response.created). Timing instrumentation only: this is the event a
+    PatientState instructions update (see app.services.patient_state) is
+    racing to beat -- see PATIENT STATE TIMING logging in
+    app.routers.speaking_realtime."""
+
+
+@dataclass(frozen=True, slots=True)
+class InstructionsAcked:
+    """The provider confirmed a session.update was processed
+    (OpenAI's session.updated). Fires for every session.update, including
+    the initial connect() one -- not just live PatientState pushes.
+    Timing instrumentation only."""
+
+
+@dataclass(frozen=True, slots=True)
 class Interrupted:
     """The nurse started talking while the patient's reply was still
     playing. The router forwards this to the client (which stops local
@@ -105,6 +130,9 @@ RealtimeEvent = (
     | TranscriptDelta
     | TranscriptFinal
     | ResponseDone
+    | SpeechStopped
+    | ResponseCreated
+    | InstructionsAcked
     | Interrupted
     | ProviderError
 )

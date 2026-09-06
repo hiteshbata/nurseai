@@ -1,0 +1,46 @@
+{
+  "case_id": "case_004",
+  "scenario": {
+    "title": "Information given with zero E-indicator technique",
+    "setting": "Discharge planning",
+    "difficulty": "medium",
+    "specialty": "general medicine",
+    "nurse_tasks": [
+      "Explain discharge medication"
+    ],
+    "patient_name": "Robert",
+    "patient_age": 70,
+    "patient_condition": "ready for discharge",
+    "patient_mood": "neutral",
+    "patient_background": "Routine discharge.",
+    "patient_concerns": [],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "nurse",
+      "content": "You're being discharged today. Take two tablets of amoxicillin three times a day for one week, and paracetamol as needed for pain."
+    },
+    {
+      "turn_index": 1,
+      "role": "patient",
+      "content": "Okay."
+    },
+    {
+      "turn_index": 2,
+      "role": "nurse",
+      "content": "A follow-up letter will be sent to your GP."
+    },
+    {
+      "turn_index": 3,
+      "role": "patient",
+      "content": "Alright."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

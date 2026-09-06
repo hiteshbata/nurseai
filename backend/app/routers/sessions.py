@@ -5,7 +5,12 @@ from app.routers.auth import get_current_user, get_user_supabase, UserInfo
 from app.core.supabase import get_supabase
 from supabase import Client
 from app.services.plan_gating import get_plan_from_profile, parse_timestamp
-from app.services.institution_access import get_effective_speaking_limit
+from app.services.institution_access import (
+    get_effective_speaking_limit,
+    get_active_institution_module_access,
+    is_active_institution_member,
+)
+from app.services.institution_admin import get_qualifying_memberships, ROLE_RANK
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -59,6 +64,28 @@ def _usage_payload(profile_data: dict, month_start: str, plan_limit: int) -> dic
 def get_session_usage(current_user: UserInfo = Depends(get_current_user)):
     supabase = get_supabase()
 
+    # Smallest reusable way to expose institution state to the frontend: it
+    # already fetches /sessions/usage for plan/quota on every authenticated
+    # route (see AppShell.tsx), so nav visibility rides along here instead of
+    # a second endpoint/fetch. modules is only resolved when the membership
+    # check is true -- a plain B2C user skips the extra query entirely.
+    is_institution_member = is_active_institution_member(supabase, current_user.id)
+    institution_modules = (
+        sorted(get_active_institution_module_access(supabase, current_user.id)["modules"])
+        if is_institution_member else []
+    )
+
+    # Same ride-along as above, for the Institution nav section: highest
+    # teacher/institution_admin role across any active qualifying membership,
+    # or None. This is nav-visibility only -- the actual authorization
+    # boundary is require_active_institution_role on the /institution/*
+    # routes themselves, re-resolved server-side on every call.
+    admin_memberships = get_qualifying_memberships(supabase, current_user.id, "teacher")
+    institution_admin_role = (
+        max((m["role"] for m in admin_memberships), key=lambda r: ROLE_RANK[r])
+        if admin_memberships else None
+    )
+
     profile = supabase.table("user_profiles").select(
         "plan, plan_expires_at, sessions_used_this_month, sessions_reset_date, auto_renew_enabled, bonus_sessions"
     ).eq("user_id", current_user.id).execute()
@@ -73,11 +100,18 @@ def get_session_usage(current_user: UserInfo = Depends(get_current_user)):
             "plan": "free",
             "auto_renew_enabled": False,
             "plan_expires_at": None,
+            "is_institution_member": is_institution_member,
+            "institution_modules": institution_modules,
+            "institution_admin_role": institution_admin_role,
         }
 
     plan = get_plan_from_profile(profile.data[0])
     plan_limit = get_effective_speaking_limit(supabase, current_user.id, plan)
-    return _usage_payload(profile.data[0], get_month_start_utc(), plan_limit)
+    payload = _usage_payload(profile.data[0], get_month_start_utc(), plan_limit)
+    payload["is_institution_member"] = is_institution_member
+    payload["institution_modules"] = institution_modules
+    payload["institution_admin_role"] = institution_admin_role
+    return payload
 
 
 @router.post("/check-and-increment")

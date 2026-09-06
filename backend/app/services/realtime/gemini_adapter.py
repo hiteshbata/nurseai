@@ -147,6 +147,17 @@ class GeminiLiveAdapter(RealtimeProviderAdapter):
         # explicit_cancel_required=False.
         return
 
+    async def update_instructions(self, instructions: str) -> None:
+        # ponytail: BidiGenerateContent's client envelope has no message
+        # that replaces systemInstruction after setup (see module docstring
+        # and capabilities.GEMINI_LIVE_CAPABILITIES.supports_live_instruction_update)
+        # -- honoring this would require reconnecting, which the interface
+        # contract explicitly forbids. Documented no-op so the router can
+        # call it unconditionally on every provider. Upgrade path: if
+        # Google ships a live systemInstruction-update message for Live API,
+        # wire it here and flip the capability flag.
+        return
+
     async def receive_events(self) -> AsyncIterator[RealtimeEvent | bytes]:
         if self._ws is None:
             return

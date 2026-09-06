@@ -280,11 +280,26 @@ class _FakeProfileQuery:
         return _FakeResult([{"plan": self._plan, "plan_expires_at": expires_at}])
 
 
+class _FakeInstitutionMembersQuery:
+    def select(self, *_a, **_k):
+        return self
+
+    def eq(self, *_a, **_k):
+        return self
+
+    def execute(self):
+        return _FakeResult([])
+
+
 class _FakeProfileSupabase:
     def __init__(self, plan):
         self._plan = plan
 
     def table(self, name):
+        if name == "institution_members":
+            # No institution ties -- free plan must stay locked out, not
+            # accidentally granted via an institution grant that doesn't exist.
+            return _FakeInstitutionMembersQuery()
         assert name == "user_profiles"
         return _FakeProfileQuery(self._plan)
 

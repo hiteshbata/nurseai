@@ -1,0 +1,43 @@
+{
+  "case_id": "case_005",
+  "scenario": {
+    "title": "Single concern, cleanly resolved",
+    "setting": "Oncology day unit",
+    "difficulty": "easy",
+    "specialty": "oncology",
+    "nurse_tasks": [
+      "Address fatigue concern"
+    ],
+    "patient_name": "Grace",
+    "patient_age": 61,
+    "patient_condition": "on chemotherapy",
+    "patient_mood": "tired",
+    "patient_background": "Third cycle of chemotherapy.",
+    "patient_concerns": [
+      "Is it normal to feel this tired after chemotherapy?"
+    ],
+    "hidden_information_items": [],
+    "emotional_triggers": []
+  },
+  "transcript": [
+    {
+      "turn_index": 0,
+      "role": "patient",
+      "content": "Is it normal to feel this tired after chemotherapy?"
+    },
+    {
+      "turn_index": 1,
+      "role": "nurse",
+      "content": "Yes, that's a very common and expected side effect at this stage of treatment. It should ease gradually over the next week."
+    },
+    {
+      "turn_index": 2,
+      "role": "patient",
+      "content": "Oh good, I was worried something else was wrong."
+    }
+  ],
+  "audio": {
+    "recording_available": false,
+    "note": "This benchmark contains no real audio recordings for any case. Base Intelligibility and Fluency on genuine acoustic evidence only; since none exists here, mark both status=\"limited_evidence\", level=null for every case in this package. Do not infer pronunciation or spoken fluency from transcript spelling or word choice."
+  }
+}

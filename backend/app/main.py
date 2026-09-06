@@ -10,7 +10,7 @@ from app.core.supabase import get_supabase
 from app.core.redis_client import get_redis
 from app.core import circuit_breaker
 from app.core.request_id import RequestIDMiddleware, RequestIDLogFilter, get_request_id
-from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, admin_ai_models, admin_content_studio, admin_institutions, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads, reading, listening, hub, vocab, mock, referrals, tools, technique, practice, institutions, institution
+from app.routers import auth, questions, speaking, speaking_realtime, scoring, progress, admin, admin_ai_models, admin_content_studio, admin_speaking_evidence, admin_institutions, grammar, comparison, writing, onboarding, scenario_generator, payments, sessions, profile, plans, submissions, leads, reading, listening, hub, vocab, mock, referrals, tools, technique, practice, institutions, institution
 from app.services.oet_questions import oet_service
 from app.services.seed_scenarios import seed_scenarios
 
@@ -201,6 +201,7 @@ app.include_router(progress.router)
 app.include_router(admin.router)
 app.include_router(admin_ai_models.router)
 app.include_router(admin_content_studio.router)
+app.include_router(admin_speaking_evidence.router)
 app.include_router(grammar.router)
 app.include_router(comparison.router)
 app.include_router(writing.router)

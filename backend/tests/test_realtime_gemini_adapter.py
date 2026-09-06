@@ -150,6 +150,19 @@ def test_cancel_response_is_always_a_noop():
     assert fake_ws.sent == []
 
 
+def test_update_instructions_is_documented_noop():
+    # No client->server message exists for replacing systemInstruction after
+    # setup (see GEMINI_LIVE_CAPABILITIES.supports_live_instruction_update) --
+    # must be safe to call and must not send anything, connected or not.
+    _run(_adapter().update_instructions("x"))  # never connected
+
+    fake_ws = FakeWS()
+    adapter = _adapter()
+    adapter._ws = fake_ws
+    _run(adapter.update_instructions("x"))
+    assert fake_ws.sent == []
+
+
 def test_disconnect_is_idempotent_and_safe_when_never_connected():
     adapter = _adapter()
     _run(adapter.disconnect())

@@ -127,14 +127,14 @@ async def _require_writing_scenario(supabase, user_id: str, scenario_id: int) ->
     """Plan-gate writing access and fetch the scenario. Shared by the submit path."""
     plan = await _require_writing_plan(supabase, user_id, scenario_id)
     scenario_data = await run_sync(
-        supabase.table("scenarios").select("id, title, setting, nurse_card").eq("id", scenario_id).execute
+        supabase.table("scenarios").select("id, title, setting, nurse_card, key_points").eq("id", scenario_id).execute
     )
     if not scenario_data.data:
         raise HTTPException(status_code=404, detail="Scenario not found")
     return scenario_data.data[0], plan
 
 
-async def _score_and_save(supabase, user_db, user_id: str, scenario_id: int, content: str, nurse_card: dict, scenario_title: str, case_notes: str = "") -> tuple[dict, Dict[str, float]]:
+async def _score_and_save(supabase, user_db, user_id: str, scenario_id: int, content: str, nurse_card: dict, scenario_title: str, case_notes: str = "", key_points: Optional[list] = None) -> tuple[dict, Dict[str, float]]:
     """Score writing content and persist the submission. Used by /submit (typed, or
     text confirmed after photo OCR). Returns (feedback, normalized_criterion_scores) --
     the latter for the caller to build insights from without re-deriving it."""
@@ -144,6 +144,7 @@ async def _score_and_save(supabase, user_db, user_id: str, scenario_id: int, con
         scenario_title=scenario_title,
         case_notes=case_notes,
         supabase=supabase,
+        key_points=key_points,
     )
 
     if feedback.get("provider_failure"):
@@ -406,6 +407,7 @@ async def submit_writing(
         supabase, user_db, current_user.id, request.scenario_id,
         request.content, scenario.get("nurse_card", {}), scenario.get("title", ""),
         case_notes=scenario.get("setting", ""),
+        key_points=scenario.get("key_points"),
     )
     insights = await _build_writing_insights(criterion_scores, current_user, user_db)
 

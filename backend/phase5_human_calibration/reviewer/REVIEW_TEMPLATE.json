@@ -1,0 +1,103 @@
+{
+  "case_id": "",
+  "reviewer_id": null,
+  "review_status": "in_progress",
+  "criteria": [
+    {
+      "criterion": "intelligibility",
+      "family": "linguistic",
+      "status": "limited_evidence",
+      "level": null,
+      "justification": "",
+      "evidence_refs": [],
+      "limitations": [],
+      "indicator_notes": []
+    },
+    {
+      "criterion": "fluency",
+      "family": "linguistic",
+      "status": "limited_evidence",
+      "level": null,
+      "justification": "",
+      "evidence_refs": [],
+      "limitations": [],
+      "indicator_notes": []
+    },
+    {
+      "criterion": "appropriateness_of_language",
+      "family": "linguistic",
+      "status": "limited_evidence",
+      "level": null,
+      "justification": "",
+      "evidence_refs": [],
+      "limitations": [],
+      "indicator_notes": []
+    },
+    {
+      "criterion": "resources_of_grammar_and_expression",
+      "family": "linguistic",
+      "status": "limited_evidence",
+      "level": null,
+      "justification": "",
+      "evidence_refs": [],
+      "limitations": [],
+      "indicator_notes": []
+    },
+    {
+      "criterion": "relationship_building",
+      "family": "clinical",
+      "status": "limited_evidence",
+      "level": null,
+      "justification": "",
+      "evidence_refs": [],
+      "limitations": [],
+      "indicator_notes": []
+    },
+    {
+      "criterion": "patient_perspective",
+      "family": "clinical",
+      "status": "limited_evidence",
+      "level": null,
+      "justification": "",
+      "evidence_refs": [],
+      "limitations": [],
+      "indicator_notes": []
+    },
+    {
+      "criterion": "providing_structure",
+      "family": "clinical",
+      "status": "limited_evidence",
+      "level": null,
+      "justification": "",
+      "evidence_refs": [],
+      "limitations": [],
+      "indicator_notes": []
+    },
+    {
+      "criterion": "information_gathering",
+      "family": "clinical",
+      "status": "limited_evidence",
+      "level": null,
+      "justification": "",
+      "evidence_refs": [],
+      "limitations": [],
+      "indicator_notes": []
+    },
+    {
+      "criterion": "information_giving",
+      "family": "clinical",
+      "status": "limited_evidence",
+      "level": null,
+      "justification": "",
+      "evidence_refs": [],
+      "limitations": [],
+      "indicator_notes": []
+    }
+  ],
+  "overall_notes": "",
+  "review_metadata": {
+    "started_at": null,
+    "completed_at": null,
+    "minutes_spent": null
+  }
+}

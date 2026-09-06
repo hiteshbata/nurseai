@@ -34,7 +34,7 @@ export default function JoinInvitePage() {
     try {
       const res = await api.post(`/institutions/invites/${params.token}/accept`)
       toast.success(`You're in! Welcome to ${res.data.institution_name}.`)
-      router.push('/dashboard')
+      router.push('/onboarding')
     } catch (error: any) {
       toast.error(error?.response?.data?.detail || 'Could not accept this invitation.')
       setAccepting(false)

@@ -1,0 +1,3407 @@
+{
+  "case_01_strong_overall": {
+    "opaque_case_id": "case_015",
+    "archetype": "strong_overall",
+    "tags": [],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 5,
+        "level_label": null,
+        "justification": "Azure pronunciation overall score 84.0 with no problem words flagged; clearly intelligible throughout.",
+        "evidence_refs": [
+          {
+            "evidence_id": "overall_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 5,
+        "level_label": null,
+        "justification": "Fluency score 81.5, completeness 96.0; speech is smooth with no notable hesitation markers in the transcript.",
+        "evidence_refs": [
+          {
+            "evidence_id": "fluency_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 5,
+        "level_label": null,
+        "justification": "Plain, patient-appropriate register throughout (\"walk without a frame\", \"pain relief options\"); no jargon detected.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_10",
+            "turn_index": 10,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": [
+          "jargon-absence check only covers lexical items; full register/lexis analysis unavailable this session"
+        ]
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 5,
+        "level_label": null,
+        "justification": "Grammatically accurate, varied sentence structure (conditional \"with physiotherapy you'll regain\") across all turns; no structured grammar detector exists, judged from transcript alone.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_6",
+            "turn_index": 6,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": [
+          "no structured grammar analysis detector available"
+        ]
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 3,
+        "level_label": "Adept use",
+        "justification": "Full appropriate opening (greeting, name, purpose), explicit empathy acknowledgement at turn 2, and the patient's anxious emotion resolves to reassured immediately after.",
+        "evidence_refs": [
+          {
+            "evidence_id": "opening_greeting",
+            "turn_index": 0,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "empathy_acknowledgement",
+            "turn_index": 2,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "current_emotion",
+            "turn_index": 2,
+            "evidence_level": "L4_patient_outcome",
+            "source": "state_transition",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no dedicated interruption metric beyond session-level count"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 3,
+        "level_label": "Adept use",
+        "justification": "Nurse proactively explored the mobility concern (turn 8), the patient raised it explicitly (turn 9), and it was addressed with a clear, direct answer and resolved by turn 11.",
+        "evidence_refs": [
+          {
+            "evidence_id": "concern_exploration",
+            "turn_index": 8,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "Will I be able to walk again unaided?::resolved",
+            "turn_index": 11,
+            "evidence_level": "L4_patient_outcome",
+            "source": "concern_timeline",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 3,
+        "level_label": "Adept use",
+        "justification": "Clear explicit sequencing (\"First ... then ... finally\") announced up front and followed through in order across the remaining turns.",
+        "evidence_refs": [
+          {
+            "evidence_id": "consultation_sequence_marker",
+            "turn_index": 6,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "organization_marker",
+            "turn_index": 6,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 2,
+        "level_label": "Competent use",
+        "justification": "One clear open question used to explore the pain (turn 4); no compound/leading questions present. No clarification or summary evidence this session, so this is graded on the single open-question sample only, not extrapolated higher.",
+        "evidence_refs": [
+          {
+            "evidence_id": "open_question",
+            "turn_index": 4,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no D1 active-listening-support or D4/D5 clarification/summary evidence detected this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 2,
+        "level_label": "Competent use",
+        "justification": "Explicitly checked further questions before closing (turn 8) and confirmed understanding after answering the mobility question (turn 10); no evidence of establishing prior knowledge first.",
+        "evidence_refs": [
+          {
+            "evidence_id": "further_information_check",
+            "turn_index": 8,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "understanding_checked",
+            "turn_index": 10,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no E1 prior-knowledge-check evidence detected this session"
+        ]
+      }
+    ]
+  },
+  "case_02_weak_overall": {
+    "opaque_case_id": "case_016",
+    "archetype": "weak_overall",
+    "tags": [],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this (non-Elite) session; intelligibility cannot be judged from transcript text alone.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available; fluency cannot be inferred from spelling or word choice.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 1,
+        "level_label": null,
+        "justification": "Unexplained clinical jargon (\"cannula site\") used with no lay explanation, and the patient's follow-up question suggests confusion, not comprehension.",
+        "evidence_refs": [
+          {
+            "evidence_id": "cannula",
+            "turn_index": 0,
+            "evidence_level": "L2_deterministic",
+            "source": "jargon_evidence",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 2,
+        "level_label": null,
+        "justification": "Grammar itself is accurate throughout; scored on the small available transcript sample only, no structured grammar detector exists.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_2",
+            "turn_index": 2,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": [
+          "no structured grammar analysis detector available"
+        ]
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 0,
+        "level_label": "Ineffective use",
+        "justification": "No greeting or introduction; the patient's pain concern is met with an explicit dismissive response (\"just deal with it\") and no acknowledgement of distress follows.",
+        "evidence_refs": [
+          {
+            "evidence_id": "dismissive_response",
+            "turn_index": 2,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": []
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 0,
+        "level_label": "Ineffective use",
+        "justification": "The patient's concern is raised explicitly (turn 1) and never explored or addressed; the consultation moves straight to discharge logistics instead.",
+        "evidence_refs": [
+          {
+            "evidence_id": "concern_raised",
+            "turn_index": 1,
+            "evidence_level": "L4_patient_outcome",
+            "source": "patient_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": []
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing, signposting, or organizing language detected this session -- an evidence gap, not itself proof of disorganization.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 1,
+        "level_label": "Partially effective use",
+        "justification": "Only one closed question used (\"Any other issues?\") to close out the consultation; no open questions, clarification, or summarising detected.",
+        "evidence_refs": [
+          {
+            "evidence_id": "closed_question",
+            "turn_index": 4,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no D1 active-listening or D4/D5 clarification/summary evidence this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No prior-knowledge check, pacing, reaction-checking, understanding-check, or further-information check detected this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_03_strong_language_weak_clinical": {
+    "opaque_case_id": "case_017",
+    "archetype": "strong_language_weak_clinical",
+    "tags": [],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 6,
+        "level_label": null,
+        "justification": "Azure overall score 91.0, no problem words; highly intelligible.",
+        "evidence_refs": [
+          {
+            "evidence_id": "overall_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 6,
+        "level_label": null,
+        "justification": "Fluency score 88.0, completeness 98.0; no disfluency evident.",
+        "evidence_refs": [
+          {
+            "evidence_id": "fluency_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 5,
+        "level_label": null,
+        "justification": "No jargon; register is formal but plain and understandable throughout.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_0",
+            "turn_index": 0,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 6,
+        "level_label": null,
+        "justification": "Complex, accurate sentence structures (\"are not something I can predict definitively\") used correctly and consistently.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_2",
+            "turn_index": 2,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 0,
+        "level_label": "Ineffective use",
+        "justification": "No greeting, and the patient's explicit self-consciousness (turn 3, an emotional-trigger event) receives no acknowledgement at all -- the nurse moves straight to logistics.",
+        "evidence_refs": [
+          {
+            "evidence_id": "dismissive_response",
+            "turn_index": 2,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "emotional_trigger_fired",
+            "turn_index": 3,
+            "evidence_level": "L4_patient_outcome",
+            "source": "patient_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": []
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 0,
+        "level_label": "Ineffective use",
+        "justification": "Cosmetic concern raised explicitly (turn 1) and answered with a factually correct but unexplored, unaddressed deflection.",
+        "evidence_refs": [
+          {
+            "evidence_id": "concern_raised",
+            "turn_index": 1,
+            "evidence_level": "L4_patient_outcome",
+            "source": "patient_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": []
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing or signposting language detected this very short session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No questions of any kind (open, closed, or otherwise) detected this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "Follow-up logistics were given but with no prior-knowledge check, pacing, or invitation for questions detected.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_04_weak_language_strong_clinical": {
+    "opaque_case_id": "case_006",
+    "archetype": "weak_language_strong_clinical",
+    "tags": [],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 2,
+        "level_label": null,
+        "justification": "Azure overall score 52.0 with two flagged problem words; intelligible but requires listener effort at times.",
+        "evidence_refs": [
+          {
+            "evidence_id": "overall_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 2,
+        "level_label": null,
+        "justification": "Fluency score 47.0; noticeably effortful but the message is always delivered.",
+        "evidence_refs": [
+          {
+            "evidence_id": "fluency_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 3,
+        "level_label": null,
+        "justification": "Simple, plain register throughout, no jargon; appropriate for the patient even if grammatically imperfect.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_4",
+            "turn_index": 4,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 2,
+        "level_label": null,
+        "justification": "Frequent article/tense errors (\"How you feeling\", \"Doctor think\", \"You have understand\") throughout, though meaning always stays clear.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_0",
+            "turn_index": 0,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": [
+          "no structured grammar analysis detector available; judged from transcript alone"
+        ]
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 3,
+        "level_label": "Adept use",
+        "justification": "Warm greeting with name and role, explicit empathy for fear, and the patient's fear resolves to reassured immediately after.",
+        "evidence_refs": [
+          {
+            "evidence_id": "opening_greeting",
+            "turn_index": 0,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "empathy_acknowledgement",
+            "turn_index": 2,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": []
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 3,
+        "level_label": "Adept use",
+        "justification": "The operation-fear concern is raised, directly and correctly addressed, and reaches resolved status by the next patient turn.",
+        "evidence_refs": [
+          {
+            "evidence_id": "Will I need another operation?::resolved",
+            "turn_index": 5,
+            "evidence_level": "L4_patient_outcome",
+            "source": "concern_timeline",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No explicit sequencing or signposting language detected, though the consultation does follow a sensible informal order.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No open/closed questions, clarification, or summarising detected -- the nurse mostly gave information rather than gathered it this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 2,
+        "level_label": "Competent use",
+        "justification": "Understanding explicitly checked and further questions invited before closing, though no prior-knowledge check preceded the explanation.",
+        "evidence_refs": [
+          {
+            "evidence_id": "understanding_checked",
+            "turn_index": 6,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "further_information_check",
+            "turn_index": 6,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no E1 prior-knowledge-check evidence detected this session"
+        ]
+      }
+    ]
+  },
+  "case_05_excellent_relationship_building": {
+    "opaque_case_id": "case_001",
+    "archetype": "excellent_relationship_building",
+    "tags": [],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Azure overall score 76.0; clearly intelligible with only minor imperfection.",
+        "evidence_refs": [
+          {
+            "evidence_id": "overall_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Fluency score 74.0; natural pacing throughout the short exchange.",
+        "evidence_refs": [
+          {
+            "evidence_id": "fluency_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Warm, plain, non-clinical register throughout; no jargon.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_4",
+            "turn_index": 4,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Accurate, naturally varied phrasing (\"most people would feel exactly the same in your position\").",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_4",
+            "turn_index": 4,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 3,
+        "level_label": "Adept use",
+        "justification": "Textbook A1-A4 coverage in a single short exchange: named greeting and role (A1), attentive acknowledgement twice (A2), explicit non-judgmental framing (A3), and repeated genuine empathy for a named fear (A4), with the patient's own words (\"that actually helps\") confirming impact.",
+        "evidence_refs": [
+          {
+            "evidence_id": "opening_greeting",
+            "turn_index": 0,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "empathy_acknowledgement",
+            "turn_index": 2,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "supportive_nonjudgmental",
+            "turn_index": 4,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "emotional_trigger_fired",
+            "turn_index": 1,
+            "evidence_level": "L4_patient_outcome",
+            "source": "patient_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No formal concern was raised or explored this session -- the scenario has no card-defined concerns and none emerged in the transcript.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: no concern-related evidence this session"
+        ]
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "This short rapport-focused exchange has no sequencing or signposting language to evaluate.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No questions were asked in this rapport-focused exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No clinical information was given in this exchange to check understanding of.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_06_poor_relationship_building": {
+    "opaque_case_id": "case_007",
+    "archetype": "poor_relationship_building",
+    "tags": [],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 1,
+        "level_label": null,
+        "justification": "Accusatory, blaming phrasing (\"Have you even\", \"if you'd just followed the plan\") is not appropriate register for a patient already ashamed about adherence.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_2",
+            "turn_index": 2,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 3,
+        "level_label": null,
+        "justification": "Grammar itself is accurate; scored on the small available sample, no structured detector exists.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_0",
+            "turn_index": 0,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 0,
+        "level_label": "Ineffective use",
+        "justification": "No greeting; two separate judgmental remarks about adherence, and the patient's admission of a hard few months (an emotional-trigger event) is met with blame rather than acknowledgement, visibly worsening the patient's emotional state.",
+        "evidence_refs": [
+          {
+            "evidence_id": "potentially_judgmental",
+            "turn_index": 0,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "potentially_judgmental",
+            "turn_index": 2,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "current_emotion",
+            "turn_index": 2,
+            "evidence_level": "L4_patient_outcome",
+            "source": "state_transition",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": []
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No concern was raised or explored -- the patient's silence at turn 3 is notable but this indicator has no dedicated detector.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: no concern-related evidence this session"
+        ]
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing or signposting language detected in this brief, confrontational exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "The opening line is phrased as a question but reads as accusatory rather than information-seeking; no detector-recognised open/closed question form present.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No information was given about the diabetes management plan itself in this exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_07_poor_structure_and_questioning": {
+    "opaque_case_id": "case_003",
+    "archetype": "poor_structure_and_questioning",
+    "tags": [],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 3,
+        "level_label": null,
+        "justification": "No jargon, but the leading framing (\"nothing serious, right?\") pressures the patient toward a particular answer rather than inviting an honest one.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_2",
+            "turn_index": 2,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Grammar is accurate throughout; scored from the transcript sample alone.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_0",
+            "turn_index": 0,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No greeting, empathy, or non-judgmental-framing evidence detected this session -- a neutral, task-focused exchange with nothing to evaluate for rapport.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: A1-A4 all empty this session"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "The patient's dizziness (turn 1) is a genuine cue that is immediately minimised (turn 2) rather than explored, but no dedicated cue-response detector fired here.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: no concern-exploration evidence this session"
+        ]
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing, signposting, or organizing language used across the checklist-style exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 0,
+        "level_label": "Ineffective use",
+        "justification": "Every question is either compound (three symptoms bundled into one) or leading (\"do you?\", \"right?\") -- exactly the D3 anti-pattern -- and the dizziness the patient does disclose is talked past rather than clarified or summarised back.",
+        "evidence_refs": [
+          {
+            "evidence_id": "compound_question",
+            "turn_index": 0,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "leading_question",
+            "turn_index": 0,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "leading_question",
+            "turn_index": 2,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "compound_question",
+            "turn_index": 4,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no D1 active-listening or D4/D5 clarification/summary evidence this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No clinical information was given to the patient in this pre-op checklist exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_08_information_giving_all_gaps": {
+    "opaque_case_id": "case_004",
+    "archetype": "information_giving_all_gaps",
+    "tags": [],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 2,
+        "level_label": null,
+        "justification": "Drug names given without lay explanation (\"amoxicillin\") for an elderly patient with no confirmation of comprehension.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_0",
+            "turn_index": 0,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Grammatically accurate throughout; scored from the transcript sample alone.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_0",
+            "turn_index": 0,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No greeting or interpersonal evidence detected in this brief, purely transactional exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: A1-A4 all empty this session"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No concern was raised or explored this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: no concern-related evidence this session"
+        ]
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing or signposting language detected.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No questions were asked in this purely instructional exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "Medication and follow-up information IS given, but none of the five information-giving indicator behaviours (prior-knowledge check, paced delivery with reaction-checking, invitation to contribute, understanding check, or further-information check) fired this session. This is a deliberate calibration case: the content is delivered, but there is no detector evidence of HOW it was delivered, so this must read as an evidence gap, not as an earned Ineffective (0) -- collapsing the two would be the exact status/level conflation this benchmark exists to catch.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_09_concern_resolved_clean": {
+    "opaque_case_id": "case_005",
+    "archetype": "concern_resolved",
+    "tags": [],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Plain, reassuring register with no jargon.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_1",
+            "turn_index": 1,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Accurate, natural phrasing throughout.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_1",
+            "turn_index": 1,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No greeting or empathy-specific evidence in this very short, already-in-progress exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: A1-A4 all empty this session"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 3,
+        "level_label": "Adept use",
+        "justification": "The patient's fatigue concern is raised, directly and reassuringly addressed with a clear clinical explanation, and reaches resolved by the very next turn -- a clean, complete B1-B3 lifecycle.",
+        "evidence_refs": [
+          {
+            "evidence_id": "concern_raised",
+            "turn_index": 0,
+            "evidence_level": "L4_patient_outcome",
+            "source": "patient_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "concern_addressing",
+            "turn_index": 1,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "Is it normal to feel this tired after chemotherapy?::resolved",
+            "turn_index": 2,
+            "evidence_level": "L4_patient_outcome",
+            "source": "concern_timeline",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing or signposting language in this three-turn exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No questions were asked by the nurse in this exchange -- the patient initiated it.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "Clinical information was given as part of addressing the concern, but no separate E1-E5 technique markers fired.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_10_concern_reopened": {
+    "opaque_case_id": "case_002",
+    "archetype": "concern_reopened",
+    "tags": [],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Plain, reassuring register with no jargon throughout.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_5",
+            "turn_index": 5,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Accurate, natural phrasing throughout.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_5",
+            "turn_index": 5,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No greeting, empathy, or non-judgmental-framing evidence detected this session; the respectful handling of the reopened concern (turn 5) is B-criterion evidence, not A1-A4 evidence.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: A1/A3/A4 empty; A2 has only a zero interrupted_count signal this session"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 2,
+        "level_label": "Competent use",
+        "justification": "The drowsiness concern was resolved once (turn 2) but genuinely reopened by new information the patient introduced (turn 4) -- the reopened_events record shows this explicitly. The second addressing (turn 5) is more cautious and appropriately adjusted (advising against driving) rather than just repeating the first answer, but the concern's FINAL status is 'addressed', not 'resolved' -- this must not be read as a failure of the first response, which was reasonable given the information available at the time.",
+        "evidence_refs": [
+          {
+            "evidence_id": "Will the medication make me drowsy at work?::resolved",
+            "turn_index": 2,
+            "evidence_level": "L4_patient_outcome",
+            "source": "concern_timeline",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "Will the medication make me drowsy at work?::raised",
+            "turn_index": 4,
+            "evidence_level": "L4_patient_outcome",
+            "source": "concern_timeline",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "Will the medication make me drowsy at work?::addressed",
+            "turn_index": 5,
+            "evidence_level": "L4_patient_outcome",
+            "source": "concern_timeline",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing or signposting language detected this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No questions were asked by the nurse this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "Information was given as part of addressing the concern, but no separate E1-E5 technique markers fired.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_11_multiple_concerns_one_ignored": {
+    "opaque_case_id": "case_018",
+    "archetype": "multiple_concerns_one_ignored",
+    "tags": [],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Plain register, no jargon.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_1",
+            "turn_index": 1,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Accurate, well-structured phrasing.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_1",
+            "turn_index": 1,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No greeting or empathy-specific evidence in this brief, task-focused exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: A1-A4 all empty this session"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 1,
+        "level_label": "Partially effective use",
+        "justification": "Two concerns were raised in the same patient turn. The sport-return concern was answered thoroughly and reached resolved. The scarring concern received no acknowledgement at all and its final status remains 'raised' -- the consultation moves straight to booking physio. One well-handled concern does not offset one entirely dropped concern; the criterion is judged on the complete concern set, not the better half of it.",
+        "evidence_refs": [
+          {
+            "evidence_id": "concern_raised",
+            "turn_index": 0,
+            "evidence_level": "L4_patient_outcome",
+            "source": "patient_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "When can I go back to playing sport?::resolved",
+            "turn_index": 2,
+            "evidence_level": "L4_patient_outcome",
+            "source": "concern_timeline",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": [
+          "'Will this leave a permanent scar?' has no addressing/resolution evidence this session"
+        ]
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing or signposting language detected this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No questions asked by the nurse this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "Timeline information was given as part of addressing one concern, but no separate E1-E5 technique markers fired.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_12_conflicting_evidence": {
+    "opaque_case_id": "case_012",
+    "archetype": "conflicting_evidence",
+    "tags": [],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 2,
+        "level_label": null,
+        "justification": "No jargon, but the turn-1 phrasing is dismissive in register regardless of how it is later classified.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_1",
+            "turn_index": 1,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Grammar itself is accurate throughout.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_3",
+            "turn_index": 3,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "evidence_conflict_unresolved",
+        "level": null,
+        "level_label": null,
+        "justification": "Two separate turns carry contradictory classifications of the same utterance. At turn 1, a deterministic detector flags dismissive_response while a semantic classifier flagged the identical line as attentive_acknowledgement -- per evidence-hierarchy precedence (L2 deterministic outranks L3 semantic) that one alone would resolve to a dismissive reading. But at turn 3, two semantic signals disagree about the same sentence -- supportive_nonjudgmental vs potentially_judgmental -- with no deterministic or direct-transcript signal available to arbitrate (both are L3_semantic, so precedence does not apply). Whether turn 3 reads as a genuine repair attempt or a further minimisation materially changes the overall criterion level, so no single defensible level can be committed to without resolving it; a human OET reviewer would need tone/context neither classifier captured.",
+        "evidence_refs": [
+          {
+            "evidence_id": "dismissive_response",
+            "turn_index": 1,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "attentive_acknowledgement",
+            "turn_index": 1,
+            "evidence_level": "L3_semantic",
+            "source": "candidate_event",
+            "provenance": "semantic_model"
+          },
+          {
+            "evidence_id": "supportive_nonjudgmental",
+            "turn_index": 3,
+            "evidence_level": "L3_semantic",
+            "source": "candidate_event",
+            "provenance": "semantic_model"
+          },
+          {
+            "evidence_id": "potentially_judgmental",
+            "turn_index": 3,
+            "evidence_level": "L3_semantic",
+            "source": "candidate_event",
+            "provenance": "semantic_model"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "turn 1 resolves via evidence-hierarchy precedence; turn 3 does not, and blocks a defensible overall level"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No concern was raised, explored, or addressed in this exchange -- it is entirely about the patient's frustration with progress, not a specific concern with a lifecycle to judge.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: no concern-related evidence this session"
+        ]
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing or signposting language detected this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No questions asked by the nurse this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No structured information-giving technique markers fired this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_13_minimal_consultation": {
+    "opaque_case_id": "case_013",
+    "archetype": "minimal_very_short_consultation",
+    "tags": [],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence, and even if there were, a single-word exchange is too short to judge acoustic intelligibility.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence, and a single word carries no fluency signal in any case.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "\"Hi\" alone is too minimal a sample to judge register or lexical appropriateness against.",
+        "evidence_refs": [],
+        "evidence_quality": "PARTIAL",
+        "limitations": [
+          "sample too short to support a defensible judgement despite structural PARTIAL evidence_quality"
+        ]
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "A single greeting word contains no grammatical structure to evaluate.",
+        "evidence_refs": [],
+        "evidence_quality": "PARTIAL",
+        "limitations": [
+          "sample too short to support a defensible judgement despite structural PARTIAL evidence_quality"
+        ]
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "A bare \"Hi\" with no name, role, or purpose does not meet the bar for a scored A1-A4 judgement; there is nothing else in the transcript to weigh.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: A1-A4 all empty this session"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No concern was raised or explored in this two-word exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: no concern-related evidence this session"
+        ]
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "A two-turn exchange has no structure to sequence or signpost.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No questions were asked in this exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No information was given in this exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_14_borderline_clinical_3_vs_2": {
+    "opaque_case_id": "case_019",
+    "archetype": "borderline_clinical_3_vs_2",
+    "tags": [
+      "borderline",
+      "adjacent_level",
+      "calibration_critical",
+      "clinical_3_vs_2"
+    ],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Plain, warm register throughout, no jargon.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_2",
+            "turn_index": 2,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Accurate, natural phrasing throughout.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_2",
+            "turn_index": 2,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 2,
+        "level_label": "Competent use",
+        "justification": "BORDERLINE 3 vs 2: the opening (name, role, purpose) is a full, clean A1, and the turn-2 empathy response is genuine and well-targeted at the patient's stated worry -- a reviewer weighting that strong start heavily could reasonably score this Adept use (3). This reference scores Competent use (2) instead because the only other candidate A2 evidence is a single bare 'Okay' at turn 4 (flagged uncertain by the classifier itself), and the patient's second, more frustrated disclosure at turn 5 receives no further empathetic response at all before the nurse moves on -- consistent excellent attentiveness across the whole exchange is what would justify a 3, and it isn't quite sustained here. This is a genuine judgement call, not an objectively correct answer; a careful reviewer scoring 3 instead would not be wrong.",
+        "evidence_refs": [
+          {
+            "evidence_id": "opening_greeting",
+            "turn_index": 0,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "empathy_acknowledgement",
+            "turn_index": 2,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "attentive_acknowledgement_uncertain",
+            "turn_index": 4,
+            "evidence_level": "L3_semantic",
+            "source": "candidate_event",
+            "provenance": "semantic_model"
+          },
+          {
+            "evidence_id": "current_emotion",
+            "turn_index": 5,
+            "evidence_level": "L4_patient_outcome",
+            "source": "state_transition",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "borderline 3-vs-2 call; see justification for the case for scoring 3 instead"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "The latch difficulty is an emotional disclosure handled under relationship-building, not a scenario-defined concern with its own raised/addressed/resolved lifecycle this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: no concern-related evidence this session"
+        ]
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing or signposting language detected this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No open/closed questions detected this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No clinical information was given in this brief exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_15_borderline_clinical_2_vs_1": {
+    "opaque_case_id": "case_011",
+    "archetype": "borderline_clinical_2_vs_1",
+    "tags": [
+      "borderline",
+      "adjacent_level",
+      "calibration_critical",
+      "clinical_2_vs_1"
+    ],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Plain register, no jargon.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_4",
+            "turn_index": 4,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Accurate throughout.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_4",
+            "turn_index": 4,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No greeting or empathy evidence detected in this task-focused exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: A1-A4 all empty this session"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No concern was raised or explored this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: no concern-related evidence this session"
+        ]
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 1,
+        "level_label": "Partially effective use",
+        "justification": "BORDERLINE 2 vs 1: all three C-indicators have SOME evidence -- an upfront two-item sequence announcement (C1, though only 'partial' quality, not a fuller multi-step sequence), an explicit topic-transition signpost 'moving on' (C2), and a deferral phrase 'we'll get to that in a second' offered as informal organisation (C3, also only 'partial'). A reviewer crediting genuine presence across all three sub-indicators could reasonably call this Competent use (2). This reference scores Partially effective use (1) because none of the three pieces is a full-strength example -- the sequencing covers only two items instead of the full session, and the C3 evidence is a promise to organise later rather than an actual organising technique in the moment. Reasonable evaluators could differ on how much partial-quality evidence across three indicators should be worth relative to one gap.",
+        "evidence_refs": [
+          {
+            "evidence_id": "consultation_sequence_marker_partial",
+            "turn_index": 0,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "topic_transition_detected",
+            "turn_index": 4,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "organization_marker_partial",
+            "turn_index": 6,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": [
+          "borderline 2-vs-1 call; see justification for the case for scoring 2 instead"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No open/closed questions were asked by the nurse this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "Dose information was given, but no E1-E5 technique markers fired this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_16_borderline_clinical_1_vs_0": {
+    "opaque_case_id": "case_009",
+    "archetype": "borderline_clinical_1_vs_0",
+    "tags": [
+      "borderline",
+      "adjacent_level",
+      "calibration_critical",
+      "clinical_1_vs_0"
+    ],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 3,
+        "level_label": null,
+        "justification": "No jargon, but the leading framing ('that's just normal, right?') pressures a particular answer.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_6",
+            "turn_index": 6,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Grammar is accurate throughout.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_0",
+            "turn_index": 0,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No greeting or empathy evidence detected this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: A1-A4 all empty this session"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No formal concern lifecycle this session; the chest-tightness disclosure is D-criterion evidence, not a scenario concern.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: no concern-related evidence this session"
+        ]
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing or signposting language detected this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 0,
+        "level_label": "Ineffective use",
+        "justification": "BORDERLINE 1 vs 0: turn 4 is a genuine, well-formed open question that also functions as a D4 clarification of the patient's vague 'not really' -- real technique, and it does surface a clinically relevant detail (tightness after stairs). A reviewer weighting that one strong moment could reasonably call this Partially effective use (1). This reference scores Ineffective use (0) instead because the very next question (turn 6) immediately reframes that new disclosure as 'just normal, right?' -- a leading question that pressures the patient back toward minimising the symptom they had just been drawn out on, on top of the leading/compound questions bracketing the exchange at turns 0 and 2. The single good moment is undone by what follows it rather than built on; a careful reviewer scoring 1 to credit the open/clarifying technique on its own terms would not be wrong.",
+        "evidence_refs": [
+          {
+            "evidence_id": "leading_question",
+            "turn_index": 0,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "compound_question",
+            "turn_index": 2,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "open_question",
+            "turn_index": 4,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "clarification_request",
+            "turn_index": 4,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "leading_question",
+            "turn_index": 6,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "borderline 1-vs-0 call; see justification for the case for scoring 1 instead"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No information was given to the patient in this triage exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_17_borderline_linguistic_5_vs_4": {
+    "opaque_case_id": "case_014",
+    "archetype": "borderline_linguistic_5_vs_4",
+    "tags": [
+      "borderline",
+      "adjacent_level",
+      "calibration_critical",
+      "linguistic_5_vs_4"
+    ],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "BORDERLINE 5 vs 4: Azure overall pronunciation score is 78.0 with zero flagged problem words, which is genuinely close to the range this benchmark's other cases treat as fully intelligible (case_01 scored 84.0 as a 5). A reviewer reading 'no problem words at all' as sufficient on its own could reasonably score this a 5. This reference scores 4 (clearly intelligible, only minor imperfection) instead, more conservatively, because a score in the high-70s sits closer to the middle of the observed range than to the clearly-5 cases elsewhere in this benchmark, and proximity to a boundary should not by itself be read as clearing it. This is a genuine judgement call: nothing in the evidence here objectively rules out 5.",
+        "evidence_refs": [
+          {
+            "evidence_id": "overall_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": [
+          "borderline 5-vs-4 call; see justification for the case for scoring 5 instead"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Fluency score 80.0, completeness 95.0; natural pacing throughout.",
+        "evidence_refs": [
+          {
+            "evidence_id": "fluency_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Plain, natural register, no jargon.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_0",
+            "turn_index": 0,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Accurate, natural phrasing throughout this short exchange.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_0",
+            "turn_index": 0,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "Only a bare greeting, no name/role/purpose or empathy evidence this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: A1-A4 all empty this session"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No concern was raised or explored in this routine check-in.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: no concern-related evidence this session"
+        ]
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing or signposting language in this brief exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "Only closed check-in questions detected, no D-indicator technique markers fired.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No clinical information was given in this check-in exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_18_borderline_linguistic_4_vs_3": {
+    "opaque_case_id": "case_010",
+    "archetype": "borderline_linguistic_4_vs_3",
+    "tags": [
+      "borderline",
+      "adjacent_level",
+      "calibration_critical",
+      "linguistic_4_vs_3"
+    ],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 3,
+        "level_label": null,
+        "justification": "Azure overall score 70.0, no problem words flagged; generally intelligible with some listener effort.",
+        "evidence_refs": [
+          {
+            "evidence_id": "overall_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 3,
+        "level_label": null,
+        "justification": "BORDERLINE 4 vs 3: fluency score is 64.0 with completeness 88.0, and the transcript shows two short hesitation markers ('um', a self-corrected 'in the -- in the morning'). A reviewer reading these as brief, natural self-corrections that never break communication could reasonably score this a 4 (occasional lapses only). This reference scores 3 (effective but with noticeable hesitation) instead because there are two separate disfluency markers in a very short, four-turn exchange -- proportionally more frequent than the single-lapse pattern a 4 would suggest -- though the message is always delivered clearly. A careful reviewer scoring 4 here would not be wrong.",
+        "evidence_refs": [
+          {
+            "evidence_id": "fluency_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": [
+          "borderline 4-vs-3 call; see justification for the case for scoring 4 instead"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Plain register, no jargon.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_0",
+            "turn_index": 0,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Grammar itself is accurate despite the hesitation markers.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_0",
+            "turn_index": 0,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No greeting or empathy evidence in this brief medication-counselling exchange.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: A1-A4 all empty this session"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No concern was raised or explored this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: no concern-related evidence this session"
+        ]
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing or signposting language detected this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "The patient asked the only question in this exchange; no nurse D-indicator technique markers fired.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "Dosing information was given, but no E1-E5 technique markers fired this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: E1-E5 all empty this session"
+        ]
+      }
+    ]
+  },
+  "case_19_long_consultation": {
+    "opaque_case_id": "case_008",
+    "archetype": "long_consultation_dense_evidence",
+    "tags": [
+      "long_consultation",
+      "evidence_volume",
+      "concern_reopened",
+      "multi_source_evidence"
+    ],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 5,
+        "level_label": null,
+        "justification": "Azure overall score 88.0 across a long, sustained exchange with no problem words flagged; clearly intelligible throughout.",
+        "evidence_refs": [
+          {
+            "evidence_id": "overall_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 5,
+        "level_label": null,
+        "justification": "Fluency score 85.0, completeness 97.0 sustained across a long, multi-topic consultation.",
+        "evidence_refs": [
+          {
+            "evidence_id": "fluency_score",
+            "turn_index": null,
+            "evidence_level": "L1_direct",
+            "source": "pronunciation",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Plain register throughout; the one piece of clinical jargon ('atorvastatin') is immediately followed by a plain-language explanation of what it does.",
+        "evidence_refs": [
+          {
+            "evidence_id": "atorvastatin",
+            "turn_index": 14,
+            "evidence_level": "L2_deterministic",
+            "source": "jargon_evidence",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 5,
+        "level_label": null,
+        "justification": "Accurate, varied, naturally complex phrasing sustained across a long consultation covering multiple topics.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_18",
+            "turn_index": 18,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 3,
+        "level_label": "Adept use",
+        "justification": "Full appropriate opening (A1), and repeated genuine empathy for two separate disclosures at turns 2 and 16 (A4) sustained across a long consultation, with no dismissive or judgmental language anywhere in the transcript.",
+        "evidence_refs": [
+          {
+            "evidence_id": "opening_greeting",
+            "turn_index": 0,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "empathy_acknowledgement",
+            "turn_index": 2,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "empathy_acknowledgement",
+            "turn_index": 16,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": []
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 3,
+        "level_label": "Adept use",
+        "justification": "Two separate concerns are each fully explored, addressed, and resolved (B1-B3 complete lifecycle for both), and the driving concern is genuinely reopened by new information late in the consultation (turn 21) -- the nurse explicitly recognises the reopening ('Good question to raise again') and gives an adjusted, more cautious answer specific to motorway driving rather than repeating the original estimate. Handling a reopened concern this well, on top of two clean original resolutions, across a long multi-topic session is the strongest pattern this benchmark's B-criterion cases show.",
+        "evidence_refs": [
+          {
+            "evidence_id": "When can I drive again?::resolved",
+            "turn_index": 9,
+            "evidence_level": "L4_patient_outcome",
+            "source": "concern_timeline",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "When can I drive again?::raised",
+            "turn_index": 21,
+            "evidence_level": "L4_patient_outcome",
+            "source": "concern_timeline",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "When can I drive again?::addressed",
+            "turn_index": 22,
+            "evidence_level": "L4_patient_outcome",
+            "source": "concern_timeline",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "Will I need this medication forever?::resolved",
+            "turn_index": 19,
+            "evidence_level": "L4_patient_outcome",
+            "source": "concern_timeline",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "STRONG",
+        "limitations": []
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 3,
+        "level_label": "Adept use",
+        "justification": "Explicit sequencing announced and followed ('First...then...finally', turn 12) and a clear topic-transition signpost when returning to an earlier question (turn 16), sustained purposefully across a long, multi-topic consultation.",
+        "evidence_refs": [
+          {
+            "evidence_id": "consultation_sequence_marker",
+            "turn_index": 12,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "organization_marker",
+            "turn_index": 12,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": []
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 3,
+        "level_label": "Adept use",
+        "justification": "One clear open question exploring the driving concern (D2, turn 4), and an explicit summary that invites correction (D5, turn 20, immediately validated when the patient does raise a correction at turn 21) -- with zero compound/leading questions anywhere across a long, many-turn consultation.",
+        "evidence_refs": [
+          {
+            "evidence_id": "open_question",
+            "turn_index": 4,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "summary_statement",
+            "turn_index": 20,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "summary_check",
+            "turn_index": 20,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no D4 clarification-request evidence this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 3,
+        "level_label": "Adept use",
+        "justification": "Prior-knowledge check before explaining medication (E1, turn 10), a reaction-check during delivery (E2, turn 14), an explicit invitation to react after the long-term-medication explanation (E3, turn 18), and understanding checks after both major explanations (E4, turns 8 and 20) -- repeated, varied information-giving technique sustained across multiple information-giving sequences in a long consultation.",
+        "evidence_refs": [
+          {
+            "evidence_id": "prior_knowledge_check",
+            "turn_index": 10,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "reaction_response",
+            "turn_index": 14,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "contribution_invitation",
+            "turn_index": 18,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "understanding_checked",
+            "turn_index": 8,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "understanding_checked",
+            "turn_index": 20,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no E5 further-information-check evidence this session"
+        ]
+      }
+    ]
+  },
+  "case_20_conflicting_mixed_evidence": {
+    "opaque_case_id": "case_020",
+    "archetype": "conflicting_mixed_evidence",
+    "tags": [
+      "conflict",
+      "mixed_evidence",
+      "calibration_critical",
+      "patient_outcome_vs_technique"
+    ],
+    "reference_status": "provisional",
+    "reference_judgement": [
+      {
+        "criterion": "intelligibility",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "fluency",
+        "family": "linguistic",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No audio evidence available for this session.",
+        "evidence_refs": [],
+        "evidence_quality": "INSUFFICIENT",
+        "limitations": [
+          "no_audio_evidence"
+        ]
+      },
+      {
+        "criterion": "appropriateness_of_language",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Plain, gentle register throughout, no unexplained jargon.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_0",
+            "turn_index": 0,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "resources_of_grammar_and_expression",
+        "family": "linguistic",
+        "status": "assessed",
+        "level": 4,
+        "level_label": null,
+        "justification": "Accurate, natural phrasing throughout.",
+        "evidence_refs": [
+          {
+            "evidence_id": "turn_6",
+            "turn_index": 6,
+            "evidence_level": "L1_direct",
+            "source": "transcript",
+            "provenance": "direct"
+          }
+        ],
+        "evidence_quality": "PARTIAL",
+        "limitations": []
+      },
+      {
+        "criterion": "relationship_building",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 1,
+        "level_label": "Partially effective use",
+        "justification": "MIXED/CONFLICTING EVIDENCE: two separate, well-targeted empathy acknowledgements (L2 deterministic technique evidence, turns 0 and 2) are genuine and correctly aimed at the patient's disappointment. But the patient outcome evidence (L4) tells a different story -- the state transition at turn 3 shows the patient moving from disappointed to withdrawn immediately after both empathy responses, and the literal '...' is direct transcript evidence the words did not land. A reviewer weighting the technique evidence on its own terms could reasonably score this higher (Competent use, 2); this reference weights the patient-outcome signal more heavily when the two diverge, since an acknowledgement that measurably fails to reach the patient is weaker evidence of effective relationship-building than the same words landing would be. This is a deliberate test of how much weight technique-presence should get when outcome evidence points the other way -- not a claim that 1 is the only defensible score.",
+        "evidence_refs": [
+          {
+            "evidence_id": "empathy_acknowledgement",
+            "turn_index": 0,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "empathy_acknowledgement",
+            "turn_index": 2,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "current_emotion",
+            "turn_index": 3,
+            "evidence_level": "L4_patient_outcome",
+            "source": "state_transition",
+            "provenance": "deterministic_rule"
+          },
+          {
+            "evidence_id": "emotional_trigger_fired",
+            "turn_index": 1,
+            "evidence_level": "L4_patient_outcome",
+            "source": "patient_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "technique evidence (L2) and patient-outcome evidence (L4) point in different directions; see justification"
+        ]
+      },
+      {
+        "criterion": "patient_perspective",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No scenario-defined concern was raised this session; the discharge-news reaction is relationship-building evidence, not a concern lifecycle.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: no concern-related evidence this session"
+        ]
+      },
+      {
+        "criterion": "providing_structure",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No sequencing or signposting language detected this session.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: C1/C2/C3 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_gathering",
+        "family": "clinical",
+        "status": "limited_evidence",
+        "level": null,
+        "level_label": null,
+        "justification": "No D-indicator technique markers fired this session; the prior-knowledge check at turn 4 is E-criterion evidence, not D.",
+        "evidence_refs": [],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "no_indicator_level_detector: D1-D5 all empty this session"
+        ]
+      },
+      {
+        "criterion": "information_giving",
+        "family": "clinical",
+        "status": "assessed",
+        "level": 1,
+        "level_label": "Partially effective use",
+        "justification": "MIXED/CONFLICTING EVIDENCE: the prior-knowledge check before explaining the wound-care plan (E1, turn 4) is genuine good technique, and clear information is then given (turn 6). But no E4 understanding-check follows it, and the patient's own next turn is direct transcript evidence of real confusion about the timeline just explained ('does that mean three weeks total, or three weeks just for the dressings?'). Good information-giving TECHNIQUE is present, but the OUTCOME shows the message did not land -- a reviewer crediting the E1 technique on its own could reasonably score this higher (2); this reference scores 1 because the missing E4 check is exactly what would have caught the confusion the patient in fact had.",
+        "evidence_refs": [
+          {
+            "evidence_id": "prior_knowledge_check",
+            "turn_index": 4,
+            "evidence_level": "L2_deterministic",
+            "source": "candidate_event",
+            "provenance": "deterministic_rule"
+          }
+        ],
+        "evidence_quality": "LIMITED",
+        "limitations": [
+          "E1 technique evidence and the turn-7 confusion (visible in the transcript, outside this criterion's evidence-ref set) point in different directions; no E4 evidence to resolve it; see justification"
+        ]
+      }
+    ]
+  }
+}

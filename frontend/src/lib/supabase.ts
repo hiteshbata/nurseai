@@ -166,6 +166,39 @@ export async function linkAnonymousAccount(email: string, password: string, name
   return data
 }
 
+export async function verifySignupOtp(email: string, token: string) {
+  const client = getClient()
+  if (!client) throw new Error('Supabase is not configured.')
+  const { data, error } = await client.auth.verifyOtp({ email, token, type: 'signup' })
+  if (error) throw error
+  return data
+}
+
+// Numeric-code counterpart to the link-based /auth/confirm?token_hash=...
+// invite flow -- same GoTrue invite, verified client-side instead of via the
+// server-side token_hash route. Fires a SIGNED_IN session on success, same
+// as /auth/confirm's server-side verifyOtp does; the caller still has to
+// route to /auth/reset-password?type=invite itself to reuse the existing
+// password-setting gate.
+export async function verifyInviteOtp(email: string, token: string) {
+  const client = getClient()
+  if (!client) throw new Error('Supabase is not configured.')
+  const { data, error } = await client.auth.verifyOtp({ email, token, type: 'invite' })
+  if (error) throw error
+  return data
+}
+
+// Re-sends the 6-digit signup code. Same idempotent-and-silent-on-existing-
+// user semantics as signUp() itself -- callers should swallow errors here
+// the same way forgot-password swallows requestPasswordReset() errors, to
+// avoid leaking account existence via a resend failure.
+export async function resendSignupOtp(email: string) {
+  const client = getClient()
+  if (!client) throw new Error('Supabase is not configured.')
+  const { error } = await client.auth.resend({ type: 'signup', email })
+  if (error) throw error
+}
+
 export async function requestPasswordReset(email: string) {
   const client = getClient()
   if (!client) throw new Error('Supabase is not configured.')
