@@ -71,3 +71,23 @@ backend/dev-server.log
 
 # Git worktrees used for isolated feature-branch work
 .worktrees/
+
+# Root .env.local — real secret leak gap found in 2026-09-06 audit
+/.env.local
+
+# Root-level QA run logs
+/*.log
+
+# Git Bash crash dumps on Windows
+bash.exe.stackdump
+
+# Orphaned frontend type-check artifact — no generator found in repo
+frontend/.next-verify/
+
+# Backend QA one-off run artifacts
+backend/qa-artifacts/
+backend/qa_*.log
+backend/qa_*.txt
+
+# Ad-hoc marketing brochure screenshots (local capture, not consumed by the app)
+/speakoet-brochure-screenshots/

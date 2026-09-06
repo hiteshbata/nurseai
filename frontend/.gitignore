@@ -3,3 +3,6 @@
 /playwright-report
 /test-results
 tests/e2e/*.json
+
+# Playwright auth-state files outside tests/e2e/ (e.g. tests/brochure/)
+**/.*-auth-state.json
