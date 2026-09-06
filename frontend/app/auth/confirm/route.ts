@@ -8,8 +8,9 @@ import { resolveConfirmNext } from '@/lib/auth-redirect'
 // email points here (not straight at /auth/callback) so verifyOtp() runs
 // server-side and the resulting session lands in SSR cookies, never in the
 // URL. `next` carries the eventual destination (usually /auth/callback,
-// possibly with ?returnTo=... appended for an institution invite) and is
-// re-validated here since it's attacker-editable in the confirmation link.
+// possibly with ?returnTo=... appended) and is re-validated here since it's
+// attacker-editable in the confirmation link. For type=invite, `next` is
+// ignored outright by resolveConfirmNext -- see its comment.
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
   const token_hash = searchParams.get('token_hash')

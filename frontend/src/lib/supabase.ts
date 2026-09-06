@@ -188,7 +188,7 @@ export async function verifyInviteOtp(email: string, token: string) {
   return data
 }
 
-// Re-sends the 6-digit signup code. Same idempotent-and-silent-on-existing-
+// Re-sends the signup OTP (OTP_LENGTH digits). Same idempotent-and-silent-on-existing-
 // user semantics as signUp() itself -- callers should swallow errors here
 // the same way forgot-password swallows requestPasswordReset() errors, to
 // avoid leaking account existence via a resend failure.

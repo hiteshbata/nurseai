@@ -38,15 +38,20 @@ export function maskEmail(email: string): string {
 }
 
 // Picks the redirect target for /auth/confirm once `next` has been
-// sanitized. An invite confirmation has no password yet, so it must land on
-// the password-setting page (not /auth/callback, which assumes the account
-// is already usable) unless the link explicitly carried its own `next`.
+// sanitized. An invite confirmation has no password yet, so it must ALWAYS
+// land on the password-setting page -- never /auth/callback, which assumes
+// the account is already usable. `next` is ignored entirely for type=invite:
+// the backend's invite_user_by_email call sets redirect_to=/auth/callback
+// (for the unrelated case of an already-confirmed user re-clicking an old
+// invite), and if a Supabase Dashboard email template ever surfaces that as
+// `next` on the link, honoring it here would let a brand-new invited user
+// skip password setup entirely. Every other type keeps the explicit-next
+// override.
 export function resolveConfirmNext(
   type: string | null,
   rawNext: string | null,
   origin: string
 ): string {
-  const sanitized = sanitizeNext(rawNext, origin)
-  if (sanitized) return sanitized
-  return type === 'invite' ? '/auth/reset-password?type=invite' : '/auth/callback'
+  if (type === 'invite') return '/auth/reset-password?type=invite'
+  return sanitizeNext(rawNext, origin) || '/auth/callback'
 }

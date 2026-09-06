@@ -70,10 +70,10 @@ test('type=recovery with no explicit next keeps the existing callback default', 
   assert.equal(resolveConfirmNext('recovery', null, ORIGIN), '/auth/callback')
 })
 
-test('type=invite with an explicit sanitized next uses that next instead of the invite default', () => {
+test('type=invite ignores an explicit same-origin next -- password setup is never skippable', () => {
   assert.equal(
     resolveConfirmNext('invite', '/auth/callback?returnTo=%2Fjoin%2Fabc123', ORIGIN),
-    '/auth/callback?returnTo=%2Fjoin%2Fabc123'
+    '/auth/reset-password?type=invite'
   )
 })
 
