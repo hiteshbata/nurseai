@@ -614,6 +614,11 @@ def build_blog_prompt(difficulty: str, specialty: str, topic: str, objectives: O
     )
     if instructions:
         user += f"Additional instructions: {instructions}\n"
+    user += (
+        "\nDo not include a \"slug\" field -- the slug is assigned separately by the editor. "
+        "Do not add meta-commentary or an \"AI-generated\" disclaimer inside the title, excerpt, or body -- "
+        "write as if a human author wrote it. Do not wrap the JSON in a code fence.\n"
+    )
     user += f"\nReturn ONLY this JSON:\n{schema}"
     return _SYSTEM_HEADER, user
 
